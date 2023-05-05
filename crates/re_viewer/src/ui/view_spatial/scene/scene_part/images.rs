@@ -368,7 +368,7 @@ impl ImagesPart {
                         }
                     }
                     _ => {
-                        re_log::warn_once!(
+                        re_log::debug_once!(
                             "Tensor datatype not supported for albedo texture ({:?})",
                             std::mem::discriminant(&tensor.data),
                         );

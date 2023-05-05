@@ -86,7 +86,7 @@ impl SpaceView {
             "color" => "Color camera (3D)".into(),
             "mono/camera/right_mono" => "Right mono camera (2D)".into(),
             "mono/camera/left_mono" => "Left mono camera (2D)".into(),
-            "mono/camera" => "Mono cameras (3D)".into(),
+            "mono" => "Mono cameras (3D)".into(),
             _ => {
                 is_depthai_spaceview = false;
                 if let Some(entity_path_part) = space_path.iter().last() {

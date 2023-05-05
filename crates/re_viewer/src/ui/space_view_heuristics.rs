@@ -294,7 +294,6 @@ pub fn default_queried_entities(
                 .cloned(),
         );
     });
-
     entities
 }
 

@@ -1089,7 +1089,7 @@ impl AppState {
             .entry(selected_app_id.clone())
             .or_insert_with(|| Blueprint::new(ui.ctx()));
         // Hide time panel for now, reuse for recordings in the future
-        // time_panel.show_panel(&mut ctx, blueprint, ui);
+        time_panel.show_panel(&mut ctx, blueprint, ui);
         selection_panel.show_panel(&mut ctx, ui, blueprint);
 
         let central_panel_frame = egui::Frame {

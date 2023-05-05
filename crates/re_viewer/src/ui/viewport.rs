@@ -445,7 +445,7 @@ impl Viewport {
 
         let possible_space_views = default_created_space_views(ctx, spaces_info);
         let mut entity_paths_added = Vec::new();
-        for entity_path in ctx.depthai_state.new_auto_add_entity_paths.iter() {
+        for entity_path in &ctx.depthai_state.new_auto_add_entity_paths {
             for space_view in possible_space_views.iter().filter_map(|space_view| {
                 if space_view.data_blueprint.contains_entity(entity_path) {
                     entity_paths_added.push(entity_path.clone());

@@ -1,10 +1,10 @@
 use itertools::Itertools;
-use re_log_types::{ EntityPath, EntityPathHash };
-use std::collections::{ BTreeSet, HashMap };
+use re_log_types::{EntityPath, EntityPathHash};
+use std::collections::{BTreeSet, HashMap};
 
 use super::super::ui::SpaceView;
 use super::api::BackendCommChannel;
-use super::ws::{ WsMessageData };
+use super::ws::WsMessageData;
 use instant::Instant;
 use std::fmt;
 
@@ -88,7 +88,11 @@ impl Default for ColorCameraConfig {
 
 impl fmt::Debug for ColorCameraConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Color camera config: fps: {}, resolution: {:?}", self.fps, self.resolution)
+        write!(
+            f,
+            "Color camera config: fps: {}, resolution: {:?}",
+            self.fps, self.resolution
+        )
     }
 }
 
@@ -138,7 +142,11 @@ impl Default for MonoCameraConfig {
 
 impl fmt::Debug for MonoCameraConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Mono camera config: fps: {}, resolution: {:?}", self.fps, self.resolution)
+        write!(
+            f,
+            "Mono camera config: fps: {}, resolution: {:?}",
+            self.fps, self.resolution
+        )
     }
 }
 
@@ -230,12 +238,12 @@ impl PartialEq for DeviceConfig {
             (Some(a), Some(b)) => a == b,
             _ => true, // If one is None, it's only different if depth_enabled is different
         };
-        self.color_camera == other.color_camera &&
-            self.left_camera == other.left_camera &&
-            self.right_camera == other.right_camera &&
-            depth_eq &&
-            self.depth_enabled == other.depth_enabled &&
-            self.ai_model == other.ai_model
+        self.color_camera == other.color_camera
+            && self.left_camera == other.left_camera
+            && self.right_camera == other.right_camera
+            && depth_eq
+            && self.depth_enabled == other.depth_enabled
+            && self.ai_model == other.ai_model
     }
 }
 
@@ -376,7 +384,7 @@ fn default_neural_networks() -> Vec<AiModel> {
         AiModel {
             path: String::from("age-gender-recognition-retail-0013"),
             display_name: String::from("Age gender recognition"),
-        }
+        },
     ]
 }
 
@@ -399,15 +407,7 @@ impl Default for State {
 
 #[repr(u8)]
 #[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    fmt::Debug,
-    Hash,
-    EnumIter
+    serde::Serialize, serde::Deserialize, Copy, Clone, PartialEq, Eq, fmt::Debug, Hash, EnumIter,
 )]
 pub enum ChannelId {
     ColorImage,
@@ -452,7 +452,7 @@ impl State {
     /// Should the space view be added to the UI based on the new subscriptions (a subscription change occurred)
     fn create_entity_paths_from_subscriptions(
         &mut self,
-        new_subscriptions: &Vec<ChannelId>
+        new_subscriptions: &Vec<ChannelId>,
     ) -> Vec<EntityPath> {
         let mut new_entity_paths = Vec::new();
         for channel in new_subscriptions.iter() {
@@ -483,13 +483,23 @@ impl State {
         if self.applied_device_config.config.depth.is_none() {
             remove_channels.push(ChannelId::DepthImage);
         }
-        if !self.applied_device_config.config.right_camera.stream_enabled {
+        if !self
+            .applied_device_config
+            .config
+            .right_camera
+            .stream_enabled
+        {
             remove_channels.push(ChannelId::RightMono);
         }
         if !self.applied_device_config.config.left_camera.stream_enabled {
             remove_channels.push(ChannelId::LeftMono);
         }
-        if !self.applied_device_config.config.color_camera.stream_enabled {
+        if !self
+            .applied_device_config
+            .config
+            .color_camera
+            .stream_enabled
+        {
             remove_channels.push(ChannelId::ColorImage);
         }
 
@@ -506,6 +516,9 @@ impl State {
             .collect_vec()
     }
 
+    /// DEPRECATED! Just keep it in the code as a reminder of how to do it
+    /// Probably won't be needed when we make the move away from log_db in the future, will likely be implemented (much) differently.
+    /// Until then we just loose a bit of performance if a user isn't viewing all of the channels
     /// Set subscriptions based on the visible UI
     pub fn set_subscriptions_from_space_views(&mut self, visible_space_views: Vec<&SpaceView>) {
         // If any bool in the vec is true, the channel is currently visible in the ui somewhere
@@ -533,14 +546,24 @@ impl State {
         if self.applied_device_config.config.depth_enabled {
             possible_subscriptions.push(ChannelId::DepthImage);
         }
-        if self.applied_device_config.config.color_camera.stream_enabled {
+        if self
+            .applied_device_config
+            .config
+            .color_camera
+            .stream_enabled
+        {
             possible_subscriptions.push(ChannelId::ColorImage);
         }
 
         if self.applied_device_config.config.left_camera.stream_enabled {
             possible_subscriptions.push(ChannelId::LeftMono);
         }
-        if self.applied_device_config.config.right_camera.stream_enabled {
+        if self
+            .applied_device_config
+            .config
+            .right_camera
+            .stream_enabled
+        {
             possible_subscriptions.push(ChannelId::RightMono);
         }
 
@@ -559,10 +582,9 @@ impl State {
 
         // Keep subscriptions that should be visible but have not yet been sent by the backend
         for channel in ChannelId::iter() {
-            if
-                !subscriptions.contains(&channel) &&
-                possible_subscriptions.contains(&channel) &&
-                self.subscriptions.contains(&channel)
+            if !subscriptions.contains(&channel)
+                && possible_subscriptions.contains(&channel)
+                && self.subscriptions.contains(&channel)
             {
                 subscriptions.push(channel);
             }
@@ -572,9 +594,11 @@ impl State {
     }
 
     pub fn set_subscriptions(&mut self, subscriptions: &Vec<ChannelId>) {
-        if
-            self.subscriptions.len() == subscriptions.len() &&
-            self.subscriptions.iter().all(|channel_id| subscriptions.contains(channel_id))
+        if self.subscriptions.len() == subscriptions.len()
+            && self
+                .subscriptions
+                .iter()
+                .all(|channel_id| subscriptions.contains(channel_id))
         {
             return;
         }
@@ -605,7 +629,7 @@ impl State {
                             .iter()
                             .filter(|channel_id| !self.subscriptions.contains(channel_id))
                             .cloned()
-                            .collect_vec()
+                            .collect_vec(),
                     );
                     self.subscriptions = subscriptions;
                 }
@@ -615,7 +639,7 @@ impl State {
                 }
                 WsMessageData::Pipeline(config) => {
                     let mut subs = self.subscriptions.clone();
-                    if let Some(depth) = config.depth {
+                    if config.depth.is_some() {
                         subs.push(ChannelId::DepthImage);
                     }
                     if config.color_camera.stream_enabled {
@@ -640,7 +664,8 @@ impl State {
                     re_log::debug!("Setting device: {device:?}");
                     self.selected_device = device;
                     self.backend_comms.set_subscriptions(&self.subscriptions);
-                    self.backend_comms.set_pipeline(&self.applied_device_config.config);
+                    self.backend_comms
+                        .set_pipeline(&self.applied_device_config.config);
                     self.applied_device_config.update_in_progress = true;
                 }
                 WsMessageData::Error(error) => {
@@ -680,9 +705,12 @@ impl State {
 
     pub fn set_device_config(&mut self, config: &mut DeviceConfig) {
         // Don't try to set pipeline in ws not connected or device not selected
-        if
-            !self.backend_comms.ws.connected.load(std::sync::atomic::Ordering::SeqCst) ||
-            self.selected_device.id == ""
+        if !self
+            .backend_comms
+            .ws
+            .connected
+            .load(std::sync::atomic::Ordering::SeqCst)
+            || self.selected_device.id == ""
         {
             return;
         }
