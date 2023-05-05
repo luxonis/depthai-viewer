@@ -102,56 +102,89 @@ impl Viewport {
         space_views.remove(space_view_id)
     }
 
-    /// Show the blueprint panel tree view.
-    pub fn tree_ui(&mut self, ctx: &mut ViewerContext<'_>, ui: &mut egui::Ui) {
+    pub fn add_or_remove_space_views_ui(
+        &mut self,
+        ctx: &mut ViewerContext<'_>,
+        ui: &mut egui::Ui,
+        spaces_info: &SpaceInfoCollection,
+    ) {
         crate::profile_function!();
 
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
-                let space_view_ids = self
-                    .space_views
-                    .keys()
-                    .sorted_by_key(|space_view_id| &self.space_views[space_view_id].space_path)
-                    .copied()
-                    .collect_vec();
+                ui.style_mut().wrap = Some(false);
 
-                let visible_space_views = &self.visible;
-                let all_entities = visible_space_views.iter().map(|space_view_id| {
-                    self.space_views
-                        .get(space_view_id)
-                        .unwrap()
-                        .data_blueprint
-                        .entity_paths()
-                });
-                if !self.visible.is_empty() {
-                    ctx.depthai_state.set_subscriptions_from_space_views(
-                        self.space_views
-                            .values()
-                            .filter(|space_view| self.visible.contains(&space_view.id))
-                            .collect_vec(),
-                    );
-                }
-
-                for space_view_id in &space_view_ids {
-                    self.space_view_entry_ui(ctx, ui, space_view_id);
-                    if let Some(space_view) = self.space_views.get_mut(space_view_id) {
-                        if let Some(group) = space_view
-                            .data_blueprint
-                            .group(space_view.data_blueprint.root_handle())
-                        {
-                            ctx.depthai_state
-                                .entities_to_remove(&group.entities.clone())
-                                .iter()
-                                .for_each(|ep| {
-                                    space_view.data_blueprint.remove_entity(ep);
-                                });
-                        }
-                    }
+                // Only show "logical" space views like Color camera, Mono Camera etc, don't go into
+                // details like rerun does in tree_ui, depthai-viewer users don't care about that
+                // as they didn't create the blueprint by logging the data
+                for space_view in all_possible_space_views(ctx, spaces_info)
+                    .into_iter()
+                    .filter(|sv| sv.is_depthai_spaceview)
+                {
+                    self.available_space_view_row_ui(ctx, ui, space_view);
                 }
             });
     }
 
+    fn available_space_view_row_ui(
+        &mut self,
+        ctx: &mut ViewerContext<'_>,
+        ui: &mut egui::Ui,
+        space_view: SpaceView,
+    ) {
+        let space_path = space_view.space_path.clone(); // to avoid borrowing issue in .body() of collapsing state
+        let collapsing_header_id = ui.id().with(space_view.display_name.clone());
+        egui::collapsing_header::CollapsingState::load_with_default_open(
+            ui.ctx(),
+            collapsing_header_id,
+            true,
+        )
+        .show_header(ui, |ui| {
+            ui.label(space_view.display_name.clone());
+            let mut ui = ui.child_ui(
+                ui.max_rect(),
+                egui::Layout::right_to_left(egui::Align::Center),
+            );
+            if ctx
+                .re_ui
+                .small_icon_button(&mut ui, &re_ui::icons::ADD)
+                .clicked()
+            {
+                self.add_space_view(space_view);
+            }
+        })
+        .body(|ui| {
+            let instances_of_space_view = self.visible.iter().filter(|id| {
+                if let Some(sv) = self.space_views.get(*id) {
+                    sv.space_path == space_path
+                } else {
+                    false
+                }
+            });
+            let mut space_views_to_remove = Vec::new();
+            for sv_id in instances_of_space_view {
+                ui.horizontal(|ui| {
+                    let label = format!("🔹 {}", self.space_views[sv_id].display_name);
+                    ui.label(label);
+                    let mut ui = ui.child_ui(
+                        ui.max_rect(),
+                        egui::Layout::right_to_left(egui::Align::Center),
+                    );
+                    if ctx
+                        .re_ui
+                        .small_icon_button(&mut ui, &re_ui::icons::REMOVE)
+                        .clicked()
+                    {
+                        space_views_to_remove.push(*sv_id);
+                    }
+                });
+            }
+            for sv_id in &space_views_to_remove {
+                self.remove(sv_id);
+            }
+        });
+    }
     /// If a group or spaceview has a total of this number of elements, show its subtree by default?
     fn default_open_for_group(group: &DataBlueprintGroup) -> bool {
         let num_children = group.children.len() + group.entities.len();
@@ -524,14 +557,9 @@ impl Viewport {
         let tab_bars = tree
             .iter()
             .filter_map(|node| {
-                let egui_dock::Node::Leaf {
-                        rect,
-                        viewport,
-                        tabs,
-                        active,
-                    } = node else {
-                        return None;
-                    };
+                let egui_dock::Node::Leaf { rect, viewport, tabs, active } = node else {
+                    return None;
+                };
 
                 let space_view_id = tabs.get(active.0)?;
 
@@ -781,7 +809,9 @@ fn space_view_options_ui(
     space_view_id: SpaceViewId,
     num_space_views: usize,
 ) {
-    let Some(space_view) = viewport.space_views.get(&space_view_id) else { return; };
+    let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
+        return;
+    };
 
     let tab_bar_rect = tab_bar_rect.shrink2(egui::vec2(4.0, 0.0)); // Add some side margin outside the frame
 
@@ -814,6 +844,53 @@ fn space_view_options_ui(
                 }
             }
 
+            let icon_image = ctx.re_ui.icon_image(&re_ui::icons::GEAR);
+            let texture_id = icon_image.texture_id(ui.ctx());
+            ui.menu_image_button(texture_id, re_ui::ReUi::small_icon_size(), |ui| {
+                ui.style_mut().wrap = Some(false);
+                let entities = space_view.data_blueprint.entity_paths().clone();
+                let entities = entities.iter().filter(|ep| {
+                    let eps_to_skip = vec![
+                        EntityPath::from("color/camera/rgb"),
+                        EntityPath::from("color/camera"),
+                        EntityPath::from("mono/camera"),
+                        EntityPath::from("mono/camera/left_mono"),
+                        EntityPath::from("mono/camera/right_mono"),
+                    ];
+                    !eps_to_skip.contains(ep)
+                });
+                for entity_path in entities {
+                    // if matches!(entity_path, EntityPath::from("color"))
+                    ui.horizontal(|ui| {
+                        let mut properties = space_view
+                            .data_blueprint
+                            .data_blueprints_individual()
+                            .get(entity_path);
+                        blueprint_row_with_buttons(
+                            ctx.re_ui,
+                            ui,
+                            true,
+                            properties.visible,
+                            |ui| {
+                                let name = entity_path.iter().last().unwrap().to_string();
+                                let label = format!("🔹 {name}");
+                                ctx.data_blueprint_button_to(ui, label, space_view.id, entity_path)
+                            },
+                            |re_ui, ui| {
+                                if visibility_button_ui(re_ui, ui, true, &mut properties.visible)
+                                    .changed()
+                                {
+                                    space_view
+                                        .data_blueprint
+                                        .data_blueprints_individual()
+                                        .set(entity_path.clone(), properties);
+                                }
+                            },
+                        );
+                    });
+                }
+            });
+
             // Show help last, since not all space views have help text
             help_text_ui(ui, space_view);
 
@@ -841,7 +918,7 @@ fn space_view_ui(
         ui.centered_and_justified(|ui| {
             ui.label(ctx.re_ui.warning_text("No time selected"));
         });
-        return
+        return;
     };
 
     space_view.scene_ui(ctx, ui, latest_at, space_view_highlights);

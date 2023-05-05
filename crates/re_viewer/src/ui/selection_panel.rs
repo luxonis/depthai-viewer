@@ -51,7 +51,6 @@ struct DepthaiTabs<'a, 'b> {
     now: f64, // Time elapsed from spawning SelectionPanel
     unsubscribe_from_imu: bool,
     imu_visible: &'a mut bool,
-    apply_button_enabled: &'a mut bool,
 }
 
 impl<'a, 'b> DepthaiTabs<'a, 'b> {
@@ -604,7 +603,6 @@ impl SelectionPanel {
                                         now: self.start_time.elapsed().as_nanos() as f64 / 1e9,
                                         unsubscribe_from_imu,
                                         imu_visible: &mut imu_tab_visible,
-                                        apply_button_enabled: &mut self.apply_cfg_button_enabled,
                                     },
                                 );
                             self.imu_tab_visible = imu_tab_visible;

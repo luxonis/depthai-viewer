@@ -376,7 +376,7 @@ impl ImagesPart {
                     }
                 };
             } else {
-                re_log::warn_once!(
+                re_log::debug_once!(
                     "Albedo texture couldn't be fetched ({:?})",
                     properties.albedo_texture
                 );
