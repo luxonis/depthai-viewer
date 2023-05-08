@@ -17,6 +17,8 @@ use itertools::Itertools as _;
 
 use re_data_store::{EntityPath, EntityPathPart};
 
+use crate::depthai::depthai;
+
 use super::{space_view::SpaceView, view_category::ViewCategory, SpaceViewId};
 
 #[derive(Clone, Debug)]
@@ -81,7 +83,7 @@ pub(crate) fn default_tree_from_space_views(
                     }
                 }
                 ViewCategory::Tensor | ViewCategory::TimeSeries => Some(1.0), // Not sure if we should do `None` here.
-                ViewCategory::Text => Some(2.0),                              // Make text logs wide
+                ViewCategory::Text | ViewCategory::NodeGraph => Some(2.0),    // Make text logs wide
                 ViewCategory::BarChart => None,
                 ViewCategory::NodeGraph => Some(2.0), // Make node graphs wide
             };
@@ -108,11 +110,12 @@ pub(crate) fn default_tree_from_space_views(
                 let mut bottom_left_spaces = Vec::new();
                 let mut bottom_right_spaces = Vec::new();
                 spaces.iter().cloned().for_each(|space| {
-                    if space.path == EntityPath::from("color") {
+                    if space.path.hash() == depthai::entity_paths::COLOR_CAM_3D.hash() {
                         top_left_spaces.push(space);
-                    } else if space.path == EntityPath::from("color/camera/rgb") {
+                    } else if space.path.hash() == depthai::entity_paths::RGB_PINHOLE_CAMERA.hash()
+                    {
                         top_right_spaces.push(space);
-                    } else if space.path == EntityPath::from("mono") {
+                    } else if space.path.hash() == depthai::entity_paths::MONO_CAM_3D.hash() {
                         bottom_left_spaces.push(space);
                     } else {
                         bottom_right_spaces.push(space);
@@ -121,20 +124,30 @@ pub(crate) fn default_tree_from_space_views(
 
                 let color_empty = top_left_spaces.is_empty() && top_right_spaces.is_empty();
                 let mono_empty = bottom_left_spaces.is_empty() && bottom_right_spaces.is_empty();
-                let color_split = LayoutSplit::LeftRight(
-                    LayoutSplit::Leaf(top_left_spaces).into(),
+                let mut color_split = LayoutSplit::LeftRight(
+                    LayoutSplit::Leaf(top_left_spaces.clone()).into(),
                     0.5,
-                    LayoutSplit::Leaf(top_right_spaces).into(),
+                    LayoutSplit::Leaf(top_right_spaces.clone()).into(),
                 );
-                let mono_split = LayoutSplit::LeftRight(
-                    LayoutSplit::Leaf(bottom_left_spaces).into(),
+                let mut mono_split = LayoutSplit::LeftRight(
+                    LayoutSplit::Leaf(bottom_left_spaces.clone()).into(),
                     0.5,
-                    LayoutSplit::Leaf(bottom_right_spaces).into(),
+                    LayoutSplit::Leaf(bottom_right_spaces.clone()).into(),
                 );
 
                 if !color_empty && mono_empty {
                     color_split
                 } else if !color_empty && !mono_empty {
+                    if top_left_spaces.is_empty() {
+                        color_split = LayoutSplit::Leaf(top_right_spaces);
+                    } else if top_right_spaces.is_empty() {
+                        color_split = LayoutSplit::Leaf(top_left_spaces);
+                    }
+                    if bottom_left_spaces.is_empty() {
+                        mono_split = LayoutSplit::Leaf(bottom_right_spaces);
+                    } else if bottom_right_spaces.is_empty() {
+                        mono_split = LayoutSplit::Leaf(bottom_left_spaces);
+                    }
                     LayoutSplit::TopBottom(color_split.into(), 0.5, mono_split.into())
                 } else if color_empty && !mono_empty {
                     mono_split
@@ -146,62 +159,6 @@ pub(crate) fn default_tree_from_space_views(
         // let layout = layout_by_path_prefix(viewport_size, &mut spaces);
         tree_from_split(&mut tree, egui_dock::NodeIndex(0), &layout);
     }
-    tree
-}
-
-pub(crate) fn tree_from_space_views(
-    viewport_size: egui::Vec2,
-    visible: &std::collections::BTreeSet<SpaceViewId>,
-    space_views: &HashMap<SpaceViewId, SpaceView>,
-) -> egui_dock::Tree<SpaceViewId> {
-    let mut tree = egui_dock::Tree::new(vec![]);
-
-    let mut space_make_infos = space_views
-        .iter()
-        .filter(|(space_view_id, _space_view)| visible.contains(space_view_id))
-        // Sort for determinism:
-        .sorted_by_key(|(space_view_id, space_view)| {
-            (
-                &space_view.space_path,
-                &space_view.display_name,
-                *space_view_id,
-            )
-        })
-        .map(|(space_view_id, space_view)| {
-            let aspect_ratio = match space_view.category {
-                ViewCategory::Spatial => {
-                    let state_spatial = &space_view.view_state.state_spatial;
-                    match *state_spatial.nav_mode.get() {
-                        // This is the only thing where the aspect ratio makes complete sense.
-                        super::view_spatial::SpatialNavigationMode::TwoD => {
-                            let size = state_spatial.scene_bbox_accum.size();
-                            Some(size.x / size.y)
-                        }
-                        // 3D scenes can be pretty flexible
-                        super::view_spatial::SpatialNavigationMode::ThreeD => None,
-                    }
-                }
-                ViewCategory::Tensor | ViewCategory::TimeSeries => Some(1.0), // Not sure if we should do `None` here.
-                ViewCategory::Text => Some(2.0),                              // Make text logs wide
-                ViewCategory::BarChart => None,
-                ViewCategory::NodeGraph => Some(2.0), // Make node graphs wide
-            };
-
-            SpaceMakeInfo {
-                id: *space_view_id,
-                path: space_view.space_path.clone(),
-                category: space_view.category,
-                aspect_ratio,
-            }
-        })
-        .collect_vec();
-
-    if !space_make_infos.is_empty() {
-        // Users often organize by path prefix, so we start by splitting along that
-        let layout = layout_by_path_prefix(viewport_size, &mut space_make_infos);
-        tree_from_split(&mut tree, egui_dock::NodeIndex(0), &layout);
-    }
-
     tree
 }
 
