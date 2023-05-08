@@ -13,7 +13,6 @@ use crate::{
 };
 
 use super::{
-    data_blueprint::{DataBlueprintGroup, DataBlueprintGroupHandle},
     space_view_entity_picker::SpaceViewEntityPicker,
     space_view_heuristics::all_possible_space_views,
     view_category::ViewCategory,
@@ -45,10 +44,9 @@ pub struct Viewport {
     /// Show one tab as maximized?
     maximized: Option<SpaceViewId>,
 
-    /// Set to `true` the first time the user messes around with the viewport blueprint.
-    /// Before this is set we automatically add new spaces to the viewport
-    /// when they show up in the data.
-    has_been_user_edited: bool,
+    /// Store for each space view if the user has edited it (eg. removed).
+    /// Is reset when a space view get's automatically removed.
+    has_been_user_edited: HashMap<EntityPath, bool>,
 
     #[serde(skip)]
     space_view_entity_window: Option<SpaceViewEntityPicker>,
@@ -89,8 +87,6 @@ impl Viewport {
                 *space_view_entity_window = None;
             }
         }
-
-        *has_been_user_edited = true;
 
         trees.retain(|vis_set, _| !vis_set.contains(space_view_id));
 
@@ -177,6 +173,8 @@ impl Viewport {
                         .clicked()
                     {
                         space_views_to_remove.push(*sv_id);
+                        self.has_been_user_edited
+                            .insert(self.space_views[sv_id].space_path.clone(), true);
                     }
                 });
             }
@@ -185,213 +183,7 @@ impl Viewport {
             }
         });
     }
-    /// If a group or spaceview has a total of this number of elements, show its subtree by default?
-    fn default_open_for_group(group: &DataBlueprintGroup) -> bool {
-        let num_children = group.children.len() + group.entities.len();
-        2 <= num_children && num_children <= 3
-    }
-
-    fn space_view_entry_ui(
-        &mut self,
-        ctx: &mut ViewerContext<'_>,
-        ui: &mut egui::Ui,
-        space_view_id: &SpaceViewId,
-    ) {
-        let Some(space_view) = self.space_views.get_mut(space_view_id) else {
-            re_log::warn_once!("Bug: asked to show a ui for a Space View that doesn't exist");
-            return;
-        };
-        if space_view.data_blueprint.entity_paths().is_empty() {
-            self.remove(space_view_id);
-            return;
-        }
-        debug_assert_eq!(space_view.id, *space_view_id);
-
-        let mut visibility_changed = false;
-        let mut removed_space_view = false;
-        let mut is_space_view_visible = self.visible.contains(space_view_id);
-
-        let root_group = space_view.data_blueprint.root_group();
-        let default_open = Self::default_open_for_group(root_group);
-        let collapsing_header_id = ui.id().with(space_view.id);
-        egui::collapsing_header::CollapsingState::load_with_default_open(
-            ui.ctx(),
-            collapsing_header_id,
-            default_open,
-        )
-        .show_header(ui, |ui| {
-            blueprint_row_with_buttons(
-                ctx.re_ui,
-                ui,
-                true,
-                is_space_view_visible,
-                |ui| {
-                    let response = ctx.space_view_button(ui, space_view);
-                    if response.clicked() {
-                        if let Some(tree) = self.trees.get_mut(&self.visible) {
-                            focus_tab(tree, space_view_id);
-                        }
-                    }
-                    response
-                },
-                |re_ui, ui| {
-                    visibility_changed =
-                        visibility_button_ui(re_ui, ui, true, &mut is_space_view_visible).changed();
-                    removed_space_view = re_ui
-                        .small_icon_button(ui, &re_ui::icons::REMOVE)
-                        .on_hover_text("Remove Space View from the viewport.")
-                        .clicked();
-                },
-            );
-        })
-        .body(|ui| {
-            Self::data_blueprint_tree_ui(
-                ctx,
-                ui,
-                space_view.data_blueprint.root_handle(),
-                space_view,
-                self.visible.contains(space_view_id),
-            );
-        });
-
-        if removed_space_view {
-            self.remove(space_view_id);
-        }
-
-        if visibility_changed {
-            self.has_been_user_edited = true;
-            if is_space_view_visible {
-                self.visible.insert(*space_view_id);
-            } else {
-                self.visible.remove(space_view_id);
-            }
-        }
-    }
-
-    fn data_blueprint_tree_ui(
-        ctx: &mut ViewerContext<'_>,
-        ui: &mut egui::Ui,
-        group_handle: DataBlueprintGroupHandle,
-        space_view: &mut SpaceView,
-        space_view_visible: bool,
-    ) {
-        let Some(group) = space_view.data_blueprint.group(group_handle) else {
-            debug_assert!(false, "Invalid group handle in blueprint group tree");
-            return;
-        };
-
-        // TODO(andreas): These clones are workarounds against borrowing multiple times from data_blueprint_tree.
-        let children = group.children.clone();
-        let entities = group.entities.clone();
-        let group_name = group.display_name.clone();
-        let group_is_visible = group.properties_projected.visible && space_view_visible;
-
-        for entity_path in &entities {
-            ui.horizontal(|ui| {
-                let mut properties = space_view
-                    .data_blueprint
-                    .data_blueprints_individual()
-                    .get(entity_path);
-                blueprint_row_with_buttons(
-                    ctx.re_ui,
-                    ui,
-                    group_is_visible,
-                    properties.visible,
-                    |ui| {
-                        let name = entity_path.iter().last().unwrap().to_string();
-                        let label = format!("🔹 {name}");
-                        ctx.data_blueprint_button_to(ui, label, space_view.id, entity_path)
-                    },
-                    |re_ui, ui| {
-                        if visibility_button_ui(
-                            re_ui,
-                            ui,
-                            group_is_visible,
-                            &mut properties.visible,
-                        )
-                        .changed()
-                        {
-                            space_view
-                                .data_blueprint
-                                .data_blueprints_individual()
-                                .set(entity_path.clone(), properties);
-                        }
-                        if re_ui
-                            .small_icon_button(ui, &re_ui::icons::REMOVE)
-                            .on_hover_text("Remove Entity from the space view.")
-                            .clicked()
-                        {
-                            space_view.data_blueprint.remove_entity(entity_path);
-                            space_view.entities_determined_by_user = true;
-                        }
-                    },
-                );
-            });
-        }
-
-        for child_group_handle in &children {
-            let Some(child_group) = space_view.data_blueprint.group_mut(*child_group_handle) else {
-                debug_assert!(false, "Data blueprint group {group_name} has an invalid child");
-                continue;
-            };
-
-            let mut remove_group = false;
-            let default_open = Self::default_open_for_group(child_group);
-            egui::collapsing_header::CollapsingState::load_with_default_open(
-                ui.ctx(),
-                ui.id().with(child_group_handle),
-                default_open,
-            )
-            .show_header(ui, |ui| {
-                blueprint_row_with_buttons(
-                    ctx.re_ui,
-                    ui,
-                    group_is_visible,
-                    child_group.properties_individual.visible,
-                    |ui| {
-                        ctx.data_blueprint_group_button_to(
-                            ui,
-                            child_group.display_name.clone(),
-                            space_view.id,
-                            *child_group_handle,
-                        )
-                    },
-                    |re_ui, ui| {
-                        visibility_button_ui(
-                            re_ui,
-                            ui,
-                            group_is_visible,
-                            &mut child_group.properties_individual.visible,
-                        );
-                        if re_ui
-                            .small_icon_button(ui, &re_ui::icons::REMOVE)
-                            .on_hover_text("Remove group and all its children from the space view.")
-                            .clicked()
-                        {
-                            remove_group = true;
-                        }
-                    },
-                );
-            })
-            .body(|ui| {
-                Self::data_blueprint_tree_ui(
-                    ctx,
-                    ui,
-                    *child_group_handle,
-                    space_view,
-                    space_view_visible,
-                );
-            });
-            if remove_group {
-                space_view.data_blueprint.remove_group(*child_group_handle);
-                space_view.entities_determined_by_user = true;
-            }
-        }
-    }
-
-    pub(crate) fn mark_user_interaction(&mut self) {
-        self.has_been_user_edited = true;
-    }
+    pub(crate) fn mark_user_interaction(&mut self) {}
 
     pub(crate) fn add_space_view(&mut self, mut space_view: SpaceView) -> SpaceViewId {
         let id = space_view.id;
@@ -429,41 +221,52 @@ impl Viewport {
         spaces_info: &SpaceInfoCollection,
     ) {
         crate::profile_function!();
-        // TODO(filip): Add back entities that were removed from the space view if they are available again
+        let mut space_views_to_remove = Vec::new();
 
+        // Get all the entity paths that aren't logged anymore
+        let entities_to_remove = ctx.depthai_state.get_entities_to_remove();
+        // First clear the has_been_user_edited entry, so if the entity path is a space path and it reappeaars later,
+        // it will get added back into the viewport
+        entities_to_remove.iter().for_each(|ep| {
+            self.has_been_user_edited.insert(ep.clone(), false);
+        });
+
+        // Remove all entities that are marked for removal from the space view.
+        // Remove the space view if it has no entities left
         for space_view in self.space_views.values_mut() {
+            if let Some(group) = space_view
+                .data_blueprint
+                .group(space_view.data_blueprint.root_handle())
+            {
+                entities_to_remove.iter().for_each(|ep| {
+                    space_view.data_blueprint.remove_entity(ep);
+                });
+
+                if space_view.data_blueprint.entity_paths().is_empty() {
+                    space_views_to_remove.push(space_view.id);
+                    self.has_been_user_edited
+                        .insert(space_view.space_path.clone(), false);
+                    continue;
+                }
+            }
             space_view.on_frame_start(ctx, spaces_info);
         }
-
-        if !self.has_been_user_edited {
-            for space_view_candidate in default_created_space_views(ctx, spaces_info) {
-                if self.should_auto_add_space_view(&space_view_candidate) {
-                    self.add_space_view(space_view_candidate);
-                }
+        for id in &space_views_to_remove {
+            if self.space_views.get(id).is_some() {
+                self.remove(id);
+            }
+        }
+        for space_view_candidate in default_created_space_views(ctx, spaces_info) {
+            if !self
+                .has_been_user_edited
+                .get(&space_view_candidate.space_path)
+                .unwrap_or(&false)
+                && self.should_auto_add_space_view(&space_view_candidate)
+            {
+                self.add_space_view(space_view_candidate);
             }
         }
 
-        let possible_space_views = default_created_space_views(ctx, spaces_info);
-        let mut entity_paths_added = Vec::new();
-        for entity_path in &ctx.depthai_state.new_auto_add_entity_paths {
-            for space_view in possible_space_views.iter().filter_map(|space_view| {
-                if space_view.data_blueprint.contains_entity(entity_path) {
-                    entity_paths_added.push(entity_path.clone());
-                    Some(space_view.clone())
-                } else {
-                    None
-                }
-            }) {
-                self.add_space_view(space_view);
-            }
-        }
-        ctx.depthai_state.new_auto_add_entity_paths = ctx
-            .depthai_state
-            .new_auto_add_entity_paths
-            .iter()
-            .filter(|ep| !entity_paths_added.contains(ep))
-            .cloned()
-            .collect_vec();
     }
 
     fn should_auto_add_space_view(&self, space_view_candidate: &SpaceView) -> bool {
@@ -525,13 +328,12 @@ impl Viewport {
             .trees
             .entry(visible_space_views.clone())
             .or_insert_with(|| {
-                super::auto_layout::tree_from_space_views(
+                super::auto_layout::default_tree_from_space_views(
                     ui.available_size(),
                     &visible_space_views,
                     &self.space_views,
                 )
             });
-
         let num_space_views = tree.num_tabs();
         if num_space_views == 0 {
             return;

@@ -3,6 +3,7 @@ use re_data_store::{EntityPath, EntityPropertyMap, EntityTree, InstancePath, Tim
 use re_renderer::{GpuReadbackIdentifier, ScreenshotProcessor};
 
 use crate::{
+    depthai::depthai,
     misc::{space_info::SpaceInfoCollection, SpaceViewHighlights, TransformCache, ViewerContext},
     ui::view_category::categorize_entity_path,
 };
@@ -81,12 +82,18 @@ impl SpaceView {
         // Spaces are now always named after the final element of the space-path (or the root), independent of the
         // query entities.
         let mut is_depthai_spaceview = true;
-        let display_name = match space_path.to_string().as_str() {
-            "color/camera/rgb" => "Color camera (2D)".into(),
-            "color" => "Color camera (3D)".into(),
-            "mono/camera/right_mono" => "Right mono camera (2D)".into(),
-            "mono/camera/left_mono" => "Left mono camera (2D)".into(),
-            "mono" => "Mono cameras (3D)".into(),
+        let display_name = match space_path {
+            ep if ep.hash() == depthai::entity_paths::RGB_PINHOLE_CAMERA.hash() => {
+                "Color camera (2D)".into()
+            }
+            ep if ep.hash() == depthai::entity_paths::COLOR_CAM_3D.hash() => "Color camera (3D)".into(),
+            ep if ep.hash() == depthai::entity_paths::RIGHT_PINHOLE_CAMERA.hash() => {
+                "Right mono camera (2D)".into()
+            }
+            ep if ep.hash() == depthai::entity_paths::LEFT_PINHOLE_CAMERA.hash() => {
+                "Left mono camera (2D)".into()
+            }
+            ep if ep.hash() == depthai::entity_paths::MONO_CAM_3D.hash() => "Mono cameras (3D)".into(),
             _ => {
                 is_depthai_spaceview = false;
                 if let Some(entity_path_part) = space_path.iter().last() {
