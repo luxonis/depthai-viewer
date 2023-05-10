@@ -128,6 +128,9 @@ impl Viewport {
         ui: &mut egui::Ui,
         space_view: SpaceView,
     ) {
+        let mut style = ui.style_mut().clone();
+        style.spacing.button_padding = egui::Vec2::new(2.0, 2.0);
+        ui.set_style(style);
         let space_path = space_view.space_path.clone(); // to avoid borrowing issue in .body() of collapsing state
         let collapsing_header_id = ui.id().with(space_view.display_name.clone());
         egui::collapsing_header::CollapsingState::load_with_default_open(
@@ -611,6 +614,9 @@ fn space_view_options_ui(
     space_view_id: SpaceViewId,
     num_space_views: usize,
 ) {
+    let mut style = ui.style_mut().clone();
+    style.spacing.button_padding = egui::Vec2::new(2.0, 2.0);
+    ui.set_style(style);
     let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
         return;
     };

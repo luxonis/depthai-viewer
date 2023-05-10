@@ -297,6 +297,11 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             &mut depth.confidence,
                                             0..=255,
                                         );
+                                        self.ctx.re_ui.labeled_toggle_switch(
+                                            ui,
+                                            "Depth enabled",
+                                            &mut device_config.depth_enabled,
+                                        );
                                     });
                                 },
                             );

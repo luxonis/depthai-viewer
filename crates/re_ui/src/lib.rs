@@ -194,6 +194,21 @@ impl ReUi {
         });
     }
 
+    pub fn labeled_toggle_switch(&self, ui: &mut egui::Ui, label: &str, value: &mut bool) {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_sized(
+                [Self::box_width(), Self::box_height()],
+                |ui: &mut egui::Ui| {
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                        ui.add(toggle_switch(value));
+                    })
+                    .response
+                },
+            );
+            ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+        });
+    }
+
     pub fn top_panel_frame(&self) -> egui::Frame {
         let mut frame = egui::Frame {
             inner_margin: Self::top_bar_margin(),

@@ -112,6 +112,9 @@ impl Blueprint {
         ui: &mut egui::Ui,
         spaces_info: &SpaceInfoCollection,
     ) {
+        let mut style = ui.style_mut().clone();
+        style.spacing.button_padding = egui::Vec2::new(2.0, 2.0);
+        ui.set_style(style);
         if ctx
             .re_ui
             .small_icon_button(ui, &re_ui::icons::RESET)
