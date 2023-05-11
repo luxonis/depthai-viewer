@@ -196,7 +196,7 @@ class SelectedDevice:
             else:
                 self._nnet = self.oak_cam.create_nn(config.ai_model.path, self._color)
                 callback = callbacks.on_detections
-                if config.ai_model.path == "yolo-v3-tiny-tf":
+                if config.ai_model.path == "yolov8n_coco_640x352":
                     callback = callbacks.on_yolo_packet
                 self.oak_cam.callback(self._nnet, callback)
         try:

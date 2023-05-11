@@ -368,8 +368,8 @@ fn default_neural_networks() -> Vec<AiModel> {
     vec![
         AiModel::default(),
         AiModel {
-            path: String::from("yolo-v3-tiny-tf"),
-            display_name: String::from("Yolo (tiny)"),
+            path: String::from("yolov8n_coco_640x352"),
+            display_name: String::from("Yolo V8"),
         },
         AiModel {
             path: String::from("mobilenet-ssd"),
@@ -686,7 +686,7 @@ impl State {
                     match error.action {
                         ErrorAction::None => (),
                         ErrorAction::FullReset => {
-                            self.set_device("".into());
+                            self.set_device(String::new());
                         }
                     }
                 }
@@ -716,13 +716,12 @@ impl State {
     }
 
     pub fn set_device_config(&mut self, config: &mut DeviceConfig, runtime_only: bool) {
-        // Don't try to set pipeline in ws not connected or device not selected
+        // Don't try to set pipeline in ws not connected
         if !self
             .backend_comms
             .ws
             .connected
             .load(std::sync::atomic::Ordering::SeqCst)
-            || self.selected_device.id.is_empty()
         {
             return;
         }
@@ -730,6 +729,10 @@ impl State {
         config.right_camera.board_socket = BoardSocket::RIGHT;
         if !config.depth_enabled {
             config.depth = None;
+        }
+        if self.selected_device.id.is_empty() {
+            self.applied_device_config.config = config.clone();
+            return;
         }
         self.backend_comms.set_pipeline(config, runtime_only);
         if runtime_only {

@@ -330,6 +330,11 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             .depthai_state
                                             .set_device_config(&mut device_config, true);
                                     }
+                                    if self.ctx.depthai_state.selected_device.id.is_empty() {
+                                        self.ctx
+                                            .depthai_state
+                                            .set_device_config(&mut device_config, false);
+                                    }
 
                                     ui.add_enabled_ui(apply_enabled, |ui| {
                                         ui.scope(|ui| {
