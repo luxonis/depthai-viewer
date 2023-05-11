@@ -136,8 +136,8 @@ class SdkCallbacks:
             label = detection.label
             # Open model zoo models output label index
             if labels_dict is not None and isinstance(label, int):
-                label += labels_dict[label] + ", "
-            label += str(int(detection.img_detection.confidence * 100)) + "%"
+                label += labels_dict[label]
+            label += ", " + str(int(detection.img_detection.confidence * 100)) + "%"
             labels.append(label)
         return rects, colors, labels
 
