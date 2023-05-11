@@ -144,9 +144,20 @@ impl ReUi {
         ui: &mut egui::Ui,
         label: &str,
         selected_text: String,
+        left_to_right: bool,
         menu_contents: impl FnOnce(&mut egui::Ui) -> R,
     ) {
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let align = egui::Align::Center;
+        let layout = if left_to_right {
+            egui::Layout::left_to_right(align)
+        } else {
+            egui::Layout::right_to_left(align)
+        };
+
+        ui.with_layout(layout, |ui| {
+            if left_to_right {
+                ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+            }
             ui.add_sized(
                 [Self::box_width(), Self::box_height() + 1.0],
                 |ui: &mut egui::Ui| {
@@ -157,7 +168,9 @@ impl ReUi {
                         .response
                 },
             );
-            ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+            if !left_to_right {
+                ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+            }
         });
     }
 
@@ -371,6 +384,9 @@ impl ReUi {
         let texture_id = image.texture_id(ui.ctx());
         // TODO(emilk): change color and size on hover
         let tint = ui.visuals().widgets.inactive.fg_stroke.color;
+        let mut style = ui.style_mut().clone();
+        style.spacing.button_padding = egui::Vec2::new(2.0, 2.0);
+        ui.set_style(style);
         ui.add(egui::ImageButton::new(texture_id, size_points).tint(tint))
     }
 

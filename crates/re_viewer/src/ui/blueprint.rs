@@ -18,8 +18,8 @@ impl Blueprint {
     pub fn new(egui_ctx: &egui::Context) -> Self {
         let screen_size = egui_ctx.screen_rect().size();
         Self {
-            blueprint_panel_expanded: screen_size.x > 750.0,
-            selection_panel_expanded: screen_size.x > 1000.0,
+            blueprint_panel_expanded: true,
+            selection_panel_expanded: true,
             time_panel_expanded: screen_size.y > 600.0,
             viewport: Default::default(),
         }
@@ -112,9 +112,6 @@ impl Blueprint {
         ui: &mut egui::Ui,
         spaces_info: &SpaceInfoCollection,
     ) {
-        let mut style = ui.style_mut().clone();
-        style.spacing.button_padding = egui::Vec2::new(2.0, 2.0);
-        ui.set_style(style);
         if ctx
             .re_ui
             .small_icon_button(ui, &re_ui::icons::RESET)

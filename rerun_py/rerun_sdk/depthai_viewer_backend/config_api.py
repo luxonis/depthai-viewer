@@ -74,16 +74,22 @@ async def ws_api(websocket: WebSocketServerProtocol):
                 await websocket.send(json.dumps({"type": MessageType.SUBSCRIPTIONS, "data": active_subscriptions}))
             elif message_type == MessageType.PIPELINE:
                 data = message.get("data", {})
-                pipeline_config = PipelineConfiguration(**data.get("Pipeline", {}))
+                pipeline_config_json, runtime_only = data.get("Pipeline", ({}, False))
+                pipeline_config = PipelineConfiguration(**pipeline_config_json)
                 print("Pipeline config: ", pipeline_config)
 
-                success, result = dispatch_action(Action.UPDATE_PIPELINE, pipeline_config=pipeline_config)
+                success, result = dispatch_action(
+                    Action.UPDATE_PIPELINE, pipeline_config=pipeline_config, runtime_only=runtime_only
+                )
                 if success:
                     active_config: PipelineConfiguration = dispatch_action(Action.GET_PIPELINE)
                     print("Active config: ", active_config)
                     await websocket.send(
                         json.dumps(
-                            {"type": MessageType.PIPELINE, "data": active_config.to_json() if active_config else None}
+                            {
+                                "type": MessageType.PIPELINE,
+                                "data": (active_config.to_json(), False) if active_config else None,
+                            }
                         )
                     )
                 else:

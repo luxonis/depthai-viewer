@@ -326,20 +326,10 @@ impl App {
             Command::ToggleBlueprintPanel => {
                 let blueprint = self.blueprint_mut(egui_ctx);
                 blueprint.blueprint_panel_expanded ^= true;
-
-                // Only one of blueprint or selection panel can be open at a time on mobile:
-                if is_narrow_screen && blueprint.blueprint_panel_expanded {
-                    blueprint.selection_panel_expanded = false;
-                }
             }
             Command::ToggleSelectionPanel => {
                 let blueprint = self.blueprint_mut(egui_ctx);
                 blueprint.selection_panel_expanded ^= true;
-
-                // Only one of blueprint or selection panel can be open at a time on mobile:
-                if is_narrow_screen && blueprint.selection_panel_expanded {
-                    blueprint.blueprint_panel_expanded = false;
-                }
             }
             Command::ToggleTimePanel => {
                 self.blueprint_mut(egui_ctx).time_panel_expanded ^= true;

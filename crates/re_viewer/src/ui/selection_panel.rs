@@ -57,8 +57,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
     pub fn tree() -> Tree<String> {
         let config_tab = "Configuration".to_string();
         let imu_tab = "IMU".to_string();
-        let tree = Tree::new(vec![config_tab, imu_tab]);
-        tree
+        Tree::new(vec![config_tab, imu_tab])
     }
 
     fn device_configuration_ui(&mut self, ui: &mut egui::Ui) {
@@ -89,6 +88,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             ui,
                                             "Resolution",
                                             format!("{}", device_config.color_camera.resolution),
+                                            false,
                                             |ui| {
                                                 for res in &self
                                                     .ctx
@@ -127,6 +127,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             ui,
                                             "Resolution",
                                             format!("{}", device_config.left_camera.resolution),
+                                            false,
                                             |ui| {
                                                 for res in &self
                                                     .ctx
@@ -166,6 +167,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             ui,
                                             "Resolution",
                                             format!("{}", device_config.right_camera.resolution),
+                                            false,
                                             |ui| {
                                                 for res in &self
                                                     .ctx
@@ -207,6 +209,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             ui,
                                             "AI Model",
                                             device_config.ai_model.display_name.clone(),
+                                            false,
                                             |ui| {
                                                 for nn in &self.ctx.depthai_state.neural_networks {
                                                     ui.selectable_value(
@@ -240,6 +243,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             ui,
                                             "Align to",
                                             format!("{:?}", depth.align),
+                                            false,
                                             |ui| {
                                                 for align in depthai::BoardSocket::iter() {
                                                     if align == depthai::BoardSocket::RGB
@@ -259,6 +263,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             ui,
                                             "Median Filter",
                                             format!("{:?}", depth.median),
+                                            false,
                                             |ui| {
                                                 for filter in depthai::DepthMedianFilter::iter() {
                                                     ui.selectable_value(
@@ -311,9 +316,20 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                 device_config.clone();
                             ui.vertical(|ui| {
                                 ui.horizontal(|ui| {
-                                    let apply_enabled = device_config
-                                        != self.ctx.depthai_state.applied_device_config.config
+                                    let only_runtime_configs_changed =
+                                        depthai::State::only_runtime_configs_changed(
+                                            &self.ctx.depthai_state.applied_device_config.config,
+                                            &device_config,
+                                        );
+                                    let apply_enabled = !only_runtime_configs_changed
+                                        && device_config
+                                            != self.ctx.depthai_state.applied_device_config.config
                                         && !self.ctx.depthai_state.selected_device.id.is_empty();
+                                    if !apply_enabled && only_runtime_configs_changed {
+                                        self.ctx
+                                            .depthai_state
+                                            .set_device_config(&mut device_config, true);
+                                    }
 
                                     ui.add_enabled_ui(apply_enabled, |ui| {
                                         ui.scope(|ui| {
@@ -348,7 +364,7 @@ impl<'a, 'b> DepthaiTabs<'a, 'b> {
                                             {
                                                 self.ctx
                                                     .depthai_state
-                                                    .set_device_config(&mut device_config);
+                                                    .set_device_config(&mut device_config, false);
                                             }
                                         });
                                     });
@@ -580,84 +596,90 @@ impl SelectionPanel {
                         if !combo_device.is_empty() && available_devices.is_empty() {
                             available_devices.push(combo_device.clone());
                         }
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.set_width(config_ui_width);
-                                ui.label("Device: ");
-                                egui::ComboBox::from_id_source("device")
-                                    .width(70.0)
-                                    .selected_text(if !combo_device.is_empty() {
-                                        combo_device.clone().to_string()
-                                    } else {
-                                        "No device selected".to_string()
+                        ui.add_sized(
+                            [ui.available_width(), re_ui::ReUi::box_height()],
+                            |ui: &mut egui::Ui| {
+                                    ui.horizontal(|ui| {
+                                        ctx.re_ui.labeled_combo_box(
+                                            ui,
+                                            "Device",
+                                            if !combo_device.is_empty() {
+                                                combo_device.clone().to_string()
+                                            } else {
+                                                "No device selected".to_owned()
+                                            },
+                                            true,
+                                            |ui: &mut egui::Ui| {
+                                                if ui
+                                                    .selectable_value(
+                                                        &mut combo_device,
+                                                        "".to_string(),
+                                                        "No device",
+                                                    )
+                                                    .changed()
+                                                {
+                                                    ctx.depthai_state
+                                                        .set_device(combo_device.clone());
+                                                }
+                                                for device in available_devices {
+                                                    if ui
+                                                        .selectable_value(
+                                                            &mut combo_device,
+                                                            device.clone().to_string(),
+                                                            device.to_string(),
+                                                        )
+                                                        .changed()
+                                                    {
+                                                        ctx.depthai_state
+                                                            .set_device(combo_device.clone());
+                                                    }
+                                                }
+                                            },
+                                        );
                                     })
-                                    .show_ui(ui, |ui| {
-                                        if ui
-                                            .selectable_value(
-                                                &mut combo_device,
-                                                "".to_string(),
-                                                "No device",
-                                            )
-                                            .changed()
-                                        {
-                                            ctx.depthai_state.set_device(combo_device.clone());
-                                        }
-                                        for device in available_devices {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut combo_device,
-                                                    device.clone().to_string(),
-                                                    device.to_string(),
-                                                )
-                                                .changed()
-                                            {
-                                                ctx.depthai_state.set_device(combo_device.clone());
-                                            }
-                                        }
-                                    });
-                            });
+                                .response
+                            },
+                        );
+                        // });
 
-                            if ctx.depthai_state.applied_device_config.update_in_progress {
-                                ui.add_sized([ui.available_width(), 10.0], |ui: &mut egui::Ui| {
-                                    ui.with_layout(
-                                        egui::Layout::left_to_right(egui::Align::Center),
-                                        |ui| ui.add(egui::Spinner::new()),
-                                    )
-                                    .response
-                                });
-                                // The following lines are a hack to force the top panel to resize to a usable size
-                                // after updating the device config, when updating set min height to 10 then detect if
-                                // it's 10 the config has been updated, set the panel to be of size 200.0, then in the next frame
-                                // set min height to 20.0 so user can still resize the panel to be very small
-                                self.current_device_config_panel_min_height = 10.0;
-                                return;
-                            } else if self.current_device_config_panel_min_height == 10.0 {
-                                self.current_device_config_panel_min_height =
-                                    self.device_config_panel_height;
-                            } else {
-                                self.current_device_config_panel_min_height = 20.0;
-                            }
-                            let mut imu_tab_visible = false;
-                            let unsubscribe_from_imu = !self.imu_tab_visible;
-                            let mut style = re_ui::egui_dock_style(ui.style());
-                            // style.tab_background_color = egui::Color32::from_rgb(249, 0, 0);
-                            DockArea::new(&mut self.depthai_tabs)
-                                .id(egui::Id::new("depthai_tabs"))
-                                .style(style)
-                                .show_inside(
-                                    ui,
-                                    &mut DepthaiTabs {
-                                        ctx,
-                                        accel_history: &mut self.accel_history,
-                                        gyro_history: &mut self.gyro_history,
-                                        magnetometer_history: &mut self.magnetometer_history,
-                                        now: self.start_time.elapsed().as_nanos() as f64 / 1e9,
-                                        unsubscribe_from_imu,
-                                        imu_visible: &mut imu_tab_visible,
-                                    },
-                                );
-                            self.imu_tab_visible = imu_tab_visible;
-                        });
+                        if ctx.depthai_state.applied_device_config.update_in_progress {
+                            ui.add_sized([config_ui_width, 10.0], |ui: &mut egui::Ui| {
+                                ui.with_layout(
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| ui.add(egui::Spinner::new()),
+                                )
+                                .response
+                            });
+                            // The following lines are a hack to force the top panel to resize to a usable size
+                            // after updating the device config, when updating set min height to 10 then detect if
+                            // it's 10 the config has been updated, set the panel to be of size 200.0, then in the next frame
+                            // set min height to 20.0 so user can still resize the panel to be very small
+                            self.current_device_config_panel_min_height = 10.0;
+                            return;
+                        } else if self.current_device_config_panel_min_height == 10.0 {
+                            self.current_device_config_panel_min_height =
+                                self.device_config_panel_height;
+                        } else {
+                            self.current_device_config_panel_min_height = 20.0;
+                        }
+                        let mut imu_tab_visible = false;
+                        let unsubscribe_from_imu = !self.imu_tab_visible;
+                        DockArea::new(&mut self.depthai_tabs)
+                            .id(egui::Id::new("depthai_tabs"))
+                            .style(re_ui::egui_dock_style(ui.style()))
+                            .show_inside(
+                                ui,
+                                &mut DepthaiTabs {
+                                    ctx,
+                                    accel_history: &mut self.accel_history,
+                                    gyro_history: &mut self.gyro_history,
+                                    magnetometer_history: &mut self.magnetometer_history,
+                                    now: self.start_time.elapsed().as_nanos() as f64 / 1e9,
+                                    unsubscribe_from_imu,
+                                    imu_visible: &mut imu_tab_visible,
+                                },
+                            );
+                        self.imu_tab_visible = imu_tab_visible;
                     })
                     .response
                     .rect;
