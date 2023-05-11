@@ -599,48 +599,46 @@ impl SelectionPanel {
                         ui.add_sized(
                             [ui.available_width(), re_ui::ReUi::box_height()],
                             |ui: &mut egui::Ui| {
-                                    ui.horizontal(|ui| {
-                                        ctx.re_ui.labeled_combo_box(
-                                            ui,
-                                            "Device",
-                                            if !combo_device.is_empty() {
-                                                combo_device.clone().to_string()
-                                            } else {
-                                                "No device selected".to_owned()
-                                            },
-                                            true,
-                                            |ui: &mut egui::Ui| {
+                                ui.horizontal(|ui| {
+                                    ctx.re_ui.labeled_combo_box(
+                                        ui,
+                                        "Device",
+                                        if !combo_device.is_empty() {
+                                            combo_device.clone()
+                                        } else {
+                                            "No device selected".to_owned()
+                                        },
+                                        true,
+                                        |ui: &mut egui::Ui| {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut combo_device,
+                                                    String::new(),
+                                                    "No device",
+                                                )
+                                                .changed()
+                                            {
+                                                ctx.depthai_state.set_device(combo_device.clone());
+                                            }
+                                            for device in available_devices {
                                                 if ui
                                                     .selectable_value(
                                                         &mut combo_device,
-                                                        "".to_string(),
-                                                        "No device",
+                                                        device.clone(),
+                                                        device,
                                                     )
                                                     .changed()
                                                 {
                                                     ctx.depthai_state
                                                         .set_device(combo_device.clone());
                                                 }
-                                                for device in available_devices {
-                                                    if ui
-                                                        .selectable_value(
-                                                            &mut combo_device,
-                                                            device.clone().to_string(),
-                                                            device.to_string(),
-                                                        )
-                                                        .changed()
-                                                    {
-                                                        ctx.depthai_state
-                                                            .set_device(combo_device.clone());
-                                                    }
-                                                }
-                                            },
-                                        );
-                                    })
+                                            }
+                                        },
+                                    );
+                                })
                                 .response
                             },
                         );
-                        // });
 
                         if ctx.depthai_state.applied_device_config.update_in_progress {
                             ui.add_sized([config_ui_width, 10.0], |ui: &mut egui::Ui| {

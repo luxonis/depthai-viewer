@@ -698,7 +698,7 @@ impl State {
             if poll_instant.elapsed().as_secs() < 2 {
                 return;
             }
-            if self.selected_device.id == "" {
+            if self.selected_device.id.is_empty() {
                 self.backend_comms.get_devices();
             }
             self.poll_instant = Some(Instant::now());
@@ -731,9 +731,14 @@ impl State {
         if !config.depth_enabled {
             config.depth = None;
         }
-        self.backend_comms.set_pipeline(&config, runtime_only);
-        re_log::info!("Creating pipeline...");
-        self.applied_device_config.update_in_progress = !runtime_only;
+        self.backend_comms.set_pipeline(config, runtime_only);
+        if runtime_only {
+            self.applied_device_config.config = config.clone();
+            self.applied_device_config.update_in_progress = false;
+        } else {
+            re_log::info!("Creating pipeline...");
+            self.applied_device_config.update_in_progress = true;
+        }
     }
 }
 
