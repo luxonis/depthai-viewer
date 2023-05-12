@@ -1,7 +1,6 @@
 mod annotations;
 mod auto_layout;
 mod blueprint;
-pub(crate) mod bottom_panel;
 mod data_blueprint;
 mod scene;
 mod selection_history;

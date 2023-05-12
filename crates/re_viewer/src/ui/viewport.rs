@@ -340,7 +340,7 @@ impl Viewport {
                     &self.space_views,
                 )
             })
-            .clone(); // Cheap clone,
+            .clone();
 
         let num_space_views = tree.num_tabs();
         if num_space_views == 0 {

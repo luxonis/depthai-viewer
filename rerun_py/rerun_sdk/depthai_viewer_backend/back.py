@@ -173,7 +173,7 @@ class SelectedDevice:
             imu = self.oak_cam.create_imu()
             sensors = [
                 dai.IMUSensor.ACCELEROMETER_RAW,
-                dai.IMUSensor.GYROSCOPE_CALIBRATED,
+                dai.IMUSensor.GYROSCOPE_RAW,
             ]
             if "BNO" in self.oak_cam.device.getConnectedIMU():
                 sensors.append(dai.IMUSensor.MAGNETOMETER_CALIBRATED)
