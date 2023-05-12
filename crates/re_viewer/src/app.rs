@@ -1085,7 +1085,6 @@ impl AppState {
         // Hide time panel for now, reuse for recordings in the future
         // time_panel.show_panel(&mut ctx, blueprint, ui);
         // bottom_panel.show_panel(&mut ctx, blueprint, ui);
-        selection_panel.show_panel(&mut ctx, ui, blueprint);
 
         let central_panel_frame = egui::Frame {
             fill: ui.style().visuals.panel_fill,

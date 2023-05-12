@@ -9,13 +9,14 @@ use re_data_store::EntityPath;
 
 use crate::{
     misc::{space_info::SpaceInfoCollection, Item, SpaceViewHighlights, ViewerContext},
-    ui::space_view_heuristics::default_created_space_views,
+    ui::{space_view_heuristics::default_created_space_views, stats_panel::StatsPanel},
 };
 
 use super::{
+    device_settings_panel::DeviceSettingsPanel, selection_panel::SelectionPanel,
     space_view_entity_picker::SpaceViewEntityPicker,
-    space_view_heuristics::all_possible_space_views, view_category::ViewCategory, SpaceView,
-    SpaceViewId,
+    space_view_heuristics::all_possible_space_views, stats_panel::StatsPanelState,
+    view_category::ViewCategory, SpaceView, SpaceViewId, SpaceViewKind,
 };
 
 // ----------------------------------------------------------------------------
@@ -38,7 +39,7 @@ pub struct Viewport {
     /// One for each combination of what views are visible.
     /// So if a user toggles the visibility of one SpaceView, we
     /// switch which layout we are using. This is somewhat hacky.
-    trees: HashMap<VisibilitySet, egui_dock::Tree<SpaceViewId>>,
+    trees: HashMap<VisibilitySet, egui_dock::Tree<Tab>>,
 
     /// Show one tab as maximized?
     maximized: Option<SpaceViewId>,
@@ -49,6 +50,10 @@ pub struct Viewport {
 
     #[serde(skip)]
     space_view_entity_window: Option<SpaceViewEntityPicker>,
+    device_settings_panel: DeviceSettingsPanel,
+
+    #[serde(skip)]
+    stats_panel_state: StatsPanelState,
 }
 
 impl Viewport {
@@ -79,6 +84,8 @@ impl Viewport {
             maximized,
             has_been_user_edited,
             space_view_entity_window,
+            device_settings_panel,
+            stats_panel_state,
         } = self;
 
         if let Some(window) = space_view_entity_window {
@@ -229,6 +236,7 @@ impl Viewport {
         entities_to_remove.iter().for_each(|ep| {
             self.has_been_user_edited.insert(ep.clone(), false);
         });
+        self.stats_panel_state.update(ctx);
 
         // Remove all entities that are marked for removal from the space view.
         // Remove the space view if it has no entities left
@@ -322,7 +330,7 @@ impl Viewport {
         };
 
         // Lazily create a layout tree based on which SpaceViews should be visible:
-        let tree = self
+        let mut tree = self
             .trees
             .entry(visible_space_views.clone())
             .or_insert_with(|| {
@@ -331,7 +339,9 @@ impl Viewport {
                     &visible_space_views,
                     &self.space_views,
                 )
-            });
+            })
+            .clone(); // Cheap clone,
+
         let num_space_views = tree.num_tabs();
         if num_space_views == 0 {
             return;
@@ -339,7 +349,7 @@ impl Viewport {
 
         let mut tab_viewer = TabViewer {
             ctx,
-            space_views: &mut self.space_views,
+            viewport: self,
         };
 
         ui.scope(|ui| {
@@ -347,7 +357,7 @@ impl Viewport {
 
             ui.spacing_mut().item_spacing.x = re_ui::ReUi::view_padding();
 
-            egui_dock::DockArea::new(tree)
+            egui_dock::DockArea::new(&mut tree)
                 .id(egui::Id::new("space_view_dock"))
                 .style(re_ui::egui_dock_style(ui.style()))
                 .show_inside(ui, &mut tab_viewer);
@@ -374,8 +384,20 @@ impl Viewport {
                     .then_some((*space_view_id, tab_bar_rect))
             })
             .collect_vec();
+        self.trees.insert(visible_space_views, tree);
 
-        for (space_view_id, tab_bar_rect) in tab_bars {
+        for (
+            Tab {
+                space_view_id,
+                space_view_kind,
+            },
+            tab_bar_rect,
+        ) in tab_bars
+        {
+            if space_view_kind == SpaceViewKind::Selection {
+                SelectionPanel::selection_panel_options_ui(ctx, ui, self, tab_bar_rect);
+                continue;
+            }
             // rect/viewport can be invalid for the first frame
             space_view_options_ui(ctx, ui, self, tab_bar_rect, space_view_id, num_space_views);
         }
@@ -537,53 +559,94 @@ fn visibility_button_ui(
 
 // ----------------------------------------------------------------------------
 
-struct ViewportView {}
-
 struct TabViewer<'a, 'b> {
     ctx: &'a mut ViewerContext<'b>,
-    space_views: &'a mut HashMap<SpaceViewId, SpaceView>,
+    viewport: &'a mut Viewport,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Tab {
+    pub space_view_id: SpaceViewId,
+    /// Rerun only displayed logged data in the viewport.
+    /// Depthai Viewer also has fixed ui panels that are part of the tab system.
+    /// This is used to distinguish between the two.
+    pub space_view_kind: SpaceViewKind,
 }
 
 impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
-    type Tab = SpaceViewId;
+    type Tab = Tab;
 
-    fn ui(&mut self, ui: &mut egui::Ui, space_view_id: &mut Self::Tab) {
+    fn ui(&mut self, ui: &mut egui::Ui, id: &mut Self::Tab) {
+        let Tab {
+            space_view_id,
+            space_view_kind,
+        } = id;
         crate::profile_function!();
 
-        let highlights = self
-            .ctx
-            .selection_state()
-            .highlights_for_space_view(*space_view_id, self.space_views);
-        let space_view = self
-            .space_views
-            .get_mut(space_view_id)
-            .expect("Should have been populated beforehand");
+        match space_view_kind {
+            SpaceViewKind::Data => {
+                let highlights = self
+                    .ctx
+                    .selection_state()
+                    .highlights_for_space_view(*space_view_id, &self.viewport.space_views);
+                let space_view = self
+                    .viewport
+                    .space_views
+                    .get_mut(space_view_id)
+                    .expect("Should have been populated beforehand");
 
-        space_view_ui(self.ctx, ui, space_view, &highlights);
+                space_view_ui(self.ctx, ui, space_view, &highlights);
+            }
+            SpaceViewKind::Imu => {}
+            SpaceViewKind::Xlink => {
+                println!("TODO: Xlink tab");
+            }
+            SpaceViewKind::Selection => SelectionPanel::show_panel(self.ctx, ui, self.viewport),
+            SpaceViewKind::Config => self.viewport.device_settings_panel.show_panel(self.ctx, ui),
+            SpaceViewKind::Stats => {
+                StatsPanel::show_panel(self.ctx, ui, &mut self.viewport.stats_panel_state);
+            }
+        }
     }
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
-        let space_view = self
-            .space_views
-            .get_mut(tab)
-            .expect("Should have been populated beforehand");
+        match tab.space_view_kind {
+            SpaceViewKind::Data => {
+                let space_view = self
+                    .viewport
+                    .space_views
+                    .get_mut(&tab.space_view_id)
+                    .expect("Should have been populated beforehand");
 
-        let mut text =
-            egui::WidgetText::RichText(egui::RichText::new(space_view.display_name.clone()));
+                let mut text = egui::WidgetText::RichText(egui::RichText::new(
+                    space_view.display_name.clone(),
+                ));
 
-        if self.ctx.selection().contains(&Item::SpaceView(*tab)) {
-            // Show that it is selected:
-            let egui_ctx = &self.ctx.re_ui.egui_ctx;
-            let selection_bg_color = egui_ctx.style().visuals.selection.bg_fill;
-            text = text.background_color(selection_bg_color);
+                if self
+                    .ctx
+                    .selection()
+                    .contains(&Item::SpaceView(tab.space_view_id))
+                {
+                    // Show that it is selected:
+                    let egui_ctx = &self.ctx.re_ui.egui_ctx;
+                    let selection_bg_color = egui_ctx.style().visuals.selection.bg_fill;
+                    text = text.background_color(selection_bg_color);
+                }
+
+                text
+            }
+            SpaceViewKind::Imu => "Imu".into(),
+            SpaceViewKind::Xlink => "Xlink".into(),
+            SpaceViewKind::Stats => "Stats".into(),
+            SpaceViewKind::Config => "Device Settings".into(),
+            SpaceViewKind::Selection => "Selection".into(),
         }
-
-        text
     }
 
     fn on_tab_button(&mut self, tab: &mut Self::Tab, response: &egui::Response) {
         if response.clicked() {
-            self.ctx.set_single_selection(Item::SpaceView(*tab));
+            self.ctx
+                .set_single_selection(Item::SpaceView(tab.space_view_id));
         }
     }
 }
@@ -728,14 +791,14 @@ fn space_view_ui(
 
 // ----------------------------------------------------------------------------
 
-fn focus_tab(tree: &mut egui_dock::Tree<SpaceViewId>, tab: &SpaceViewId) {
+fn focus_tab(tree: &mut egui_dock::Tree<Tab>, tab: &Tab) {
     if let Some((node_index, tab_index)) = tree.find_tab(tab) {
         tree.set_focused_node(node_index);
         tree.set_active_tab(node_index, tab_index);
     }
 }
 
-fn is_tree_valid(tree: &egui_dock::Tree<SpaceViewId>) -> bool {
+fn is_tree_valid(tree: &egui_dock::Tree<Tab>) -> bool {
     tree.iter().all(|node| match node {
         egui_dock::Node::Vertical { rect: _, fraction }
         | egui_dock::Node::Horizontal { rect: _, fraction } => fraction.is_finite(),

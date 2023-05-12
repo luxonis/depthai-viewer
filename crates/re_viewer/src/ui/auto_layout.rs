@@ -13,25 +13,33 @@ use std::collections::BTreeMap;
 
 use ahash::HashMap;
 use egui::Vec2;
+use egui_dock::{Node, NodeIndex, Split};
 use itertools::Itertools as _;
 
 use re_data_store::{EntityPath, EntityPathPart};
 
 use crate::depthai::depthai;
 
-use super::{space_view::SpaceView, view_category::ViewCategory, SpaceViewId};
+use super::{
+    space_view::{SpaceView, SpaceViewKind},
+    view_category::ViewCategory,
+    viewport::Tab,
+    SpaceViewId,
+};
 
 #[derive(Clone, Debug)]
 pub struct SpaceMakeInfo {
     pub id: SpaceViewId,
 
     /// Some path we use to group the views by
-    pub path: EntityPath,
+    pub path: Option<EntityPath>,
 
-    pub category: ViewCategory,
+    pub category: Option<ViewCategory>,
 
     /// Desired aspect ratio, if any.
     pub aspect_ratio: Option<f32>,
+
+    pub kind: SpaceViewKind,
 }
 
 enum LayoutSplit {
@@ -45,12 +53,43 @@ enum SplitDirection {
     TopBottom { top: Vec2, t: f32, bottom: Vec2 },
 }
 
+fn stats_tab_split() -> LayoutSplit {
+    LayoutSplit::TopBottom(
+        LayoutSplit::Leaf(vec![
+            SpaceMakeInfo {
+                id: SpaceViewId::random(),
+                path: None,
+                category: None,
+                aspect_ratio: None,
+                kind: SpaceViewKind::Config,
+            },
+            SpaceMakeInfo {
+                id: SpaceViewId::random(),
+                path: None,
+                category: None,
+                aspect_ratio: None,
+                kind: SpaceViewKind::Stats,
+            },
+        ])
+        .into(),
+        0.5,
+        LayoutSplit::Leaf(vec![SpaceMakeInfo {
+            id: SpaceViewId::random(),
+            path: None,
+            category: None,
+            aspect_ratio: None,
+            kind: SpaceViewKind::Selection,
+        }])
+        .into(),
+    )
+}
+
 /// Default layout of space views tuned for depthai-viewer
 pub(crate) fn default_tree_from_space_views(
     viewport_size: egui::Vec2,
     visible: &std::collections::BTreeSet<SpaceViewId>,
     space_views: &HashMap<SpaceViewId, SpaceView>,
-) -> egui_dock::Tree<SpaceViewId> {
+) -> egui_dock::Tree<Tab> {
     let mut tree = egui_dock::Tree::new(vec![]);
     let mut is_color_stream_present = false;
 
@@ -90,80 +129,100 @@ pub(crate) fn default_tree_from_space_views(
 
             SpaceMakeInfo {
                 id: *space_view_id,
-                path: space_view.space_path.clone(),
-                category: space_view.category,
+                path: Some(space_view.space_path.clone()),
+                category: Some(space_view.category),
                 aspect_ratio,
+                kind: SpaceViewKind::Data,
             }
         })
         .collect_vec();
 
     if !spaces.is_empty() {
-        let layout = {
-            if spaces.len() == 1 {
-                LayoutSplit::Leaf(spaces)
-            } else {
-                // Split space views:
-                // - Color stream available: Split top 3d, bottom 2d
-                // - if mono available split it right from color streams into 3d top and both 2d in a tab group on the bottom
-                let mut top_left_spaces = Vec::new();
-                let mut top_right_spaces = Vec::new();
-                let mut bottom_left_spaces = Vec::new();
-                let mut bottom_right_spaces = Vec::new();
-                spaces.iter().cloned().for_each(|space| {
-                    if space.path.hash() == depthai::entity_paths::COLOR_CAM_3D.hash() {
-                        top_left_spaces.push(space);
-                    } else if space.path.hash() == depthai::entity_paths::RGB_PINHOLE_CAMERA.hash()
-                    {
-                        top_right_spaces.push(space);
-                    } else if space.path.hash() == depthai::entity_paths::MONO_CAM_3D.hash() {
-                        bottom_left_spaces.push(space);
-                    } else {
-                        bottom_right_spaces.push(space);
-                    }
-                });
-
-                let color_empty = top_left_spaces.is_empty() && top_right_spaces.is_empty();
-                let mono_empty = bottom_left_spaces.is_empty() && bottom_right_spaces.is_empty();
-                let mut color_split = LayoutSplit::TopBottom(
-                    LayoutSplit::Leaf(top_left_spaces.clone()).into(),
-                    0.5,
-                    LayoutSplit::Leaf(top_right_spaces.clone()).into(),
-                );
-                let mut mono_split = LayoutSplit::TopBottom(
-                    LayoutSplit::Leaf(bottom_left_spaces.clone()).into(),
-                    0.5,
-                    LayoutSplit::Leaf(bottom_right_spaces.clone()).into(),
-                );
-
-                if !color_empty && mono_empty {
-                    color_split
-                } else if !color_empty && !mono_empty {
-                    if top_left_spaces.is_empty() {
-                        color_split = LayoutSplit::Leaf(top_right_spaces);
-                    } else if top_right_spaces.is_empty() {
-                        color_split = LayoutSplit::Leaf(top_left_spaces);
-                    }
-                    if bottom_left_spaces.is_empty() {
-                        mono_split = LayoutSplit::Leaf(bottom_right_spaces);
-                    } else if bottom_right_spaces.is_empty() {
-                        mono_split = LayoutSplit::Leaf(bottom_left_spaces);
-                    }
-                    LayoutSplit::LeftRight(color_split.into(), 0.5, mono_split.into())
-                } else if color_empty && !mono_empty {
-                    mono_split
-                } else {
+        let layout = LayoutSplit::LeftRight(
+            {
+                if spaces.len() == 1 {
                     LayoutSplit::Leaf(spaces)
+                } else {
+                    // Split space views:
+                    // - Color stream available: Split top 3d, bottom 2d
+                    // - if mono available split it right from color streams into 3d top and both 2d in a tab group on the bottom
+                    let mut top_left_spaces = Vec::new();
+                    let mut top_right_spaces = Vec::new();
+                    let mut bottom_left_spaces = Vec::new();
+                    let mut bottom_right_spaces = Vec::new();
+                    spaces.iter().cloned().for_each(|space| {
+                        let Some(space_path) = &space.path else {
+                            return;
+                        };
+                        if space_path.hash() == depthai::entity_paths::COLOR_CAM_3D.hash() {
+                            top_left_spaces.push(space);
+                        } else if space_path.hash()
+                            == depthai::entity_paths::RGB_PINHOLE_CAMERA.hash()
+                        {
+                            top_right_spaces.push(space);
+                        } else if space_path.hash() == depthai::entity_paths::MONO_CAM_3D.hash() {
+                            bottom_left_spaces.push(space);
+                        } else {
+                            bottom_right_spaces.push(space);
+                        }
+                    });
+
+                    let color_empty = top_left_spaces.is_empty() && top_right_spaces.is_empty();
+                    let mono_empty =
+                        bottom_left_spaces.is_empty() && bottom_right_spaces.is_empty();
+                    let mut color_split = LayoutSplit::TopBottom(
+                        LayoutSplit::Leaf(top_left_spaces.clone()).into(),
+                        0.5,
+                        LayoutSplit::Leaf(top_right_spaces.clone()).into(),
+                    );
+                    let mut mono_split = LayoutSplit::TopBottom(
+                        LayoutSplit::Leaf(bottom_left_spaces.clone()).into(),
+                        0.5,
+                        LayoutSplit::Leaf(bottom_right_spaces.clone()).into(),
+                    );
+
+                    if !color_empty && mono_empty {
+                        color_split
+                    } else if !color_empty && !mono_empty {
+                        if top_left_spaces.is_empty() {
+                            color_split = LayoutSplit::Leaf(top_right_spaces);
+                        } else if top_right_spaces.is_empty() {
+                            color_split = LayoutSplit::Leaf(top_left_spaces);
+                        }
+                        if bottom_left_spaces.is_empty() {
+                            mono_split = LayoutSplit::Leaf(bottom_right_spaces);
+                        } else if bottom_right_spaces.is_empty() {
+                            mono_split = LayoutSplit::Leaf(bottom_left_spaces);
+                        }
+                        LayoutSplit::LeftRight(color_split.into(), 0.5, mono_split.into())
+                    } else if color_empty && !mono_empty {
+                        mono_split
+                    } else {
+                        LayoutSplit::Leaf(spaces)
+                    }
                 }
             }
-        };
-        // let layout = layout_by_path_prefix(viewport_size, &mut spaces);
-        tree_from_split(&mut tree, egui_dock::NodeIndex(0), &layout);
+            .into(),
+            0.5,
+            stats_tab_split().into(),
+        );
+        tree_from_split(&mut tree, NodeIndex::root(), &layout);
+    } else {
+        tree_from_split(
+            &mut tree,
+            NodeIndex::root(),
+            &LayoutSplit::LeftRight(
+                LayoutSplit::Leaf(vec![]).into(),
+                0.7,
+                stats_tab_split().into(),
+            ),
+        );
     }
     tree
 }
 
 fn tree_from_split(
-    tree: &mut egui_dock::Tree<SpaceViewId>,
+    tree: &mut egui_dock::Tree<Tab>,
     parent: egui_dock::NodeIndex,
     split: &LayoutSplit,
 ) {
@@ -181,7 +240,10 @@ fn tree_from_split(
         LayoutSplit::Leaf(space_infos) => {
             tree.set_focused_node(parent);
             for space_info in space_infos {
-                tree.push_to_focused_leaf(space_info.id);
+                tree.push_to_focused_leaf(Tab {
+                    space_view_id: space_info.id,
+                    space_view_kind: space_info.kind,
+                });
             }
         }
     }
@@ -330,7 +392,10 @@ fn desired_aspect_ratio(spaces: &[SpaceMakeInfo]) -> Option<f32> {
 fn group_by_category(space_infos: &[SpaceMakeInfo]) -> Vec<Vec<SpaceMakeInfo>> {
     let mut groups: BTreeMap<ViewCategory, Vec<SpaceMakeInfo>> = Default::default();
     for info in space_infos {
-        groups.entry(info.category).or_default().push(info.clone());
+        let Some(category) = info.category else {
+            continue;
+        };
+        groups.entry(category).or_default().push(info.clone());
     }
     groups.into_values().collect()
 }
@@ -343,7 +408,12 @@ fn group_by_path_prefix(space_infos: &[SpaceMakeInfo]) -> Vec<Vec<SpaceMakeInfo>
 
     let paths = space_infos
         .iter()
-        .map(|space_info| space_info.path.as_slice().to_vec())
+        .map(|space_info| {
+            let Some(path) = &space_info.path else {
+                panic!("Space {:?} has no path", space_info);
+            };
+            path.as_slice().to_vec()
+        })
         .collect_vec();
 
     for i in 0.. {
