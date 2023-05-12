@@ -303,6 +303,7 @@ class DepthaiViewerBack:
 
             if self._device and self._device.oak_cam:
                 self._device.oak_cam.poll()
+
                 if self._device.oak_cam.device.isClosed():
                     # TODO(filip): Typehint the messages properly
                     self.on_reset()

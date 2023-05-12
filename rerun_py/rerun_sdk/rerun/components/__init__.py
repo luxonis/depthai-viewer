@@ -23,6 +23,8 @@ all = [
     "tensor",
     "text_entry",
     "vec",
+    "imu",
+    "xlink_stats"
 ]
 
 # Component names that are recognized by Rerun.

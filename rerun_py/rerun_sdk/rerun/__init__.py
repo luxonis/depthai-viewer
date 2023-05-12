@@ -25,6 +25,7 @@ from rerun.log.text import LoggingHandler, LogLevel, log_text_entry
 from rerun.log.transform import log_rigid3, log_unknown_transform, log_view_coordinates
 from rerun.recording import MemoryRecording
 from rerun.script_helpers import script_add_args, script_setup, script_teardown
+from rerun.log.xlink_stats import log_xlink_stats
 
 __all__ = [
     "AnnotationInfo",
@@ -69,6 +70,7 @@ __all__ = [
     "script_setup",
     "script_teardown",
     "log_imu",
+    "log_xlink_stats"
 ]
 
 

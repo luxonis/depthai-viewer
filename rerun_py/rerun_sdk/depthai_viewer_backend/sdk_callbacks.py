@@ -82,6 +82,7 @@ class SdkCallbacks:
             EntityPath.RGB_PINHOLE_CAMERA, child_from_parent=self._get_camera_intrinsics(w, h), width=w, height=h
         )
         rr.log_image(EntityPath.RGB_CAMERA_IMAGE, cv2.cvtColor(frame.frame, cv2.COLOR_BGR2RGB))
+        rr.log_xlink_stats(1,1)
 
     def on_left_frame(self, frame: FramePacket):
         if Topic.LeftMono not in self.store.subscriptions:

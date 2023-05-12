@@ -5,7 +5,10 @@ use egui::{
 use egui_dock::{TabViewer, Tree};
 use itertools::Itertools;
 use re_arrow_store::{LatestAtQuery, TimeInt, Timeline};
-use re_log_types::{component_types::ImuData, Component};
+use re_log_types::{
+    component_types::{ImuData, XlinkStats},
+    Component,
+};
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{depthai::depthai, misc::ViewerContext};
@@ -51,6 +54,7 @@ pub struct StatsPanelState {
     magnetometer_history: History<[f32; 3]>,
     start_time: instant::Instant, // Time elapsed from spawning the app
     imu_tab_visible: bool,        // Used to subscribe and unsubscribe from the IMU data
+    xlink_stats_history: History<[i64; 2]>,
 }
 
 impl Default for StatsPanelState {
@@ -62,6 +66,7 @@ impl Default for StatsPanelState {
             magnetometer_history: History::new(0..1000, 5.0),
             start_time: instant::Instant::now(),
             imu_tab_visible: false,
+            xlink_stats_history: History::new(0..1000, 5.0),
         }
     }
 }
@@ -69,6 +74,7 @@ impl Default for StatsPanelState {
 impl StatsPanelState {
     pub fn update(&mut self, ctx: &mut ViewerContext<'_>) {
         self.update_imu(ctx);
+        self.update_xlink(ctx);
     }
     /// Push new data into the history buffers.
     fn update_imu(&mut self, ctx: &mut ViewerContext<'_>) {
@@ -89,6 +95,22 @@ impl StatsPanelState {
                 if let Some(mag) = imu_data.mag {
                     self.magnetometer_history.add(now, [mag.x, mag.y, mag.z]);
                 }
+            });
+        }
+    }
+
+    fn update_xlink(&mut self, ctx: &mut ViewerContext<'_>) {
+        let now = self.start_time.elapsed().as_secs_f64();
+        let entity_path = &XlinkStats::entity_path();
+        if let Ok(latest) = re_query::query_entity_with_primary::<XlinkStats>(
+            &ctx.log_db.entity_db.data_store,
+            &LatestAtQuery::new(Timeline::log_time(), TimeInt::MAX),
+            entity_path,
+            &[XlinkStats::name()],
+        ) {
+            latest.visit1(|_inst, xlink_stats| {
+                self.xlink_stats_history
+                    .add(now, [xlink_stats.bytes_written, xlink_stats.bytes_read]);
             });
         }
     }
@@ -145,6 +167,38 @@ impl<'a, 'b> StatsTabs<'a, 'b> {
         });
     }
 
+    fn xlink_ui(&mut self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            let max_width = ui.available_width();
+            let (history, display_name, unit) = (&mut self.state.xlink_stats_history, "Xlink", "");
+            let Some(latest) = history.latest() else {
+                ui.label(format!("No {display_name} data yet"));
+                return;
+            };
+            ui.label(display_name);
+            let mut plot = Plot::new(display_name).show(ui, |plot_ui| {
+                plot_ui.line(
+                    Line::new(PlotPoints::new(
+                        history
+                            .iter()
+                            .map(|(t, v)| [t, v[0] as f64 / 1e6])
+                            .collect_vec(),
+                    ))
+                    .color(egui::Color32::RED),
+                );
+                plot_ui.line(
+                    Line::new(PlotPoints::new(
+                        history
+                            .iter()
+                            .map(|(t, v)| [t, v[1] as f64 / 1e6])
+                            .collect_vec(),
+                    ))
+                    .color(egui::Color32::BLUE),
+                );
+            });
+        });
+    }
+
     fn xyz_plot_ui(&mut self, ui: &mut egui::Ui, kind: ImuTabKind, max_width: f32) {
         ui.vertical(|ui| {
             let (history, display_name, unit) = match kind {
@@ -198,7 +252,7 @@ impl<'a, 'b> TabViewer for StatsTabs<'a, 'b> {
                 self.imu_ui(ui);
             }
             StatTabKind::Xlink => {
-                ui.label("TODO(filip): Xlink tab");
+                self.xlink_ui(ui);
             }
         };
     }

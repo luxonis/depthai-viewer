@@ -54,6 +54,8 @@ pub struct Viewport {
 
     #[serde(skip)]
     stats_panel_state: StatsPanelState,
+
+    previous_frame_tree: egui_dock::Tree<Tab>,
 }
 
 impl Viewport {
@@ -82,10 +84,11 @@ impl Viewport {
             visible,
             trees,
             maximized,
-            has_been_user_edited,
+            has_been_user_edited: _,
             space_view_entity_window,
-            device_settings_panel,
-            stats_panel_state,
+            device_settings_panel: _,
+            stats_panel_state: _,
+            previous_frame_tree: _,
         } = self;
 
         if let Some(window) = space_view_entity_window {
@@ -338,9 +341,11 @@ impl Viewport {
                     ui.available_size(),
                     &visible_space_views,
                     &self.space_views,
+                    &self.previous_frame_tree,
                 )
             })
             .clone();
+        self.previous_frame_tree = tree.clone();
 
         let num_space_views = tree.num_tabs();
         if num_space_views == 0 {
@@ -576,11 +581,11 @@ pub struct Tab {
 impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
     type Tab = Tab;
 
-    fn ui(&mut self, ui: &mut egui::Ui, id: &mut Self::Tab) {
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         let Tab {
             space_view_id,
             space_view_kind,
-        } = id;
+        } = tab;
         crate::profile_function!();
 
         match space_view_kind {

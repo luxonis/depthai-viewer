@@ -1049,9 +1049,9 @@ impl AppState {
             recording_configs,
             panel_selection,
             blueprints,
-            selection_panel,
-            time_panel,
-            selected_device,
+            selection_panel: _,
+            time_panel: _,
+            selected_device: _,
             depthai_state,
             #[cfg(not(target_arch = "wasm32"))]
                 profiler: _,

@@ -89,11 +89,17 @@ pub(crate) fn default_tree_from_space_views(
     viewport_size: egui::Vec2,
     visible: &std::collections::BTreeSet<SpaceViewId>,
     space_views: &HashMap<SpaceViewId, SpaceView>,
+    previous_frame_tree: &egui_dock::Tree<Tab>,
 ) -> egui_dock::Tree<Tab> {
-    let mut tree = egui_dock::Tree::new(vec![]);
-    let mut is_color_stream_present = false;
+    // TODO(filip): Implement sensible auto layout when space views changes.
+    // Something like:
+    // - Get the tabs that need to be added or removed
+    // - Removal is easy, just remove the tab
+    // - Addition should try to layout like currently 3d, 2d views. New views just appear in the top left corner i guess.
+    let mut tree = egui_dock::Tree::new(Vec::new());
 
-    let mut spaces = space_views
+    let mut is_color_stream_present = false;
+    let spaces = space_views
         .iter()
         .filter(|(space_view_id, _space_view)| visible.contains(space_view_id))
         // Sort for determinism:
