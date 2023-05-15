@@ -54,7 +54,8 @@ pub struct StatsPanelState {
     magnetometer_history: History<[f32; 3]>,
     start_time: instant::Instant, // Time elapsed from spawning the app
     imu_tab_visible: bool,        // Used to subscribe and unsubscribe from the IMU data
-    xlink_stats_history: History<[i64; 2]>,
+    xlink_stats_history: History<[f64; 4]>, // [MB written in last time frame, MB read in last time frame, MB written total, MB read total]
+    avg_xlink_stats_plot_history: History<[f64; 2]>, // [Avg MB written, Avg MB read]
 }
 
 impl Default for StatsPanelState {
@@ -66,7 +67,8 @@ impl Default for StatsPanelState {
             magnetometer_history: History::new(0..1000, 5.0),
             start_time: instant::Instant::now(),
             imu_tab_visible: false,
-            xlink_stats_history: History::new(0..1000, 5.0),
+            xlink_stats_history: History::new(0..1000, 1.0),
+            avg_xlink_stats_plot_history: History::new(0..1000, 5.0),
         }
     }
 }
@@ -87,7 +89,7 @@ impl StatsPanelState {
             imu_entity_path,
             &[ImuData::name()],
         ) {
-            latest.visit1(|_inst, imu_data| {
+            let _ = latest.visit1(|_inst, imu_data| {
                 self.accel_history
                     .add(now, [imu_data.accel.x, imu_data.accel.y, imu_data.accel.z]);
                 self.gyro_history
@@ -108,9 +110,42 @@ impl StatsPanelState {
             entity_path,
             &[XlinkStats::name()],
         ) {
-            latest.visit1(|_inst, xlink_stats| {
-                self.xlink_stats_history
-                    .add(now, [xlink_stats.bytes_written, xlink_stats.bytes_read]);
+            let _ = latest.visit1(|_inst, xlink_stats| {
+                let (mut written, mut read) = (
+                    (xlink_stats.bytes_written / 1e6 as i64) as f64,
+                    (xlink_stats.bytes_read / 1e6 as i64) as f64,
+                );
+                if let Some((time, [_, _, total_written, total_read])) =
+                    self.xlink_stats_history.iter().last()
+                {
+                    written = (written - total_written) / (now - time);
+                    read = (read - total_read) / (now - time);
+                }
+
+                self.xlink_stats_history.add(
+                    now,
+                    [
+                        written,
+                        read,
+                        (xlink_stats.bytes_written / 1e6 as i64) as f64,
+                        (xlink_stats.bytes_read / 1e6 as i64) as f64,
+                    ],
+                );
+                self.avg_xlink_stats_plot_history.add(
+                    now,
+                    [
+                        self.xlink_stats_history
+                            .iter()
+                            .map(|(_, [written, _, _, _])| written)
+                            .sum::<f64>()
+                            / self.xlink_stats_history.len() as f64,
+                        self.xlink_stats_history
+                            .iter()
+                            .map(|(_, [_, read, _, _])| read)
+                            .sum::<f64>()
+                            / self.xlink_stats_history.len() as f64,
+                    ],
+                );
             });
         }
     }
@@ -170,30 +205,28 @@ impl<'a, 'b> StatsTabs<'a, 'b> {
     fn xlink_ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             let max_width = ui.available_width();
-            let (history, display_name, unit) = (&mut self.state.xlink_stats_history, "Xlink", "");
+            let (history, display_name, unit) =
+                (&mut self.state.avg_xlink_stats_plot_history, "Xlink", "");
             let Some(latest) = history.latest() else {
                 ui.label(format!("No {display_name} data yet"));
                 return;
             };
             ui.label(display_name);
-            let mut plot = Plot::new(display_name).show(ui, |plot_ui| {
+            Plot::new(display_name).show(ui, |plot_ui| {
                 plot_ui.line(
                     Line::new(PlotPoints::new(
                         history
                             .iter()
-                            .map(|(t, v)| [t, v[0] as f64 / 1e6])
-                            .collect_vec(),
-                    ))
-                    .color(egui::Color32::RED),
-                );
-                plot_ui.line(
-                    Line::new(PlotPoints::new(
-                        history
-                            .iter()
-                            .map(|(t, v)| [t, v[1] as f64 / 1e6])
+                            .map(|(t, [written, _])| [t, written])
                             .collect_vec(),
                     ))
                     .color(egui::Color32::BLUE),
+                );
+                plot_ui.line(
+                    Line::new(PlotPoints::new(
+                        history.iter().map(|(t, [_, read])| [t, read]).collect_vec(),
+                    ))
+                    .color(egui::Color32::RED),
                 );
             });
         });

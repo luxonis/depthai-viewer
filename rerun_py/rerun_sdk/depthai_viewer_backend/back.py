@@ -43,6 +43,7 @@ class SelectedDevice:
     intrinsic_matrix: Dict[Tuple[int, int], np.ndarray] = {}
     calibration_data: dai.CalibrationHandler = None
     use_encoding: bool = False
+    _time_of_last_xlink_update: int = 0
 
     _color: CameraComponent = None
     _left: CameraComponent = None
@@ -211,6 +212,19 @@ class SelectedDevice:
             self.intrinsic_matrix = {}
         return running, {"message": "Pipeline started" if running else "Couldn't start pipeline"}
 
+    def update(self):
+        self.oak_cam.poll()
+        if time.time_ns() - self._time_of_last_xlink_update >= 16e6:
+            self._time_of_last_xlink_update = time.time_ns()
+            xlink_stats = self.oak_cam.device.getProfilingData()
+            rr.log_xlink_stats(xlink_stats.numBytesWritten, xlink_stats.numBytesRead)
+
+
+import rerun as rr
+
+rr.init("Depthai Viewer")
+rr.connect()
+
 
 class DepthaiViewerBack:
     _device: SelectedDevice = None
@@ -302,8 +316,7 @@ class DepthaiViewerBack:
                 pass
 
             if self._device and self._device.oak_cam:
-                self._device.oak_cam.poll()
-
+                self._device.update()
                 if self._device.oak_cam.device.isClosed():
                     # TODO(filip): Typehint the messages properly
                     self.on_reset()

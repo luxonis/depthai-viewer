@@ -564,6 +564,8 @@ fn visibility_button_ui(
 
 // ----------------------------------------------------------------------------
 
+struct ViewportView {}
+
 struct TabViewer<'a, 'b> {
     ctx: &'a mut ViewerContext<'b>,
     viewport: &'a mut Viewport,
