@@ -110,7 +110,7 @@ impl App {
     fn spawn_backend() -> Option<std::process::Child> {
         // TODO(filip): Is there some way I can know for sure where depthai_viewer_backend is?
         let backend_handle = match std::process::Command::new("python")
-            .args(["-m", "depthai_viewer_backend"])
+            .args(["-m", "depthai_viewer._backend.main"])
             .spawn()
         {
             Ok(child) => {
@@ -120,7 +120,7 @@ impl App {
             Err(err) => {
                 eprintln!("Failed to start depthai viewer: {err}");
                 match std::process::Command::new("python3")
-                    .args(["-m", "depthai_viewer_backend"])
+                    .args(["-m", "depthai_viewer._backend.main"])
                     .spawn()
                 {
                     Ok(child) => {
