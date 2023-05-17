@@ -1,17 +1,16 @@
 use egui::{
-    plot::{Line, Plot, PlotPoints},
     NumExt as _,
 };
 use re_data_store::{
     query_latest_single, ColorMapper, Colormap, EditableAutoValue, EntityPath, EntityProperties,
 };
 use re_log_types::{
-    component_types::{ImuData, Tensor, TensorDataMeaning},
+    component_types::{Tensor, TensorDataMeaning},
     TimeType, Transform,
 };
 
 use crate::{
-    depthai::depthai, ui::view_spatial::SpatialNavigationMode, Item, UiVerbosity, ViewerContext,
+     ui::view_spatial::SpatialNavigationMode, Item, UiVerbosity, ViewerContext,
 };
 
 use super::{data_ui::DataUi, space_view::ViewState, Viewport};

@@ -46,16 +46,9 @@ class ErrorAction:
     FULL_RESET = "FullReset"
 
 
-
 def error(message: str, action: ErrorAction) -> str:
     """Create an error message to send via ws"""
-    return json.dumps({
-        "type": MessageType.ERROR,
-        "data": {
-            "action": action,
-            "message": message
-        }
-    })
+    return json.dumps({"type": MessageType.ERROR, "data": {"action": action, "message": message}})
 
 
 async def ws_api(websocket: WebSocketServerProtocol):
@@ -116,9 +109,7 @@ async def ws_api(websocket: WebSocketServerProtocol):
                         )
                     )
                 else:
-                    await websocket.send(
-                        error("Unknown error", ErrorAction.FULL_RESET)
-                    )
+                    await websocket.send(error("Unknown error", ErrorAction.FULL_RESET))
             elif message_type == MessageType.DEVICES:
                 await websocket.send(
                     json.dumps(
@@ -143,7 +134,7 @@ async def ws_api(websocket: WebSocketServerProtocol):
                         json.dumps({"type": MessageType.DEVICE, "data": result.get("device_properties", {})})
                     )
                 else:
-                    await websocket.send(error("Unknown error", ErrorAction.FULL_RESET))
+                    await websocket.send(error(result.get("message", "Unknown error"), ErrorAction.FULL_RESET))
 
             else:
                 print("Unknown message type: ", message_type)

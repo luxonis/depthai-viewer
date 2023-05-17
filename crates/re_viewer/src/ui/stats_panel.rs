@@ -195,39 +195,56 @@ impl<'a, 'b> StatsTabs<'a, 'b> {
     fn imu_ui(&mut self, ui: &mut egui::Ui) {
         let imu_entity_path = &ImuData::entity_path();
         egui::ScrollArea::both().show(ui, |ui| {
-            let max_width = ui.available_width();
-            for kind in ImuTabKind::iter() {
-                self.xyz_plot_ui(ui, kind, max_width);
+            egui::Frame {
+                inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
+                ..Default::default()
             }
+            .show(ui, |ui| {
+                let max_width = ui.available_width();
+                for kind in ImuTabKind::iter() {
+                    self.xyz_plot_ui(ui, kind, max_width);
+                }
+            });
         });
     }
 
     fn xlink_ui(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
-            let max_width = ui.available_width();
-            let (history, display_name, unit) =
-                (&mut self.state.avg_xlink_stats_plot_history, "Xlink", "");
-            let Some(latest) = history.latest() else {
+            egui::Frame {
+                inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
+                ..Default::default()
+            }
+            .show(ui, |ui| {
+                let (history, display_name, unit) = (
+                    &mut self.state.avg_xlink_stats_plot_history,
+                    "XLink throughput",
+                    "",
+                );
+                let Some(latest) = history.latest() else {
                 ui.label(format!("No {display_name} data yet"));
                 return;
             };
-            ui.label(display_name);
-            Plot::new(display_name).show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new(PlotPoints::new(
-                        history
-                            .iter()
-                            .map(|(t, [written, _])| [t, written])
-                            .collect_vec(),
-                    ))
-                    .color(egui::Color32::BLUE),
-                );
-                plot_ui.line(
-                    Line::new(PlotPoints::new(
-                        history.iter().map(|(t, [_, read])| [t, read]).collect_vec(),
-                    ))
-                    .color(egui::Color32::RED),
-                );
+                ui.label(format!(
+                    "{display_name}: avg. Sent from device {:.2} MB/s, avg. Sent to Device: {:.2} MB/s",
+                    latest[0], latest[1]
+                ));
+                Plot::new(display_name).show(ui, |plot_ui| {
+                    plot_ui.line(
+                        Line::new(PlotPoints::new(
+                            history
+                                .iter()
+                                .map(|(t, [written, _])| [t, written])
+                                .collect_vec(),
+                        ))
+                        .color(egui::Color32::BLUE),
+                    );
+                    plot_ui.line(
+                        Line::new(PlotPoints::new(
+                            history.iter().map(|(t, [_, read])| [t, read]).collect_vec(),
+                        ))
+                        .color(egui::Color32::RED),
+                    );
+                });
             });
         });
     }
@@ -246,23 +263,31 @@ impl<'a, 'b> StatsTabs<'a, 'b> {
             ui.label(display_name);
             ui.add_sized([max_width, 150.0], |ui: &mut egui::Ui| {
                 ui.horizontal(|ui| {
-                    for axis in Xyz::iter() {
-                        ui.add_sized([max_width / 3.0, 150.0], |ui: &mut egui::Ui| {
-                            Plot::new(format!("{kind:?} ({axis:?})"))
-                                .allow_drag(false)
-                                .allow_zoom(false)
-                                .allow_scroll(false)
-                                .show(ui, |plot_ui| {
-                                    plot_ui.line(Line::new(PlotPoints::new(
-                                        (*history)
-                                            .iter()
-                                            .map(|(t, v)| [t, v[axis as usize].into()])
-                                            .collect_vec(),
-                                    )));
-                                })
-                                .response
-                        });
-                    }
+                    ui.add_sized([max_width, 150.0], |ui: &mut egui::Ui| {
+                        Plot::new(format!("{kind:?}"))
+                            .allow_drag(false)
+                            .allow_zoom(false)
+                            .allow_scroll(false)
+                            .show(ui, |plot_ui| {
+                                for axis in Xyz::iter() {
+                                    plot_ui.line(
+                                        Line::new(PlotPoints::new(
+                                            (*history)
+                                                .iter()
+                                                .map(|(t, v)| [t, v[axis as usize].into()])
+                                                .collect_vec(),
+                                        ))
+                                        .color(match axis
+                                        {
+                                            Xyz::X => egui::Color32::RED,
+                                            Xyz::Y => egui::Color32::GREEN,
+                                            Xyz::Z => egui::Color32::BLUE,
+                                        }),
+                                    );
+                                }
+                            })
+                            .response
+                    });
                 })
                 .response
             });

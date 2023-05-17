@@ -287,8 +287,6 @@ impl App {
     }
 
     fn run_command(&mut self, cmd: Command, _frame: &mut eframe::Frame, egui_ctx: &egui::Context) {
-        let is_narrow_screen = egui_ctx.screen_rect().width() < 600.0; // responsive ui for mobiles etc
-
         match cmd {
             #[cfg(not(target_arch = "wasm32"))]
             Command::Save => {

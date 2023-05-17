@@ -224,15 +224,13 @@ class SelectedDevice:
             viewer.log_xlink_stats(xlink_stats.numBytesWritten, xlink_stats.numBytesRead)
 
 
-
-
-
 class DepthaiViewerBack:
     _device: SelectedDevice = None
 
     # Queues for communicating with the API process
     action_queue: Queue
     result_queue: Queue
+    send_message_queue: Queue
 
     # Sdk callbacks for handling data from the device and sending it to the frontend
     sdk_callbacks: SdkCallbacks
@@ -281,7 +279,10 @@ class DepthaiViewerBack:
             self.set_device(SelectedDevice(device_id))
         except RuntimeError as e:
             print("Failed to select device:", e)
-            return False, {"message": "Failed to select device", "device_properties": {}}
+            return False, {
+                "message": str(e) + ", Try plugging in the device on a different port.",
+                "device_properties": {},
+            }
         try:
             device_properties = self._device.get_device_properties()
             return True, {"message:": "Device selected successfully", "device_properties": device_properties}
@@ -307,10 +308,10 @@ class DepthaiViewerBack:
         return started, {"message": message}
 
     def run(self):
-        """Handles ws messages and poll OakCam."""
+        """Handles ws messages and polls OakCam."""
         while True:
             try:
-                action, kwargs = self.action_queue.get(timeout=0.001)
+                action, kwargs = self.action_queue.get(timeout=0.0001)
                 print("Handling action: ", action)
                 self.result_queue.put(self.store.handle_action(action, **kwargs))
             except QueueEmptyException:
@@ -327,4 +328,5 @@ class DepthaiViewerBack:
 
 
 if __name__ == "__main__":
+    viewer.spawn(connect=True)
     DepthaiViewerBack()
