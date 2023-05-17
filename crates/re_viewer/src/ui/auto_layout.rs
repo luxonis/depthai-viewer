@@ -55,10 +55,10 @@ enum SplitDirection {
     TopBottom { top: Vec2, t: f32, bottom: Vec2 },
 }
 
-fn stats_tab_split() -> LayoutSplit {
+fn right_panel_split() -> LayoutSplit {
     LayoutSplit::TopBottom(
         LayoutSplit::Leaf(vec![CONFIG_SPACE_VIEW.clone(), STATS_SPACE_VIEW.clone()]).into(),
-        0.5,
+        0.7,
         LayoutSplit::Leaf(vec![SELECTION_SPACE_VIEW.clone()]).into(),
     )
 }
@@ -103,8 +103,8 @@ fn push_space_view_to_leaf(
     tree.push_to_focused_leaf(space_view.into());
 }
 
-fn find_space_path_in_tree<'a>(
-    tree: &'a mut egui_dock::Tree<Tab>,
+fn find_space_path_in_tree(
+    tree: &egui_dock::Tree<Tab>,
     space_view_path: &EntityPath,
 ) -> Option<Tab> {
     tree.tabs()
@@ -117,9 +117,6 @@ fn find_space_path_in_tree<'a>(
         .cloned()
 }
 
-/// Try to insert
-fn insert_as_best_as_you_can() {}
-
 fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
     let mut node = NodeIndex::root();
     loop {
@@ -127,9 +124,26 @@ fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
             println!("Node: {node:?}");
             return node;
         }
-        // node = NodeIndex::from(node.0 * 2 + 1);
         node = node.right();
     }
+}
+
+/// Is it possible to create a quad of left top 3d color left bottom 2d color
+/// right top 3d mono right bottom 2d mono, based on the current tree
+fn can_create_color_mono_quad(tree: &egui_dock::Tree<Tab>, space_views: Vec<SpaceView>) -> bool {
+    let Some(color3d_tab) = find_space_path_in_tree(tree, &depthai::entity_paths::COLOR_CAM_3D) else {
+        return false;
+    };
+    let Some((color3d_node_index, _)) = tree.find_tab(&color3d_tab) else {
+        return false;
+    };
+    let Some(mono3d_tab) = find_space_path_in_tree(tree, &depthai::entity_paths::MONO_CAM_3D) else {
+        return false;
+    };
+    let Some((mono3d_node_index, mono3d_tab_index)) = tree.find_tab(&mono3d_tab) else {
+        return false;
+    };
+    mono3d_node_index == color3d_node_index.right()
 }
 
 /// Insert new space views and remove space views that aren't available anymore.
@@ -164,17 +178,14 @@ pub(crate) fn update_tree(
         return;
     }
 
-    tree.clone()
-        .tabs()
-        .filter(|tab| {
-            !CONSTANT_SPACE_VIEWS.contains(&tab.space_view_id)
-                && !visible_space_views
-                    .iter()
-                    .any(|sv_id| sv_id == &tab.space_view_id)
-        })
-        .for_each(|tab| {
-            tree.remove_tab(tree.find_tab(tab).unwrap());
-        });
+    for tab in tree.clone().tabs().filter(|tab| {
+        !CONSTANT_SPACE_VIEWS.contains(&tab.space_view_id)
+            && !visible_space_views
+                .iter()
+                .any(|sv_id| sv_id == &tab.space_view_id)
+    }) {
+        tree.remove_tab(tree.find_tab(tab).unwrap());
+    }
 
     // If there aren't any "data" space views, we show the config, stats and selection panel on the right.
     // With an empty leaf on the left (aka middle if you take into account the blueprint panel)
@@ -187,7 +198,7 @@ pub(crate) fn update_tree(
             &LayoutSplit::LeftRight(
                 LayoutSplit::Leaf(Vec::new()).into(),
                 0.5,
-                stats_tab_split().into(),
+                right_panel_split().into(),
             ),
         );
         let (config_node, config_tab) = tree
@@ -202,11 +213,11 @@ pub(crate) fn update_tree(
         return;
     }
 
-    // Insert new space views
-    for space_view in visible_space_views
+    let visible_space_views = visible_space_views
         .iter()
-        .map(|sv| space_views.get(sv).unwrap())
-    {
+        .map(|sv| space_views.get(sv).unwrap());
+    // Insert new space views
+    for space_view in visible_space_views {
         // println!("Space view: {:?}", space_view.space_path.clone());
         if tree
             .find_tab(&Tab {
@@ -494,7 +505,7 @@ pub(crate) fn default_tree_from_space_views(
             }
             .into(),
             0.7,
-            stats_tab_split().into(),
+            right_panel_split().into(),
         );
         tree_from_split(&mut tree, NodeIndex::root(), &layout);
     } else {
@@ -504,7 +515,7 @@ pub(crate) fn default_tree_from_space_views(
             &LayoutSplit::LeftRight(
                 LayoutSplit::Leaf(vec![]).into(),
                 0.7,
-                stats_tab_split().into(),
+                right_panel_split().into(),
             ),
         );
     }

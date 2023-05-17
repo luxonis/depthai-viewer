@@ -308,7 +308,14 @@ impl DepthCloudDrawData {
             let albedo_texture = depth_cloud
                 .albedo_data
                 .as_ref()
-                .map(|data| match data {
+                .map_or_else(|| {
+                    create_and_upload_texture(
+                        ctx,
+                        (1, 1).into(),
+                        wgpu::TextureFormat::Rgba8Unorm,
+                        [0u8; 4].as_slice(),
+                    )
+                }, |data| match data {
                     DepthCloudAlbedoData::Rgba8(data) => create_and_upload_texture(
                         ctx,
                         depth_cloud.albedo_dimensions,
@@ -353,15 +360,8 @@ impl DepthCloudDrawData {
                         wgpu::TextureFormat::R8Unorm,
                         data.as_slice(),
                     ),
-                })
-                .unwrap_or_else(|| {
-                    create_and_upload_texture(
-                        ctx,
-                        (1, 1).into(),
-                        wgpu::TextureFormat::Rgba8Unorm,
-                        [0u8; 4].as_slice(),
-                    )
                 });
+
             let mk_bind_group = |label, ubo: BindGroupEntry| {
                 ctx.gpu_resources.bind_groups.alloc(
                     &ctx.device,
@@ -394,7 +394,7 @@ impl DepthCloudDrawData {
 }
 
 fn create_and_upload_texture<T: bytemuck::Pod>(
-    ctx: &mut RenderContext,
+    ctx: &RenderContext,
     dimensions: glam::UVec2,
     format: wgpu::TextureFormat,
     data: &[T],
