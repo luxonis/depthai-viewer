@@ -13,9 +13,10 @@ use std::collections::BTreeMap;
 
 use ahash::HashMap;
 use egui::Vec2;
-use egui_dock::{Node, NodeIndex, Split};
+use egui_dock::NodeIndex;
 use itertools::Itertools as _;
 
+use lazy_static::lazy_static;
 use re_data_store::{EntityPath, EntityPathPart};
 
 use crate::depthai::depthai;
@@ -55,33 +56,275 @@ enum SplitDirection {
 
 fn stats_tab_split() -> LayoutSplit {
     LayoutSplit::TopBottom(
-        LayoutSplit::Leaf(vec![
-            SpaceMakeInfo {
-                id: SpaceViewId::random(),
-                path: None,
-                category: None,
-                aspect_ratio: None,
-                kind: SpaceViewKind::Config,
-            },
-            SpaceMakeInfo {
-                id: SpaceViewId::random(),
-                path: None,
-                category: None,
-                aspect_ratio: None,
-                kind: SpaceViewKind::Stats,
-            },
-        ])
-        .into(),
+        LayoutSplit::Leaf(vec![CONFIG_SPACE_VIEW.clone(), STATS_SPACE_VIEW.clone()]).into(),
         0.5,
-        LayoutSplit::Leaf(vec![SpaceMakeInfo {
-            id: SpaceViewId::random(),
-            path: None,
-            category: None,
-            aspect_ratio: None,
-            kind: SpaceViewKind::Selection,
-        }])
-        .into(),
+        LayoutSplit::Leaf(vec![SELECTION_SPACE_VIEW.clone()]).into(),
     )
+}
+
+// Creates space make infos for constant space views.
+// This is needed to be able to search for these views in the tree later, based on the SpaceViewId
+lazy_static! {
+    static ref CONFIG_SPACE_VIEW: SpaceMakeInfo = SpaceMakeInfo {
+        id: SpaceViewId::random(),
+        path: None,
+        category: None,
+        aspect_ratio: None,
+        kind: SpaceViewKind::Config,
+    };
+    static ref STATS_SPACE_VIEW: SpaceMakeInfo = SpaceMakeInfo {
+        id: SpaceViewId::random(),
+        path: None,
+        category: None,
+        aspect_ratio: None,
+        kind: SpaceViewKind::Stats,
+    };
+    static ref SELECTION_SPACE_VIEW: SpaceMakeInfo = SpaceMakeInfo {
+        id: SpaceViewId::random(),
+        path: None,
+        category: None,
+        aspect_ratio: None,
+        kind: SpaceViewKind::Selection,
+    };
+    static ref CONSTANT_SPACE_VIEWS: Vec<SpaceViewId> = vec![
+        CONFIG_SPACE_VIEW.id,
+        STATS_SPACE_VIEW.id,
+        SELECTION_SPACE_VIEW.id,
+    ];
+}
+
+fn push_space_view_to_leaf(
+    tree: &mut egui_dock::Tree<Tab>,
+    leaf: NodeIndex,
+    space_view: &SpaceView,
+) {
+    tree.set_focused_node(leaf);
+    tree.push_to_focused_leaf(space_view.into());
+}
+
+fn find_space_path_in_tree<'a>(
+    tree: &'a mut egui_dock::Tree<Tab>,
+    space_view_path: &EntityPath,
+) -> Option<Tab> {
+    tree.tabs()
+        .find(|tab| {
+            let Some(path) = &tab.space_path else {
+            return false;
+        };
+            path == space_view_path
+        })
+        .cloned()
+}
+
+/// Try to insert
+fn insert_as_best_as_you_can() {}
+
+fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
+    let mut node = NodeIndex::root();
+    loop {
+        if tree[node].is_leaf() {
+            println!("Node: {node:?}");
+            return node;
+        }
+        // node = NodeIndex::from(node.0 * 2 + 1);
+        node = node.right();
+    }
+}
+
+pub(crate) fn update_tree(tree: &mut egui_dock::Tree<Tab>, visible_space_views: Vec<&SpaceView>) {
+    println!("Updating existing tree!");
+    println!(
+        "Visible space views: {:?}",
+        visible_space_views
+            .iter()
+            .map(|sv| (sv.space_path.clone(), sv.id))
+            .collect_vec()
+    );
+
+    tree.clone()
+        .tabs()
+        .filter(|tab| {
+            !CONSTANT_SPACE_VIEWS.contains(&tab.space_view_id)
+                && !visible_space_views
+                    .iter()
+                    .any(|sv| sv.id == tab.space_view_id)
+        })
+        .for_each(|tab| {
+            tree.remove_tab(tree.find_tab(tab).unwrap());
+        });
+
+    if visible_space_views.is_empty() {
+        *tree = egui_dock::Tree::new(vec![]);
+
+        tree_from_split(
+            tree,
+            NodeIndex::root(),
+            &LayoutSplit::LeftRight(
+                LayoutSplit::Leaf(Vec::new()).into(),
+                0.5,
+                stats_tab_split().into(),
+            ),
+        );
+        let (config_node, config_tab) = tree
+            .find_tab(
+                tree.tabs()
+                    .find(|tab| tab.space_view_id == CONFIG_SPACE_VIEW.id)
+                    .unwrap(), // CONFIG_SPACE_VIEW is always present
+            )
+            .unwrap();
+        tree.set_active_tab(config_node, config_tab);
+
+        return;
+    }
+
+    // Insert new space views
+    for space_view in visible_space_views {
+        if tree
+            .find_tab(&Tab {
+                space_view_id: space_view.id,
+                space_view_kind: SpaceViewKind::Data,
+                space_path: Some(space_view.space_path.clone()),
+            })
+            .is_none()
+        {
+            // Insert space view into the tree, taking into account the following:
+            // * If the space view is a 3d view, try to find the corresponding 2d view and place the 3d on top of the 2d view
+            // * If the space view is a 2d view, try to find the corresponding 3d view and place the 2d view on top of the 3d view
+            // * If the space view is a duplicate of an existing view (entity path is the same space_view_id differs), place it within the same leaf as the existing view
+            // * else if none of the above, just place the view in the top left corner as a new tab, (don't insert it into a leaf, create a new leaf)
+            // println!("Space view getting inserted: {:?}", space_view.space_path);
+
+            match space_view.space_path {
+                ref space_path
+                    if space_path.hash() == depthai::entity_paths::COLOR_CAM_3D.hash() =>
+                {
+                    if let Some(existing_3d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::COLOR_CAM_3D)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_3d).unwrap();
+                        push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_2d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_2d).unwrap();
+                        tree.split_above(node_index, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_mono3d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::MONO_CAM_3D)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_mono3d).unwrap();
+                        tree.split_left(leaf, 0.5, vec![space_view.into()]);
+                    }
+                    else {
+                        let top_left = find_top_left_leaf(tree);
+                        push_space_view_to_leaf(tree, top_left, space_view);
+                    }
+                }
+                ref space_path
+                    if space_path.hash() == depthai::entity_paths::RGB_PINHOLE_CAMERA.hash() =>
+                {
+                    if let Some(existing_2d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_2d).unwrap();
+                        push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_3d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::COLOR_CAM_3D)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_3d).unwrap();
+                        tree.split_below(node_index, 0.5, vec![space_view.into()]);
+                    } else {
+                        let top_left = find_top_left_leaf(tree);
+                        push_space_view_to_leaf(tree, top_left, space_view);
+                    }
+                }
+                ref space_path
+                    if space_path.hash() == depthai::entity_paths::MONO_CAM_3D.hash() =>
+                {
+                    if let Some(existing_3d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::MONO_CAM_3D)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_3d).unwrap();
+                        push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_3d_color) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::COLOR_CAM_3D)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_3d_color).unwrap();
+                        tree.split_right(leaf, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_left) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::LEFT_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_left).unwrap();
+                        tree.split_below(leaf, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_right) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RIGHT_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_right).unwrap();
+                        tree.split_below(leaf, 0.5, vec![space_view.into()]);
+                    } else {
+                        let top_left = find_top_left_leaf(tree);
+                        push_space_view_to_leaf(tree, top_left, space_view);
+                    }
+                }
+                ref space_path
+                    if space_path.hash() == depthai::entity_paths::LEFT_PINHOLE_CAMERA.hash() =>
+                {
+                    if let Some(existing_left) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::LEFT_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_left).unwrap();
+                        push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_right) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RIGHT_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_right).unwrap();
+                        push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_2d_color) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_2d_color).unwrap();
+                        tree.split_right(node_index, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_3d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::MONO_CAM_3D)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_3d).unwrap();
+                        tree.split_below(node_index, 0.5, vec![space_view.into()]);
+                    } else {
+                        let top_left = find_top_left_leaf(tree);
+                        push_space_view_to_leaf(tree, top_left, space_view);
+                    }
+                }
+                ref space_path
+                    if space_path.hash() == depthai::entity_paths::RIGHT_PINHOLE_CAMERA.hash() =>
+                {
+                    if let Some(existing_right) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RIGHT_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_right).unwrap();
+                        push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_left) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::LEFT_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_left).unwrap();
+                        push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_2d_color) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_2d_color).unwrap();
+                        tree.split_right(node_index, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_3d) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::MONO_CAM_3D)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_3d).unwrap();
+                        tree.split_below(node_index, 0.5, vec![space_view.into()]);
+                    } else {
+                        let top_left = find_top_left_leaf(tree);
+                        push_space_view_to_leaf(tree, top_left, space_view);
+                    }
+                }
+                _ => {}
+            };
+        }
+    }
 }
 
 /// Default layout of space views tuned for depthai-viewer
@@ -89,8 +332,8 @@ pub(crate) fn default_tree_from_space_views(
     viewport_size: egui::Vec2,
     visible: &std::collections::BTreeSet<SpaceViewId>,
     space_views: &HashMap<SpaceViewId, SpaceView>,
-    previous_frame_tree: &egui_dock::Tree<Tab>,
 ) -> egui_dock::Tree<Tab> {
+    println!("Creating default tree!");
     // TODO(filip): Implement sensible auto layout when space views changes.
     // Something like:
     // - Get the tabs that need to be added or removed
@@ -130,7 +373,6 @@ pub(crate) fn default_tree_from_space_views(
                 ViewCategory::Tensor | ViewCategory::TimeSeries => Some(1.0), // Not sure if we should do `None` here.
                 ViewCategory::Text | ViewCategory::NodeGraph => Some(2.0),    // Make text logs wide
                 ViewCategory::BarChart => None,
-                ViewCategory::NodeGraph => Some(2.0), // Make node graphs wide
             };
 
             SpaceMakeInfo {
@@ -209,7 +451,7 @@ pub(crate) fn default_tree_from_space_views(
                 }
             }
             .into(),
-            0.5,
+            0.7,
             stats_tab_split().into(),
         );
         tree_from_split(&mut tree, NodeIndex::root(), &layout);
@@ -224,6 +466,16 @@ pub(crate) fn default_tree_from_space_views(
             ),
         );
     }
+
+    // Always set the config tab as the active tab
+    let (config_node, config_tab) = tree
+        .find_tab(
+            tree.tabs()
+                .find(|tab| tab.space_view_id == CONFIG_SPACE_VIEW.id)
+                .unwrap(), // CONFIG_SPACE_VIEW is always present
+        )
+        .unwrap();
+    tree.set_active_tab(config_node, config_tab);
     tree
 }
 
@@ -249,6 +501,7 @@ fn tree_from_split(
                 tree.push_to_focused_leaf(Tab {
                     space_view_id: space_info.id,
                     space_view_kind: space_info.kind,
+                    space_path: space_info.path.clone(),
                 });
             }
         }
