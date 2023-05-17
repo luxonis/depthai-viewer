@@ -13,6 +13,8 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{depthai::depthai, misc::ViewerContext};
 
+use super::Viewport;
+
 pub struct StatsPanel {}
 
 impl StatsPanel {
@@ -24,6 +26,14 @@ impl StatsPanel {
             .style(re_ui::egui_dock_style(ui.style()))
             .show_inside(ui, &mut StatsTabs { ctx, state });
         state.tree = tree;
+    }
+
+    pub fn stats_panel_options_ui(
+        ctx: &mut ViewerContext<'_>,
+        ui: &mut egui::Ui,
+        viewport: &mut Viewport,
+        tab_bar_rect: egui::Rect,
+    ) {
     }
 }
 

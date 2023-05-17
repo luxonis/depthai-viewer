@@ -9,7 +9,8 @@
 //! * We also want to pick aspect ratios that fit the data pretty well
 // TODO(emilk): fix O(N^2) execution time (where N = number of spaces)
 
-use std::collections::BTreeMap;
+use core::panic;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ahash::HashMap;
 use egui::Vec2;
@@ -131,15 +132,42 @@ fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
     }
 }
 
-pub(crate) fn update_tree(tree: &mut egui_dock::Tree<Tab>, visible_space_views: Vec<&SpaceView>) {
+pub(crate) fn update_tree(
+    tree: &mut egui_dock::Tree<Tab>,
+    visible_space_views: &BTreeSet<SpaceViewId>,
+    space_views: &HashMap<SpaceViewId, SpaceView>,
+    is_maximized: bool,
+) {
     println!("Updating existing tree!");
-    println!(
-        "Visible space views: {:?}",
-        visible_space_views
-            .iter()
-            .map(|sv| (sv.space_path.clone(), sv.id))
-            .collect_vec()
-    );
+    // println!(
+    //     "Visible space views: {:?}",
+    //     visible_space_views
+    //         .iter()
+    //         .map(|sv_id| (space_views.get(sv_id).unwrap().space_path.clone(), sv_id))
+    //         .collect_vec()
+    // );
+
+    // One view is maximized
+    if is_maximized {
+        let tab: Tab;
+        let space_view_id = visible_space_views.first().unwrap();
+        if let Some(space_view) = space_views.get(space_view_id) {
+            tab = space_view.into();
+        } else {
+            tab = if space_view_id == &STATS_SPACE_VIEW.id {
+                Tab {
+                    space_path: None,
+                    space_view_id: *space_view_id,
+                    space_view_kind: SpaceViewKind::Stats,
+                }
+            } else {
+                re_log::warn_once!("Can't maximize this space view");
+                return;
+            }
+        }
+        *tree = egui_dock::Tree::new(vec![tab]);
+        return;
+    }
 
     tree.clone()
         .tabs()
@@ -147,7 +175,7 @@ pub(crate) fn update_tree(tree: &mut egui_dock::Tree<Tab>, visible_space_views: 
             !CONSTANT_SPACE_VIEWS.contains(&tab.space_view_id)
                 && !visible_space_views
                     .iter()
-                    .any(|sv| sv.id == tab.space_view_id)
+                    .any(|sv_id| sv_id == &tab.space_view_id)
         })
         .for_each(|tab| {
             tree.remove_tab(tree.find_tab(tab).unwrap());
@@ -178,7 +206,10 @@ pub(crate) fn update_tree(tree: &mut egui_dock::Tree<Tab>, visible_space_views: 
     }
 
     // Insert new space views
-    for space_view in visible_space_views {
+    for space_view in visible_space_views
+        .iter()
+        .map(|sv| space_views.get(sv).unwrap())
+    {
         if tree
             .find_tab(&Tab {
                 space_view_id: space_view.id,
@@ -213,9 +244,9 @@ pub(crate) fn update_tree(tree: &mut egui_dock::Tree<Tab>, visible_space_views: 
                     {
                         let (leaf, _) = tree.find_tab(&existing_mono3d).unwrap();
                         tree.split_left(leaf, 0.5, vec![space_view.into()]);
-                    }
-                    else {
+                    } else {
                         let top_left = find_top_left_leaf(tree);
+
                         push_space_view_to_leaf(tree, top_left, space_view);
                     }
                 }

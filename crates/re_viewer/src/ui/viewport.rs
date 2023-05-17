@@ -325,12 +325,6 @@ impl Viewport {
 
         self.trees.retain(|_, tree| is_tree_valid(tree));
 
-        if let Some(space_view_id) = self.maximized {
-            if !self.space_views.contains_key(&space_view_id) {
-                self.maximized = None; // protect against bad deserialized data
-            }
-        }
-
         let visible_space_views = if let Some(space_view_id) = self.maximized {
             std::iter::once(space_view_id).collect()
         } else {
@@ -347,10 +341,9 @@ impl Viewport {
                     let mut tree = previous_frame_tree.clone();
                     super::auto_layout::update_tree(
                         &mut tree,
-                        self.visible
-                            .iter()
-                            .map(|id| &self.space_views[id])
-                            .collect_vec(),
+                        &visible_space_views,
+                        &self.space_views,
+                        self.maximized.is_some(),
                     );
                     tree
                 } else {
@@ -417,12 +410,21 @@ impl Viewport {
             tab_bar_rect,
         ) in tab_bars
         {
-            if space_view_kind == SpaceViewKind::Selection {
-                SelectionPanel::selection_panel_options_ui(ctx, ui, self, tab_bar_rect);
-                continue;
+            match space_view_kind {
+                SpaceViewKind::Data | SpaceViewKind::Stats => space_view_options_ui(
+                    ctx,
+                    ui,
+                    self,
+                    tab_bar_rect,
+                    space_view_id,
+                    num_space_views,
+                )
+                .to_owned(),
+                SpaceViewKind::Selection => {
+                    SelectionPanel::selection_panel_options_ui(ctx, ui, self, tab_bar_rect)
+                }
+                _ => {}
             }
-            // rect/viewport can be invalid for the first frame
-            space_view_options_ui(ctx, ui, self, tab_bar_rect, space_view_id, num_space_views);
         }
     }
 
@@ -718,10 +720,6 @@ fn space_view_options_ui(
     space_view_id: SpaceViewId,
     num_space_views: usize,
 ) {
-    let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
-        return;
-    };
-
     let tab_bar_rect = tab_bar_rect.shrink2(egui::vec2(4.0, 0.0)); // Add some side margin outside the frame
 
     ui.allocate_ui_at_rect(tab_bar_rect, |ui| {
@@ -752,6 +750,9 @@ fn space_view_options_ui(
                     ctx.set_single_selection(Item::SpaceView(space_view_id));
                 }
             }
+            let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
+                return;
+            };
 
             let icon_image = ctx.re_ui.icon_image(&re_ui::icons::GEAR);
             let texture_id = icon_image.texture_id(ui.ctx());
