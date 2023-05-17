@@ -132,6 +132,10 @@ fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
     }
 }
 
+/// Insert new space views and remove space views that aren't available anymore.
+/// Tries to layout the viewport as intuitively as possible
+/// TODO(filip): Reduce the size of this code. A lot of it is repetitive and can be refactored
+/// TODO(filip): Improve code functionally: detect when you can group mono and color 3d + 2d views into a 4 way split
 pub(crate) fn update_tree(
     tree: &mut egui_dock::Tree<Tab>,
     visible_space_views: &BTreeSet<SpaceViewId>,
