@@ -419,7 +419,6 @@ fn create_and_upload_texture<T: bytemuck::Pod>(
 
     let format_info = texture_desc.format;
     let width_blocks = dimensions.x / (format_info.block_dimensions().0 as u32);
-    let bytes_per_row_unaligned = width_blocks * (format_info.block_size(None).unwrap() as u32);
 
     let mut texture_staging = ctx.cpu_write_gpu_read_belt.lock().allocate::<T>(
         &ctx.device,

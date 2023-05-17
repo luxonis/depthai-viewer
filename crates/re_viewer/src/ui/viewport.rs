@@ -240,7 +240,7 @@ impl Viewport {
         let entities_to_remove = ctx.depthai_state.get_entities_to_remove();
         // First clear the has_been_user_edited entry, so if the entity path is a space path and it reappeaars later,
         // it will get added back into the viewport
-        for ep in entities_to_remove.iter() {
+        for ep in &entities_to_remove {
             self.has_been_user_edited.insert(ep.clone(), false);
         }
         self.stats_panel_state.update(ctx);
@@ -411,62 +411,22 @@ impl Viewport {
         ) in tab_bars
         {
             match space_view_kind {
-                SpaceViewKind::Data | SpaceViewKind::Stats => space_view_options_ui(
-                    ctx,
-                    ui,
-                    self,
-                    tab_bar_rect,
-                    space_view_id,
-                    num_space_views,
-                )
-                .to_owned(),
+                SpaceViewKind::Data | SpaceViewKind::Stats => {
+                    space_view_options_ui(
+                        ctx,
+                        ui,
+                        self,
+                        tab_bar_rect,
+                        space_view_id,
+                        num_space_views,
+                    );
+                }
                 SpaceViewKind::Selection => {
-                    SelectionPanel::selection_panel_options_ui(ctx, ui, self, tab_bar_rect)
+                    SelectionPanel::selection_panel_options_ui(ctx, ui, self, tab_bar_rect);
                 }
                 _ => {}
             }
         }
-    }
-
-    pub fn add_new_spaceview_button_ui(
-        &mut self,
-        ctx: &mut ViewerContext<'_>,
-        ui: &mut egui::Ui,
-        spaces_info: &SpaceInfoCollection,
-    ) {
-        #![allow(clippy::collapsible_if)]
-
-        let icon_image = ctx.re_ui.icon_image(&re_ui::icons::ADD);
-        let texture_id = icon_image.texture_id(ui.ctx());
-        ui.menu_image_button(texture_id, re_ui::ReUi::small_icon_size(), |ui| {
-            ui.style_mut().wrap = Some(false);
-
-            for space_view in all_possible_space_views(ctx, spaces_info)
-                .into_iter()
-                .sorted_by_key(|space_view| space_view.space_path.to_string())
-            {
-                if ctx
-                    .re_ui
-                    .selectable_label_with_icon(
-                        ui,
-                        space_view.category.icon(),
-                        if space_view.space_path.is_root() {
-                            space_view.display_name.clone()
-                        } else {
-                            space_view.space_path.to_string()
-                        },
-                        false,
-                    )
-                    .clicked()
-                {
-                    ui.close_menu();
-                    let new_space_view_id = self.add_space_view(space_view);
-                    ctx.set_single_selection(Item::SpaceView(new_space_view_id));
-                }
-            }
-        })
-        .response
-        .on_hover_text("Add new space view.");
     }
 
     pub fn space_views_containing_entity_path(&self, path: &EntityPath) -> Vec<SpaceViewId> {

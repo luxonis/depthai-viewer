@@ -138,15 +138,6 @@ pub(crate) fn update_tree(
     space_views: &HashMap<SpaceViewId, SpaceView>,
     is_maximized: bool,
 ) {
-    println!("Updating existing tree!");
-    // println!(
-    //     "Visible space views: {:?}",
-    //     visible_space_views
-    //         .iter()
-    //         .map(|sv_id| (space_views.get(sv_id).unwrap().space_path.clone(), sv_id))
-    //         .collect_vec()
-    // );
-
     // One view is maximized
     if is_maximized {
         let tab: Tab;
@@ -181,6 +172,8 @@ pub(crate) fn update_tree(
             tree.remove_tab(tree.find_tab(tab).unwrap());
         });
 
+    // If there aren't any "data" space views, we show the config, stats and selection panel on the right.
+    // With an empty leaf on the left (aka middle if you take into account the blueprint panel)
     if visible_space_views.is_empty() {
         *tree = egui_dock::Tree::new(vec![]);
 
@@ -210,6 +203,7 @@ pub(crate) fn update_tree(
         .iter()
         .map(|sv| space_views.get(sv).unwrap())
     {
+        // println!("Space view: {:?}", space_view.space_path.clone());
         if tree
             .find_tab(&Tab {
                 space_view_id: space_view.id,
@@ -246,7 +240,6 @@ pub(crate) fn update_tree(
                         tree.split_left(leaf, 0.5, vec![space_view.into()]);
                     } else {
                         let top_left = find_top_left_leaf(tree);
-
                         push_space_view_to_leaf(tree, top_left, space_view);
                     }
                 }
@@ -258,6 +251,16 @@ pub(crate) fn update_tree(
                     {
                         let (leaf, _) = tree.find_tab(&existing_2d).unwrap();
                         push_space_view_to_leaf(tree, leaf, space_view);
+                    } else if let Some(existing_left) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::LEFT_PINHOLE_CAMERA)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_left).unwrap();
+                        tree.split_left(node_index, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_right) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RIGHT_PINHOLE_CAMERA)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_right).unwrap();
+                        tree.split_left(node_index, 0.5, vec![space_view.into()]);
                     } else if let Some(existing_3d) =
                         find_space_path_in_tree(tree, &depthai::entity_paths::COLOR_CAM_3D)
                     {
@@ -285,12 +288,17 @@ pub(crate) fn update_tree(
                         find_space_path_in_tree(tree, &depthai::entity_paths::LEFT_PINHOLE_CAMERA)
                     {
                         let (leaf, _) = tree.find_tab(&existing_left).unwrap();
-                        tree.split_below(leaf, 0.5, vec![space_view.into()]);
+                        tree.split_above(leaf, 0.5, vec![space_view.into()]);
                     } else if let Some(existing_right) =
                         find_space_path_in_tree(tree, &depthai::entity_paths::RIGHT_PINHOLE_CAMERA)
                     {
                         let (leaf, _) = tree.find_tab(&existing_right).unwrap();
-                        tree.split_below(leaf, 0.5, vec![space_view.into()]);
+                        tree.split_above(leaf, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_color) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
+                    {
+                        let (leaf, _) = tree.find_tab(&existing_color).unwrap();
+                        tree.split_right(leaf, 0.5, vec![space_view.into()]);
                     } else {
                         let top_left = find_top_left_leaf(tree);
                         push_space_view_to_leaf(tree, top_left, space_view);
@@ -309,16 +317,16 @@ pub(crate) fn update_tree(
                     {
                         let (leaf, _) = tree.find_tab(&existing_right).unwrap();
                         push_space_view_to_leaf(tree, leaf, space_view);
-                    } else if let Some(existing_2d_color) =
-                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
-                    {
-                        let (node_index, _) = tree.find_tab(&existing_2d_color).unwrap();
-                        tree.split_right(node_index, 0.5, vec![space_view.into()]);
                     } else if let Some(existing_3d) =
                         find_space_path_in_tree(tree, &depthai::entity_paths::MONO_CAM_3D)
                     {
                         let (node_index, _) = tree.find_tab(&existing_3d).unwrap();
                         tree.split_below(node_index, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_2d_color) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_2d_color).unwrap();
+                        tree.split_right(node_index, 0.5, vec![space_view.into()]);
                     } else {
                         let top_left = find_top_left_leaf(tree);
                         push_space_view_to_leaf(tree, top_left, space_view);
@@ -337,16 +345,16 @@ pub(crate) fn update_tree(
                     {
                         let (leaf, _) = tree.find_tab(&existing_left).unwrap();
                         push_space_view_to_leaf(tree, leaf, space_view);
-                    } else if let Some(existing_2d_color) =
-                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
-                    {
-                        let (node_index, _) = tree.find_tab(&existing_2d_color).unwrap();
-                        tree.split_right(node_index, 0.5, vec![space_view.into()]);
                     } else if let Some(existing_3d) =
                         find_space_path_in_tree(tree, &depthai::entity_paths::MONO_CAM_3D)
                     {
                         let (node_index, _) = tree.find_tab(&existing_3d).unwrap();
                         tree.split_below(node_index, 0.5, vec![space_view.into()]);
+                    } else if let Some(existing_2d_color) =
+                        find_space_path_in_tree(tree, &depthai::entity_paths::RGB_PINHOLE_CAMERA)
+                    {
+                        let (node_index, _) = tree.find_tab(&existing_2d_color).unwrap();
+                        tree.split_right(node_index, 0.5, vec![space_view.into()]);
                     } else {
                         let top_left = find_top_left_leaf(tree);
                         push_space_view_to_leaf(tree, top_left, space_view);
@@ -364,7 +372,6 @@ pub(crate) fn default_tree_from_space_views(
     visible: &std::collections::BTreeSet<SpaceViewId>,
     space_views: &HashMap<SpaceViewId, SpaceView>,
 ) -> egui_dock::Tree<Tab> {
-    println!("Creating default tree!");
     // TODO(filip): Implement sensible auto layout when space views changes.
     // Something like:
     // - Get the tabs that need to be added or removed
