@@ -12,7 +12,7 @@ from depthai_sdk.classes.packets import (
     IMUPacket,
     # PointcloudPacket,
     TwoStagePacket,
-    _Detection
+    _Detection,
 )
 from depthai_viewer.components.rect2d import RectFormat
 
@@ -129,9 +129,7 @@ class SdkCallbacks:
         colors = []
         labels = []
         for detection in packet.detections:
-            rects.append(
-                self._rect_from_detection(detection)
-            )
+            rects.append(self._rect_from_detection(detection))
             colors.append([0, 255, 0])
             label = detection.label
             # Open model zoo models output label index

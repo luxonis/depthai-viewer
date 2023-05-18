@@ -27,17 +27,16 @@ impl SelectionPanel {
         egui::ScrollArea::both()
             .auto_shrink([true; 2])
             .show(ui, |ui| {
+                let mut style = ui.style_mut().clone();
+                style.spacing.scroll_bar_inner_margin = 0.0;
+                ui.set_style(style);
                 egui::Frame {
-                    inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
+                    fill: self.ctx.re_ui.design_tokens.gray_50,
+                    inner_margin: egui::Margin::symmetric(30.0, 21.0),
                     ..Default::default()
                 }
                 .show(ui, |ui| {
                     Self::contents(ui, ctx, viewport);
-                });
-            });
-    }
-
-    fn contents(ui: &mut egui::Ui, ctx: &mut ViewerContext<'_>, viewport: &mut Viewport) {
         crate::profile_function!();
 
         let query = ctx.current_query();

@@ -1019,6 +1019,8 @@ struct AppState {
 
     time_panel: crate::time_panel::TimePanel,
 
+    bottom_panel: crate::bottom_panel::BottomPanel,
+
     selected_device: depthai::DeviceId,
     depthai_state: depthai::State,
 
