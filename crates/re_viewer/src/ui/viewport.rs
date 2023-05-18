@@ -55,7 +55,7 @@ pub struct Viewport {
     #[serde(skip)]
     stats_panel_state: StatsPanelState,
 
-    previous_frame_tree: egui_dock::Tree<Tab>,
+    previous_frame_tree: Option<egui_dock::Tree<Tab>>,
 }
 
 impl Viewport {
@@ -115,6 +115,8 @@ impl Viewport {
     ) {
         crate::profile_function!();
 
+        let entities_to_remove = ctx.depthai_state.get_entities_to_remove();
+
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
@@ -125,7 +127,9 @@ impl Viewport {
                 // as they didn't create the blueprint by logging the data
                 for space_view in all_possible_space_views(ctx, spaces_info)
                     .into_iter()
-                    .filter(|sv| sv.is_depthai_spaceview)
+                    .filter(|sv| {
+                        sv.is_depthai_spaceview && !entities_to_remove.contains(&sv.space_path)
+                    })
                 {
                     self.available_space_view_row_ui(ctx, ui, space_view);
                 }
@@ -236,9 +240,9 @@ impl Viewport {
         let entities_to_remove = ctx.depthai_state.get_entities_to_remove();
         // First clear the has_been_user_edited entry, so if the entity path is a space path and it reappeaars later,
         // it will get added back into the viewport
-        entities_to_remove.iter().for_each(|ep| {
+        for ep in &entities_to_remove {
             self.has_been_user_edited.insert(ep.clone(), false);
-        });
+        }
         self.stats_panel_state.update(ctx);
 
         // Remove all entities that are marked for removal from the space view.
@@ -248,9 +252,9 @@ impl Viewport {
                 .data_blueprint
                 .group(space_view.data_blueprint.root_handle())
             {
-                entities_to_remove.iter().for_each(|ep| {
+                for ep in entities_to_remove.iter() {
                     space_view.data_blueprint.remove_entity(ep);
-                });
+                }
 
                 if space_view.data_blueprint.entity_paths().is_empty() {
                     space_views_to_remove.push(space_view.id);
@@ -271,6 +275,7 @@ impl Viewport {
                 .has_been_user_edited
                 .get(&space_view_candidate.space_path)
                 .unwrap_or(&false)
+                && !entities_to_remove.contains(&space_view_candidate.space_path)
                 && self.should_auto_add_space_view(&space_view_candidate)
             {
                 self.add_space_view(space_view_candidate);
@@ -320,12 +325,6 @@ impl Viewport {
 
         self.trees.retain(|_, tree| is_tree_valid(tree));
 
-        if let Some(space_view_id) = self.maximized {
-            if !self.space_views.contains_key(&space_view_id) {
-                self.maximized = None; // protect against bad deserialized data
-            }
-        }
-
         let visible_space_views = if let Some(space_view_id) = self.maximized {
             std::iter::once(space_view_id).collect()
         } else {
@@ -337,15 +336,26 @@ impl Viewport {
             .trees
             .entry(visible_space_views.clone())
             .or_insert_with(|| {
-                super::auto_layout::default_tree_from_space_views(
-                    ui.available_size(),
-                    &visible_space_views,
-                    &self.space_views,
-                    &self.previous_frame_tree,
-                )
+                // TODO(filip): Continue working on this smart layout updater
+                if let Some(previous_frame_tree) = &self.previous_frame_tree {
+                    let mut tree = previous_frame_tree.clone();
+                    super::auto_layout::update_tree(
+                        &mut tree,
+                        &visible_space_views,
+                        &self.space_views,
+                        self.maximized.is_some(),
+                    );
+                    tree
+                } else {
+                    super::auto_layout::default_tree_from_space_views(
+                        ui.available_size(),
+                        &visible_space_views,
+                        &self.space_views,
+                    )
+                }
             })
             .clone();
-        self.previous_frame_tree = tree.clone();
+        self.previous_frame_tree = Some(tree.clone());
 
         let num_space_views = tree.num_tabs();
         if num_space_views == 0 {
@@ -376,7 +386,7 @@ impl Viewport {
                     return None;
                 };
 
-                let space_view_id = tabs.get(active.0)?;
+                let space_view_tab = tabs.get(active.0)?;
 
                 // `rect` includes the tab area, while `viewport` is just the tab body.
                 // so the tab bar rect is:
@@ -386,7 +396,7 @@ impl Viewport {
                 // rect/viewport can be invalid for the first frame
                 tab_bar_rect
                     .is_finite()
-                    .then_some((*space_view_id, tab_bar_rect))
+                    .then_some((space_view_tab.clone(), tab_bar_rect))
             })
             .collect_vec();
         self.trees.insert(visible_space_views, tree);
@@ -395,58 +405,28 @@ impl Viewport {
             Tab {
                 space_view_id,
                 space_view_kind,
+                ..
             },
             tab_bar_rect,
         ) in tab_bars
         {
-            if space_view_kind == SpaceViewKind::Selection {
-                SelectionPanel::selection_panel_options_ui(ctx, ui, self, tab_bar_rect);
-                continue;
-            }
-            // rect/viewport can be invalid for the first frame
-            space_view_options_ui(ctx, ui, self, tab_bar_rect, space_view_id, num_space_views);
-        }
-    }
-
-    pub fn add_new_spaceview_button_ui(
-        &mut self,
-        ctx: &mut ViewerContext<'_>,
-        ui: &mut egui::Ui,
-        spaces_info: &SpaceInfoCollection,
-    ) {
-        #![allow(clippy::collapsible_if)]
-
-        let icon_image = ctx.re_ui.icon_image(&re_ui::icons::ADD);
-        let texture_id = icon_image.texture_id(ui.ctx());
-        ui.menu_image_button(texture_id, re_ui::ReUi::small_icon_size(), |ui| {
-            ui.style_mut().wrap = Some(false);
-
-            for space_view in all_possible_space_views(ctx, spaces_info)
-                .into_iter()
-                .sorted_by_key(|space_view| space_view.space_path.to_string())
-            {
-                if ctx
-                    .re_ui
-                    .selectable_label_with_icon(
+            match space_view_kind {
+                SpaceViewKind::Data | SpaceViewKind::Stats => {
+                    space_view_options_ui(
+                        ctx,
                         ui,
-                        space_view.category.icon(),
-                        if space_view.space_path.is_root() {
-                            space_view.display_name.clone()
-                        } else {
-                            space_view.space_path.to_string()
-                        },
-                        false,
-                    )
-                    .clicked()
-                {
-                    ui.close_menu();
-                    let new_space_view_id = self.add_space_view(space_view);
-                    ctx.set_single_selection(Item::SpaceView(new_space_view_id));
+                        self,
+                        tab_bar_rect,
+                        space_view_id,
+                        num_space_views,
+                    );
                 }
+                SpaceViewKind::Selection => {
+                    SelectionPanel::selection_panel_options_ui(ctx, ui, self, tab_bar_rect);
+                }
+                _ => {}
             }
-        })
-        .response
-        .on_hover_text("Add new space view.");
+        }
     }
 
     pub fn space_views_containing_entity_path(&self, path: &EntityPath) -> Vec<SpaceViewId> {
@@ -571,13 +551,31 @@ struct TabViewer<'a, 'b> {
     viewport: &'a mut Viewport,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tab {
     pub space_view_id: SpaceViewId,
     /// Rerun only displayed logged data in the viewport.
     /// Depthai Viewer also has fixed ui panels that are part of the tab system.
     /// This is used to distinguish between the two.
     pub space_view_kind: SpaceViewKind,
+
+    pub space_path: Option<EntityPath>,
+}
+
+impl From<&SpaceView> for Tab {
+    fn from(space_view: &SpaceView) -> Self {
+        Self {
+            space_view_id: space_view.id,
+            space_view_kind: SpaceViewKind::Data,
+            space_path: Some(space_view.space_path.clone()),
+        }
+    }
+}
+
+impl From<SpaceView> for Tab {
+    fn from(space_view: SpaceView) -> Self {
+        Self::from(&space_view)
+    }
 }
 
 impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
@@ -587,6 +585,7 @@ impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
         let Tab {
             space_view_id,
             space_view_kind,
+            space_path,
         } = tab;
         crate::profile_function!();
 
@@ -681,10 +680,6 @@ fn space_view_options_ui(
     space_view_id: SpaceViewId,
     num_space_views: usize,
 ) {
-    let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
-        return;
-    };
-
     let tab_bar_rect = tab_bar_rect.shrink2(egui::vec2(4.0, 0.0)); // Add some side margin outside the frame
 
     ui.allocate_ui_at_rect(tab_bar_rect, |ui| {
@@ -715,6 +710,9 @@ fn space_view_options_ui(
                     ctx.set_single_selection(Item::SpaceView(space_view_id));
                 }
             }
+            let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
+                return;
+            };
 
             let icon_image = ctx.re_ui.icon_image(&re_ui::icons::GEAR);
             let texture_id = icon_image.texture_id(ui.ctx());

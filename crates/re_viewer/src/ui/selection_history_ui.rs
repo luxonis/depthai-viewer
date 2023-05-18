@@ -2,7 +2,7 @@ use egui::RichText;
 use re_ui::Command;
 
 use super::{SelectionHistory, Viewport};
-use crate::{misc::ItemCollection, ui::Blueprint, Item};
+use crate::{misc::ItemCollection, Item};
 
 // ---
 

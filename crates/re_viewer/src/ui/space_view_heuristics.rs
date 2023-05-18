@@ -29,7 +29,7 @@ pub fn all_possible_space_views(
         .tree
         .children
         .iter()
-        .filter(|(k, v)| {
+        .filter(|(_k, v)| {
             let timelines = v.prefix_times.timelines();
             let mut total_msgs = 0;
             for timeline in timelines {

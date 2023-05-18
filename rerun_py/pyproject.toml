@@ -42,7 +42,7 @@ homepage = "https://www.rerun.io"
 repository = "https://github.com/luxonis/depthai-viewer"
 
 [project.scripts]
-depthai-viewer = "rerun.__main__:main"
+depthai-viewer = "depthai_viewer.__main__:main"
 
 [tool.black]
 line-length = 120
@@ -103,7 +103,6 @@ ban-relative-imports = "all"
 include = ["rerun_sdk.pth", "rerun_sdk/rerun_demo/colmap_fiat.rrd"]
 locked = true
 python-packages = [
-  "rerun_sdk/rerun",
+  "rerun_sdk/depthai_viewer",
   "rerun_sdk/rerun_demo",
-  "rerun_sdk/depthai_viewer_backend",
 ]
