@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any, Final, Iterator, Optional
 
 import cv2 as cv
-import depthai_viewer as viewer
 import mediapipe as mp
 import numpy as np
 import numpy.typing as npt
 import requests
+import rerun as rr  # pip install rerun-sdk
 
 EXAMPLE_DIR: Final = Path(os.path.dirname(__file__))
 DATASET_DIR: Final = EXAMPLE_DIR / "dataset" / "pose_movement"
@@ -23,39 +23,39 @@ DATASET_URL_BASE: Final = "https://storage.googleapis.com/rerun-example-datasets
 def track_pose(video_path: str, segment: bool) -> None:
     mp_pose = mp.solutions.pose
 
-    viewer.log_annotation_context(
+    rr.log_annotation_context(
         "/",
-        viewer.ClassDescription(
-            info=viewer.AnnotationInfo(label="Person"),
-            keypoint_annotations=[viewer.AnnotationInfo(id=lm.value, label=lm.name) for lm in mp_pose.PoseLandmark],
+        rr.ClassDescription(
+            info=rr.AnnotationInfo(label="Person"),
+            keypoint_annotations=[rr.AnnotationInfo(id=lm.value, label=lm.name) for lm in mp_pose.PoseLandmark],
             keypoint_connections=mp_pose.POSE_CONNECTIONS,
         ),
     )
     # Use a separate annotation context for the segmentation mask.
-    viewer.log_annotation_context(
+    rr.log_annotation_context(
         "video/mask",
-        [viewer.AnnotationInfo(id=0, label="Background"), viewer.AnnotationInfo(id=1, label="Person", color=(0, 0, 0))],
+        [rr.AnnotationInfo(id=0, label="Background"), rr.AnnotationInfo(id=1, label="Person", color=(0, 0, 0))],
     )
-    viewer.log_view_coordinates("person", up="-Y", timeless=True)
+    rr.log_view_coordinates("person", up="-Y", timeless=True)
 
     with closing(VideoSource(video_path)) as video_source, mp_pose.Pose(enable_segmentation=segment) as pose:
         for bgr_frame in video_source.stream_bgr():
             rgb = cv.cvtColor(bgr_frame.data, cv.COLOR_BGR2RGB)
-            viewer.set_time_seconds("time", bgr_frame.time)
-            viewer.set_time_sequence("frame_idx", bgr_frame.idx)
-            viewer.log_image("video/rgb", rgb)
+            rr.set_time_seconds("time", bgr_frame.time)
+            rr.set_time_sequence("frame_idx", bgr_frame.idx)
+            rr.log_image("video/rgb", rgb)
 
             results = pose.process(rgb)
             h, w, _ = rgb.shape
             landmark_positions_2d = read_landmark_positions_2d(results, w, h)
-            viewer.log_points("video/pose/points", landmark_positions_2d, keypoint_ids=mp_pose.PoseLandmark)
+            rr.log_points("video/pose/points", landmark_positions_2d, keypoint_ids=mp_pose.PoseLandmark)
 
             landmark_positions_3d = read_landmark_positions_3d(results)
-            viewer.log_points("person/pose/points", landmark_positions_3d, keypoint_ids=mp_pose.PoseLandmark)
+            rr.log_points("person/pose/points", landmark_positions_3d, keypoint_ids=mp_pose.PoseLandmark)
 
             segmentation_mask = results.segmentation_mask
             if segmentation_mask is not None:
-                viewer.log_segmentation_image("video/mask", segmentation_mask)
+                rr.log_segmentation_image("video/mask", segmentation_mask)
 
 
 def read_landmark_positions_2d(
@@ -67,11 +67,7 @@ def read_landmark_positions_2d(
         return None
     else:
         normalized_landmarks = [results.pose_landmarks.landmark[lm] for lm in mp.solutions.pose.PoseLandmark]
-        # Log points as 3d points with some scaling so they "pop out" when looked at in a 3d view
-        # Negative depth in order to move them towards the camera.
-        return np.array(
-            [(image_width * lm.x, image_height * lm.y, -(lm.z + 1.0) * 300.0) for lm in normalized_landmarks]
-        )
+        return np.array([(image_width * lm.x, image_height * lm.y) for lm in normalized_landmarks])
 
 
 def read_landmark_positions_3d(
@@ -148,11 +144,11 @@ def main() -> None:
     parser.add_argument("--dataset_dir", type=Path, default=DATASET_DIR, help="Directory to save example videos to.")
     parser.add_argument("--video_path", type=str, default="", help="Full path to video to run on. Overrides `--video`.")
     parser.add_argument("--no-segment", action="store_true", help="Don't run person segmentation.")
-    viewer.script_add_args(parser)
+    rr.script_add_args(parser)
 
     args, unknown = parser.parse_known_args()
     [__import__("logging").warning(f"unknown arg: {arg}") for arg in unknown]
-    viewer.script_setup(args, "mp_pose")
+    rr.script_setup(args, "mp_pose")
 
     video_path = args.video_path  # type: str
     if not video_path:
@@ -160,7 +156,7 @@ def main() -> None:
 
     track_pose(video_path, segment=not args.no_segment)
 
-    viewer.script_teardown(args)
+    rr.script_teardown(args)
 
 
 if __name__ == "__main__":

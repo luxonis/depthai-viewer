@@ -1,0 +1,17 @@
+[package]
+name = "clock"
+version = "0.0.3"
+edition = "2021"
+rust-version = "1.69"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+depthai-viewer = { path = "../../../crates/rerun", features = [
+  "native_viewer",
+  "web_viewer",
+] }
+
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+glam = "0.22"

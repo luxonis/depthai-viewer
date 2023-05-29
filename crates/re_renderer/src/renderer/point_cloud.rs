@@ -18,7 +18,7 @@ use std::{num::NonZeroU64, ops::Range};
 use crate::{
     allocator::create_and_fill_uniform_buffer_batch,
     draw_phases::{DrawPhase, OutlineMaskProcessor, PickingLayerObjectId, PickingLayerProcessor},
-    include_shader_module, DebugLabel, OutlineMaskPreference, PointCloudBuilder,
+    include_shader_module, DebugLabel, DepthOffset, OutlineMaskPreference, PointCloudBuilder,
 };
 use bitflags::bitflags;
 use bytemuck::Zeroable as _;
@@ -48,7 +48,10 @@ bitflags! {
     #[derive(Default, bytemuck::Pod, bytemuck::Zeroable)]
     pub struct PointCloudBatchFlags : u32 {
         /// If true, we shade all points in the batch like spheres.
-        const ENABLE_SHADING = 0b0001;
+        const FLAG_ENABLE_SHADING = 0b0001;
+
+        /// If true, draw 2D camera facing circles instead of spheres.
+        const FLAG_DRAW_AS_CIRCLES = 0b0010;
     }
 }
 
@@ -77,7 +80,11 @@ mod gpu_data {
     #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
     pub struct BatchUniformBuffer {
         pub world_from_obj: wgpu_buffer_types::Mat4,
-        pub flags: wgpu_buffer_types::U32RowPadded, // PointCloudBatchFlags
+
+        pub flags: u32, // PointCloudBatchFlags
+        pub depth_offset: f32,
+        pub _row_padding: [f32; 2],
+
         pub outline_mask_ids: wgpu_buffer_types::UVec2,
         pub picking_object_id: PickingLayerObjectId,
 
@@ -112,10 +119,9 @@ pub struct PointCloudBatchInfo {
 
     /// Transformation applies to point positions
     ///
-    /// TODO(andreas): Since we blindly apply this to positions only there is no restriction on this matrix.
     /// TODO(andreas): We don't apply scaling to the radius yet. Need to pass a scaling factor like this in
     /// `let scale = Mat3::from(world_from_obj).determinant().abs().cbrt()`
-    pub world_from_obj: glam::Mat4,
+    pub world_from_obj: glam::Affine3A,
 
     /// Additional properties of this point cloud batch.
     pub flags: PointCloudBatchFlags,
@@ -139,6 +145,9 @@ pub struct PointCloudBatchInfo {
 
     /// Picking object id that applies for the entire batch.
     pub picking_object_id: PickingLayerObjectId,
+
+    /// Depth offset applied after projection.
+    pub depth_offset: DepthOffset,
 }
 
 /// Description of a point cloud.
@@ -201,12 +210,13 @@ impl PointCloudDrawData {
 
         let fallback_batches = [PointCloudBatchInfo {
             label: "fallback_batches".into(),
-            world_from_obj: glam::Mat4::IDENTITY,
+            world_from_obj: glam::Affine3A::IDENTITY,
             flags: PointCloudBatchFlags::empty(),
             point_count: vertices.len() as _,
             overall_outline_mask_ids: OutlineMaskPreference::NONE,
             additional_outline_mask_ids_vertex_ranges: Vec::new(),
             picking_object_id: Default::default(),
+            depth_offset: 0,
         }];
         let batches = if batches.is_empty() {
             &fallback_batches
@@ -398,14 +408,17 @@ impl PointCloudDrawData {
                     .iter()
                     .map(|batch_info| gpu_data::BatchUniformBuffer {
                         world_from_obj: batch_info.world_from_obj.into(),
-                        flags: batch_info.flags.bits.into(),
+                        flags: batch_info.flags.bits,
                         outline_mask_ids: batch_info
                             .overall_outline_mask_ids
                             .0
                             .unwrap_or_default()
                             .into(),
-                        end_padding: Default::default(),
                         picking_object_id: batch_info.picking_object_id,
+                        depth_offset: batch_info.depth_offset as f32,
+
+                        _row_padding: [0.0, 0.0],
+                        end_padding: Default::default(),
                     }),
             );
 
@@ -423,10 +436,13 @@ impl PointCloudDrawData {
                                 .iter()
                                 .map(|(_, mask)| gpu_data::BatchUniformBuffer {
                                     world_from_obj: batch_info.world_from_obj.into(),
-                                    flags: batch_info.flags.bits.into(),
+                                    flags: batch_info.flags.bits,
                                     outline_mask_ids: mask.0.unwrap_or_default().into(),
-                                    end_padding: Default::default(),
                                     picking_object_id: batch_info.picking_object_id,
+                                    depth_offset: batch_info.depth_offset as f32,
+
+                                    _row_padding: [0.0, 0.0],
+                                    end_padding: Default::default(),
                                 })
                         })
                         .collect::<Vec<_>>()
@@ -622,17 +638,26 @@ impl Renderer for PointCloudRenderer {
             &pools.bind_group_layouts,
         );
 
-        let shader_module = pools.shader_modules.get_or_create(
-            device,
-            resolver,
-            &include_shader_module!("../../shader/point_cloud.wgsl"),
-        );
+        let shader_module_desc = include_shader_module!("../../shader/point_cloud.wgsl");
+        let shader_module =
+            pools
+                .shader_modules
+                .get_or_create(device, resolver, &shader_module_desc);
+
+        // WORKAROUND for https://github.com/gfx-rs/naga/issues/1743
+        let mut shader_module_desc_vertex = shader_module_desc.clone();
+        shader_module_desc_vertex.extra_workaround_replacements =
+            vec![("fwidth(".to_owned(), "f32(".to_owned())];
+        let shader_module_vertex =
+            pools
+                .shader_modules
+                .get_or_create(device, resolver, &shader_module_desc_vertex);
 
         let render_pipeline_desc_color = RenderPipelineDesc {
             label: "PointCloudRenderer::render_pipeline_color".into(),
             pipeline_layout,
             vertex_entrypoint: "vs_main".into(),
-            vertex_handle: shader_module,
+            vertex_handle: shader_module_vertex,
             fragment_entrypoint: "fs_main".into(),
             fragment_handle: shader_module,
             vertex_buffers: smallvec![],

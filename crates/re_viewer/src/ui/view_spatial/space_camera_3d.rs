@@ -1,10 +1,10 @@
 use glam::{vec3, Affine3A, Mat3, Quat, Vec2, Vec3};
 use macaw::{IsoTransform, Ray3};
 
-use re_log_types::{EntityPath, ViewCoordinates};
+use re_log_types::{component_types::Pinhole, EntityPath, ViewCoordinates};
 
 /// A logged camera that connects spaces.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct SpaceCamera3D {
     /// Path to the instance which has the projection (pinhole, ortho or otherwise) transforms.
     ///
@@ -20,10 +20,10 @@ pub struct SpaceCamera3D {
     // -------------------------
     // Optional projection-related things:
     /// The projection transform of a child-entity.
-    pub pinhole: Option<re_log_types::Pinhole>,
+    pub pinhole: Option<Pinhole>,
 
-    /// Optional distance of a picture plane from the camera.
-    pub picture_plane_distance: Option<f32>,
+    /// Distance of a picture plane from the camera.
+    pub picture_plane_distance: f32,
 }
 
 impl SpaceCamera3D {
@@ -40,7 +40,7 @@ impl SpaceCamera3D {
         self.world_from_cam().inverse()
     }
 
-    /// Scene-space from Rerun view-space (RUB).
+    /// Scene-space from depthai_viewer view-space (RUB).
     pub fn world_from_rub_view(&self) -> Option<IsoTransform> {
         match from_rub_quat(self.view_coordinates) {
             Ok(from_rub) => Some(self.world_from_camera * IsoTransform::from_quat(from_rub)),

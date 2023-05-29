@@ -79,17 +79,20 @@ fn data_store_dump_impl(store1: &mut DataStore, store2: &mut DataStore, store3: 
     }
     sanity_unwrap(store3);
 
-    let store1_df = store1.to_dataframe();
-    let store2_df = store2.to_dataframe();
-    let store3_df = store3.to_dataframe();
-    assert!(
-        store1_df == store2_df,
-        "First & second stores differ:\n{store1_df}\n{store2_df}"
-    );
-    assert!(
-        store1_df == store3_df,
-        "First & third stores differ:\n{store1_df}\n{store3_df}"
-    );
+    #[cfg(feature = "polars")]
+    {
+        let store1_df = store1.to_dataframe();
+        let store2_df = store2.to_dataframe();
+        let store3_df = store3.to_dataframe();
+        assert!(
+            store1_df == store2_df,
+            "First & second stores differ:\n{store1_df}\n{store2_df}"
+        );
+        assert!(
+            store1_df == store3_df,
+            "First & third stores differ:\n{store1_df}\n{store3_df}"
+        );
+    }
 
     let store1_stats = DataStoreStats::from_store(store1);
     let store2_stats = DataStoreStats::from_store(store2);
@@ -133,7 +136,7 @@ fn data_store_dump_filtered() {
 
 fn data_store_dump_filtered_impl(store1: &mut DataStore, store2: &mut DataStore) {
     let timeline_frame_nr = Timeline::new_sequence("frame_nr");
-    let timeline_log_time = Timeline::new_temporal("log_time");
+    let timeline_log_time = Timeline::log_time();
     let frame1: TimeInt = 1.into();
     let frame2: TimeInt = 2.into();
     let frame3: TimeInt = 3.into();
@@ -173,12 +176,15 @@ fn data_store_dump_filtered_impl(store1: &mut DataStore, store2: &mut DataStore)
     }
     sanity_unwrap(store2);
 
-    let store1_df = store1.to_dataframe();
-    let store2_df = store2.to_dataframe();
-    assert!(
-        store1_df == store2_df,
-        "First & second stores differ:\n{store1_df}\n{store2_df}"
-    );
+    #[cfg(feature = "polars")]
+    {
+        let store1_df = store1.to_dataframe();
+        let store2_df = store2.to_dataframe();
+        assert!(
+            store1_df == store2_df,
+            "First & second stores differ:\n{store1_df}\n{store2_df}"
+        );
+    }
 
     let store1_stats = DataStoreStats::from_store(store1);
     let store2_stats = DataStoreStats::from_store(store2);
@@ -235,4 +241,63 @@ fn create_insert_table(ent_path: impl Into<EntityPath>) -> DataTable {
     table.compute_all_size_bytes();
 
     table
+}
+
+// See: https://github.com/rerun-io/rerun/pull/2007
+#[test]
+fn data_store_dump_empty_column() {
+    init_logs();
+
+    // Split tables on 1 row
+    let mut config = re_arrow_store::DataStoreConfig {
+        indexed_bucket_num_rows: 1,
+        ..re_arrow_store::DataStoreConfig::DEFAULT
+    };
+    config.store_insert_ids = false;
+
+    let mut store = DataStore::new(InstanceKey::name(), config);
+
+    data_store_dump_empty_column_impl(&mut store);
+}
+
+fn data_store_dump_empty_column_impl(store: &mut DataStore) {
+    let ent_path: EntityPath = "points".into();
+    let frame1: TimeInt = 1.into();
+    let frame2: TimeInt = 2.into();
+    let frame3: TimeInt = 3.into();
+
+    // Start by inserting a table with 2 rows, one with colors, and one with points.
+    {
+        let (instances1, colors1) = (build_some_instances(3), build_some_colors(3));
+        let row1 = test_row!(ent_path @ [
+                build_frame_nr(frame1),
+            ] => 3; [instances1, colors1]);
+
+        let (instances2, points2) = (build_some_instances(3), build_some_point2d(3));
+        let row2 = test_row!(ent_path @ [
+            build_frame_nr(frame2),
+        ] => 3; [instances2, points2]);
+        let mut table = DataTable::from_rows(TableId::random(), [row1, row2]);
+        table.compute_all_size_bytes();
+        store.insert_table(&table).unwrap();
+    }
+
+    // Now insert another table with points only.
+    {
+        let (instances3, points3) = (build_some_instances(3), build_some_colors(3));
+        let row3 = test_row!(ent_path @ [
+                build_frame_nr(frame3),
+            ] => 3; [instances3, points3]);
+        let mut table = DataTable::from_rows(TableId::random(), [row3]);
+        table.compute_all_size_bytes();
+        store.insert_table(&table).unwrap();
+    }
+
+    let data_msgs: Result<Vec<_>, _> = store
+        .to_data_tables(None)
+        .map(|table| table.to_arrow_msg())
+        .collect();
+
+    // Should end up with 2 tables
+    assert_eq!(data_msgs.unwrap().len(), 2);
 }

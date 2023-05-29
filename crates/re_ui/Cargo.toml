@@ -23,10 +23,9 @@ all-features = true
 
 
 [features]
-default = ["eframe", "egui_dock"]
+default = ["eframe"]
 
 eframe = ["dep:eframe"]
-egui_dock = ["dep:egui_dock"]
 
 
 [dependencies]
@@ -46,3 +45,4 @@ re_log.workspace = true
 
 [dev-dependencies]
 eframe = { workspace = true, default-features = false, features = ["wgpu"] }
+egui_tiles.workspace = true

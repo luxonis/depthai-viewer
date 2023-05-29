@@ -1,23 +1,20 @@
 use eframe::epaint::text::TextWrapping;
-use re_data_store::{query_latest_single, EditableAutoValue, EntityPath, EntityPropertyMap};
-use re_format::format_f32;
-
 use egui::{NumExt, WidgetText};
 use macaw::BoundingBox;
-use re_log_types::component_types::{Tensor, TensorDataMeaning};
+use re_data_store::{EditableAutoValue, EntityPath, EntityPropertyMap};
+use re_data_ui::{item_ui, DataUi};
+use re_data_ui::{show_zoomed_image_region, show_zoomed_image_region_area_outline};
+use re_format::format_f32;
+use re_log_types::component_types::{Pinhole, Tensor, TensorDataMeaning};
 use re_renderer::{Colormap, OutlineConfig};
-
+use re_viewer_context::{
+    HoverHighlight, HoveredSpace, Item, SelectionHighlight, SpaceViewId, TensorDecodeCache,
+    TensorStatsCache, UiVerbosity, ViewerContext,
+};
 use crate::{
-    misc::{
-        space_info::query_view_coordinates, HoveredSpace, SelectionHighlight, SpaceViewHighlights,
-        ViewerContext,
-    },
+    misc::SpaceViewHighlights,
     ui::{
-        data_blueprint::DataBlueprintTree,
-        data_ui::{self, DataUi},
-        space_view::ScreenshotMode,
-        view_spatial::UiLabelTarget,
-        SpaceViewId,
+        data_blueprint::DataBlueprintTree, space_view::ScreenshotMode, view_spatial::UiLabelTarget,
     },
 };
 
@@ -94,6 +91,30 @@ pub struct ViewSpatialState {
     auto_size_config: re_renderer::AutoSizeConfig,
 }
 
+// TODO(#2089): This render-related state probably doesn't belong in the blueprint
+// in the blueprint in the first place. But since serde skips it we also have to ignore it.
+// or else we re-store state on every frame. Either way the fact that we don't get it
+// back out of the store is going to cause problems.
+impl PartialEq for ViewSpatialState {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            nav_mode,
+            scene_bbox_accum: _,        // serde-skip
+            scene_bbox: _,              // serde-skip
+            scene_num_primitives: _,    // serde-skip
+            previous_picking_result: _, // serde-skip
+            state_2d,
+            state_3d,
+            auto_size_config,
+        } = self;
+
+        *nav_mode == other.nav_mode
+            && *state_2d == other.state_2d
+            && *state_3d == other.state_3d
+            && *auto_size_config == other.auto_size_config
+    }
+}
+
 impl Default for ViewSpatialState {
     fn default() -> Self {
         Self {
@@ -153,45 +174,35 @@ impl ViewSpatialState {
     ) {
         crate::profile_function!();
 
-        let scene_size = self.scene_bbox_accum.size().length();
-
         let query = ctx.current_query();
 
         let entity_paths = data_blueprint.entity_paths().clone(); // TODO(andreas): Workaround borrow checker
         for entity_path in entity_paths {
-            Self::update_pinhole_property_heuristics(
-                ctx,
-                data_blueprint,
-                &query,
-                &entity_path,
-                scene_size,
-            );
+            self.update_pinhole_property_heuristics(ctx, data_blueprint, &query, &entity_path);
             self.update_depth_cloud_property_heuristics(ctx, data_blueprint, &query, &entity_path);
         }
     }
 
     fn update_pinhole_property_heuristics(
+        &self,
         ctx: &mut ViewerContext<'_>,
         data_blueprint: &mut DataBlueprintTree,
         query: &re_arrow_store::LatestAtQuery,
         entity_path: &EntityPath,
-        scene_size: f32,
     ) {
-        if let Some(re_log_types::Transform::Pinhole(_)) =
-            query_latest_single::<re_log_types::Transform>(
-                &ctx.log_db.entity_db,
-                entity_path,
-                query,
-            )
+        let store = &ctx.log_db.entity_db.data_store;
+        if store
+            .query_latest_component::<Pinhole>(entity_path, query)
+            .is_some()
         {
-            let default_image_plane_distance = if scene_size.is_finite() && scene_size > 0.0 {
-                scene_size * 0.05
-            } else {
-                1.0
-            };
-
             let mut properties = data_blueprint.data_blueprints_individual().get(entity_path);
             if properties.pinhole_image_plane_distance.is_auto() {
+                let scene_size = self.scene_bbox_accum.size().length();
+                let default_image_plane_distance = if scene_size.is_finite() && scene_size > 0.0 {
+                    scene_size * 0.05
+                } else {
+                    1.0
+                };
                 properties.pinhole_image_plane_distance =
                     EditableAutoValue::Auto(default_image_plane_distance);
                 data_blueprint
@@ -208,7 +219,8 @@ impl ViewSpatialState {
         query: &re_arrow_store::LatestAtQuery,
         entity_path: &EntityPath,
     ) -> Option<()> {
-        let tensor = query_latest_single::<Tensor>(&ctx.log_db.entity_db, entity_path, query)?;
+        let store = &ctx.log_db.entity_db.data_store;
+        let tensor = store.query_latest_component::<Tensor>(entity_path, query)?;
 
         let mut properties = data_blueprint.data_blueprints_individual().get(entity_path);
         if properties.backproject_depth.is_auto() {
@@ -292,7 +304,7 @@ impl ViewSpatialState {
                 .on_hover_text("The origin is at the origin of this Entity. All transforms are relative to it");
             // Specify space view id only if this is actually part of the space view itself.
             // (otherwise we get a somewhat broken link)
-            ctx.entity_path_button(
+            item_ui::entity_path_button(ctx,
                 ui,
                 data_blueprint
                     .contains_entity(space_path)
@@ -439,10 +451,10 @@ impl ViewSpatialState {
         }
         self.scene_num_primitives = scene.primitives.num_primitives();
 
+        let store = &ctx.log_db.entity_db.data_store;
         match *self.nav_mode.get() {
             SpatialNavigationMode::ThreeD => {
-                let coordinates =
-                    query_view_coordinates(&ctx.log_db.entity_db, space, &ctx.current_query());
+                let coordinates = store.query_latest_component(space, &ctx.current_query());
                 self.state_3d.space_specs = SpaceSpecs::from_view_coordinates(coordinates);
                 super::view_3d(
                     ctx,
@@ -476,10 +488,10 @@ impl ViewSpatialState {
         }
     }
 
-    pub fn help_text(&self) -> &str {
+    pub fn help_text(&self, re_ui: &re_ui::ReUi) -> egui::WidgetText {
         match *self.nav_mode.get() {
-            SpatialNavigationMode::TwoD => super::ui_2d::HELP_TEXT_2D,
-            SpatialNavigationMode::ThreeD => super::ui_3d::HELP_TEXT_3D,
+            SpatialNavigationMode::TwoD => super::ui_2d::help_text(re_ui),
+            SpatialNavigationMode::ThreeD => super::ui_3d::help_text(re_ui),
         }
     }
 }
@@ -573,8 +585,7 @@ fn axis_name(axis: Option<glam::Vec3>) -> String {
 
 pub fn create_labels(
     scene_ui: &mut SceneSpatialUiData,
-    ui_from_space2d: egui::emath::RectTransform,
-    space2d_from_ui: egui::emath::RectTransform,
+    ui_from_canvas: egui::emath::RectTransform,
     eye3d: &Eye,
     parent_ui: &mut egui::Ui,
     highlights: &SpaceViewHighlights,
@@ -584,7 +595,7 @@ pub fn create_labels(
 
     let mut label_shapes = Vec::with_capacity(scene_ui.labels.len() * 2);
 
-    let ui_from_world_3d = eye3d.ui_from_world(*ui_from_space2d.to());
+    let ui_from_world_3d = eye3d.ui_from_world(*ui_from_canvas.to());
 
     for label in &scene_ui.labels {
         let (wrap_width, text_anchor_pos) = match label.target {
@@ -593,7 +604,7 @@ pub fn create_labels(
                 if nav_mode == SpatialNavigationMode::ThreeD {
                     continue;
                 }
-                let rect_in_ui = ui_from_space2d.transform_rect(rect);
+                let rect_in_ui = ui_from_canvas.transform_rect(rect);
                 (
                     // Place the text centered below the rect
                     (rect_in_ui.width() - 4.0).at_least(60.0),
@@ -605,10 +616,14 @@ pub fn create_labels(
                 if nav_mode == SpatialNavigationMode::ThreeD {
                     continue;
                 }
-                let pos_in_ui = ui_from_space2d.transform_pos(pos);
+                let pos_in_ui = ui_from_canvas.transform_pos(pos);
                 (f32::INFINITY, pos_in_ui + egui::vec2(0.0, 3.0))
             }
             UiLabelTarget::Position3D(pos) => {
+                // TODO(#1640): 3D labels are not visible in 2D for now.
+                if nav_mode == SpatialNavigationMode::TwoD {
+                    continue;
+                }
                 let pos_in_ui = ui_from_world_3d * pos.extend(1.0);
                 if pos_in_ui.w <= 0.0 {
                     continue; // behind camera
@@ -647,23 +662,21 @@ pub fn create_labels(
             .entity_highlight(label.labeled_instance.entity_path_hash)
             .index_highlight(label.labeled_instance.instance_key);
         let fill_color = match highlight.hover {
-            crate::misc::HoverHighlight::None => match highlight.selection {
+            HoverHighlight::None => match highlight.selection {
                 SelectionHighlight::None => parent_ui.style().visuals.widgets.inactive.bg_fill,
                 SelectionHighlight::SiblingSelection => {
                     parent_ui.style().visuals.widgets.active.bg_fill
                 }
                 SelectionHighlight::Selection => parent_ui.style().visuals.widgets.active.bg_fill,
             },
-            crate::misc::HoverHighlight::Hovered => {
-                parent_ui.style().visuals.widgets.hovered.bg_fill
-            }
+            HoverHighlight::Hovered => parent_ui.style().visuals.widgets.hovered.bg_fill,
         };
 
         label_shapes.push(egui::Shape::rect_filled(bg_rect, 3.0, fill_color));
         label_shapes.push(egui::Shape::galley(text_rect.center_top(), galley));
 
         scene_ui.pickable_ui_rects.push((
-            space2d_from_ui.transform_rect(bg_rect),
+            ui_from_canvas.inverse().transform_rect(bg_rect),
             label.labeled_instance,
         ));
     }
@@ -754,7 +767,7 @@ pub fn picking(
 
     let _ = view_builder.schedule_picking_rect(
         ctx.render_ctx,
-        re_renderer::IntRect::from_middle_and_extent(
+        re_renderer::RectInt::from_middle_and_extent(
             picking_context.pointer_in_pixel.as_ivec2(),
             glam::uvec2(picking_rect_size, picking_rect_size),
         ),
@@ -790,29 +803,27 @@ pub fn picking(
         let picked_image_with_coords = if hit.hit_type == PickingHitType::TexturedRect
             || *ent_properties.backproject_depth.get()
         {
-            query_latest_single::<Tensor>(
-                &ctx.log_db.entity_db,
-                &instance_path.entity_path,
-                &ctx.current_query(),
-            )
-            .and_then(|tensor| {
-                // If we're here because of back-projection, but this wasn't actually a depth image, drop out.
-                // (the back-projection property may be true despite this not being a depth image!)
-                if hit.hit_type != PickingHitType::TexturedRect
-                    && *ent_properties.backproject_depth.get()
-                    && tensor.meaning != TensorDataMeaning::Depth
-                {
-                    None
-                } else {
-                    tensor.image_height_width_channels().map(|[_, w, _]| {
-                        let coordinates = hit
-                            .instance_path_hash
-                            .instance_key
-                            .to_2d_image_coordinate(w);
-                        (tensor, coordinates)
-                    })
-                }
-            })
+            let store = &ctx.log_db.entity_db.data_store;
+            store
+                .query_latest_component::<Tensor>(&instance_path.entity_path, &ctx.current_query())
+                .and_then(|tensor| {
+                    // If we're here because of back-projection, but this wasn't actually a depth image, drop out.
+                    // (the back-projection property may be true despite this not being a depth image!)
+                    if hit.hit_type != PickingHitType::TexturedRect
+                        && *ent_properties.backproject_depth.get()
+                        && tensor.meaning != TensorDataMeaning::Depth
+                    {
+                        None
+                    } else {
+                        tensor.image_height_width_channels().map(|[_, w, _]| {
+                            let coordinates = hit
+                                .instance_path_hash
+                                .instance_key
+                                .to_2d_image_coordinate(w);
+                            (tensor, coordinates)
+                        })
+                    }
+                })
         } else {
             None
         };
@@ -821,7 +832,7 @@ pub fn picking(
             instance_path.instance_key = re_log_types::component_types::InstanceKey::SPLAT;
         }
 
-        hovered_items.push(crate::misc::Item::InstancePath(
+        hovered_items.push(Item::InstancePath(
             Some(space_view_id),
             instance_path.clone(),
         ));
@@ -848,7 +859,7 @@ pub fn picking(
                         instance_path.data_ui(
                             ctx,
                             ui,
-                            crate::ui::UiVerbosity::Small,
+                            UiVerbosity::Small,
                             &ctx.current_query(),
                         );
 
@@ -861,7 +872,7 @@ pub fn picking(
                                         egui::Pos2::ZERO,
                                         egui::vec2(w, h),
                                     );
-                                    data_ui::image::show_zoomed_image_region_area_outline(
+                                    show_zoomed_image_region_area_outline(
                                         ui,
                                         &tensor,
                                         [coords[0] as _, coords[1] as _],
@@ -870,22 +881,24 @@ pub fn picking(
                                 }
 
                                 let tensor_name = instance_path.to_string();
-                                match ctx.cache.decode.try_decode_tensor_if_necessary(tensor) {
+
+                                match ctx.cache
+                                        .entry::<TensorDecodeCache>()
+                                        .entry(tensor) {
                                     Ok(decoded_tensor) =>
-                                    data_ui::image::show_zoomed_image_region(
-                                        ctx.render_ctx,
-                                        ui,
-                                        &decoded_tensor,
-                                        ctx.cache.tensor_stats(&decoded_tensor),
-                                        &scene.annotation_map.find(&instance_path.entity_path),
-                                        decoded_tensor.meter,
-                                        &tensor_name,
-                                        [coords[0] as _, coords[1] as _],
-                                    ),
-                                Err(err) =>
-                                    re_log::warn_once!(
-                                        "Encountered problem decoding tensor at path {tensor_name}: {err}"
-                                    ),
+                                        show_zoomed_image_region(
+                                            ctx.render_ctx,
+                                            ui,
+                                            &decoded_tensor,
+                                            ctx.cache.entry::<TensorStatsCache>().entry(&decoded_tensor),
+                                            &scene.annotation_map.find(&instance_path.entity_path),
+                                            decoded_tensor.meter,
+                                            &tensor_name,
+                                            [coords[0] as _, coords[1] as _],
+                                        ),
+                                    Err(err) => re_log::warn_once!(
+                                            "Encountered problem decoding tensor at path {tensor_name}: {err}"
+                                        ),
                                 }
                             });
                         }
@@ -894,18 +907,13 @@ pub fn picking(
         } else {
             // Hover ui for everything else
             response.on_hover_ui_at_pointer(|ui| {
-                ctx.instance_path_button(ui, Some(space_view_id), &instance_path);
-                instance_path.data_ui(
-                    ctx,
-                    ui,
-                    crate::ui::UiVerbosity::Reduced,
-                    &ctx.current_query(),
-                );
+                item_ui::instance_path_button(ctx, ui, Some(space_view_id), &instance_path);
+                instance_path.data_ui(ctx, ui, UiVerbosity::Reduced, &ctx.current_query());
             })
         };
     }
 
-    ctx.select_hovered_on_click(&response);
+    item_ui::select_hovered_on_click(&response, ctx.selection_state_mut(), &hovered_items);
     ctx.set_hovered(hovered_items.into_iter());
 
     let hovered_space = match state.nav_mode.get() {

@@ -17,7 +17,7 @@ all-features = true
 
 
 [features]
-default = ["arrow_datagen"]
+default = []
 
 ## Enables the `datagen` module, which exposes a number of tools for generating random data for
 ## tests and benchmarks.
@@ -34,6 +34,7 @@ image = ["dep:ecolor", "dep:image"]
 
 ## Enable (de)serialization using serde.
 serde = [
+  "dep:rmp-serde",
   "dep:serde",
   "dep:serde_bytes",
   "half/serde",
@@ -56,9 +57,7 @@ array-init = "2.1.0"
 arrow2 = { workspace = true, features = [
   "io_ipc",
   "io_print",
-  "compute_aggregate",
   "compute_concatenate",
-  "compute_aggregate",
 ] }
 arrow2_convert.workspace = true
 bytemuck = "1.11"
@@ -66,6 +65,7 @@ document-features = "0.2"
 fixed = { version = "1.17", default-features = false, features = ["serde"] }
 half = { workspace = true, features = ["bytemuck"] }
 itertools = { workspace = true }
+web-time.workspace = true
 lazy_static.workspace = true
 ndarray.workspace = true
 nohash-hasher = "0.2"
@@ -73,10 +73,7 @@ num-derive = "0.3"
 num-traits = "0.2"
 smallvec.workspace = true
 thiserror.workspace = true
-time = { workspace = true, default-features = false, features = [
-  "formatting",
-  "macros",
-] }
+time = { workspace = true, features = ["formatting", "macros"] }
 typenum = "1.15"
 uuid = { version = "1.1", features = ["serde", "v4", "js"] }
 
@@ -89,13 +86,15 @@ image = { workspace = true, optional = true, default-features = false, features 
 ] }
 macaw = { workspace = true, optional = true }
 rand = { version = "0.8", optional = true }
+rmp-serde = { version = "1.1", optional = true }
 serde = { version = "1", optional = true, features = ["derive", "rc"] }
 serde_bytes = { version = "0.11", optional = true }
 
 # Native dependencies:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+crossbeam.workspace = true
 puffin.workspace = true
 
 
 [dev-dependencies]
-rmp-serde = "1.1"
+similar-asserts = "1.4.2"

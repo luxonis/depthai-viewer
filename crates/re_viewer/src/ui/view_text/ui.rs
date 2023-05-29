@@ -1,17 +1,17 @@
 use std::collections::BTreeMap;
 
-use egui::{Color32, RichText};
+use egui::Color32;
 
 use re_data_store::{EntityPath, Timeline};
+use re_data_ui::item_ui;
 use re_log_types::TimePoint;
-
-use crate::ViewerContext;
+use re_viewer_context::{level_to_rich_text, ViewerContext};
 
 use super::{SceneText, TextEntry};
 
 // --- Main view ---
 
-#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct ViewTextState {
     /// Keeps track of the latest time selection made by the user.
@@ -122,7 +122,7 @@ pub(crate) fn view_text(
 
 // TODO(cmc): implement "body contains <value>" filter.
 // TODO(cmc): beyond filters, it'd be nice to be able to swap columns at some point.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct ViewTextFilters {
     // Column filters: which columns should be visible?
     // Timelines are special: each one has a dedicated column.
@@ -260,7 +260,7 @@ fn table_ui(
             re_ui::ReUi::setup_table_header(&mut header);
             for timeline in &timelines {
                 header.col(|ui| {
-                    ctx.timeline_button(ui, timeline);
+                    item_ui::timeline_button(ctx, ui, timeline);
                 });
             }
             if state.filters.col_entity_path {
@@ -303,7 +303,7 @@ fn table_ui(
                 for timeline in &timelines {
                     row.col(|ui| {
                         if let Some(row_time) = time_point.get(timeline).copied() {
-                            ctx.time_button(ui, timeline, row_time);
+                            item_ui::time_button(ctx, ui, timeline, row_time);
 
                             if let Some(global_time) = global_time {
                                 if *timeline == &global_timeline {
@@ -328,7 +328,7 @@ fn table_ui(
                 // path
                 if state.filters.col_entity_path {
                     row.col(|ui| {
-                        ctx.entity_path_button(ui, None, &text_entry.entity_path);
+                        item_ui::entity_path_button(ctx, ui, None, &text_entry.entity_path);
                     });
                 }
 
@@ -375,18 +375,4 @@ fn calc_row_height(entry: &TextEntry) -> f32 {
     let num_newlines = entry.body.bytes().filter(|&c| c == b'\n').count();
     let num_rows = 1 + num_newlines;
     num_rows as f32 * re_ui::ReUi::table_line_height()
-}
-
-pub fn level_to_rich_text(ui: &egui::Ui, lvl: &str) -> RichText {
-    match lvl {
-        "CRITICAL" => RichText::new(lvl)
-            .color(Color32::WHITE)
-            .background_color(ui.visuals().error_fg_color),
-        "ERROR" => RichText::new(lvl).color(ui.visuals().error_fg_color),
-        "WARN" => RichText::new(lvl).color(ui.visuals().warn_fg_color),
-        "INFO" => RichText::new(lvl).color(Color32::LIGHT_GREEN),
-        "DEBUG" => RichText::new(lvl).color(Color32::LIGHT_BLUE),
-        "TRACE" => RichText::new(lvl).color(Color32::LIGHT_GRAY),
-        _ => RichText::new(lvl).color(ui.visuals().text_color()),
-    }
 }

@@ -1,4 +1,4 @@
-use crate::{ui::SceneQuery, ViewerContext};
+use re_viewer_context::{SceneQuery, ViewerContext};
 use re_data_store::EntityPath;
 // ---
 

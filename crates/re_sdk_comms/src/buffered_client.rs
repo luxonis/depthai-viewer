@@ -2,7 +2,7 @@ use std::{net::SocketAddr, thread::JoinHandle};
 
 use crossbeam::channel::{select, Receiver, Sender};
 
-use re_log_types::{LogMsg, RowId};
+use re_log_types::LogMsg;
 
 #[derive(Debug, PartialEq, Eq)]
 struct FlushedMsg;
@@ -49,12 +49,6 @@ pub struct Client {
     drop_join: Option<JoinHandle<()>>,
 }
 
-impl Default for Client {
-    fn default() -> Self {
-        Self::new(crate::default_server_addr())
-    }
-}
-
 impl Client {
     /// Connect via TCP to this log server.
     pub fn new(addr: SocketAddr) -> Self {
@@ -70,10 +64,21 @@ impl Client {
         let (send_quit_tx, send_quit_rx) = crossbeam::channel::unbounded();
         let (drop_quit_tx, drop_quit_rx) = crossbeam::channel::unbounded();
 
+        // We don't compress the stream becausew e assume the SDK
+        // and server are on the same machine and compression
+        // can be expensive, see https://github.com/rerun-io/rerun/issues/2216
+        let encoding_options = re_log_encoding::EncodingOptions::UNCOMPRESSED;
+
         let encode_join = std::thread::Builder::new()
             .name("msg_encoder".into())
             .spawn(move || {
-                msg_encode(&msg_rx, &msg_drop_tx, &encode_quit_rx, &packet_tx);
+                msg_encode(
+                    encoding_options,
+                    &msg_rx,
+                    &msg_drop_tx,
+                    &encode_quit_rx,
+                    &packet_tx,
+                );
                 re_log::debug!("Shutting down msg encoder thread");
             })
             .expect("Failed to spawn thread");
@@ -146,7 +151,6 @@ impl Drop for Client {
     /// Wait until everything has been sent.
     fn drop(&mut self) {
         re_log::debug!("Shutting down the client connection…");
-        self.send(LogMsg::Goodbye(RowId::random()));
         self.flush();
         // First shut down the encoder:
         self.encode_quit_tx.send(QuitMsg).ok();
@@ -180,6 +184,7 @@ fn msg_drop(msg_drop_rx: &Receiver<MsgMsg>, quit_rx: &Receiver<QuitMsg>) {
 }
 
 fn msg_encode(
+    encoding_options: re_log_encoding::EncodingOptions,
     msg_rx: &Receiver<MsgMsg>,
     msg_drop_tx: &Sender<MsgMsg>,
     quit_rx: &Receiver<QuitMsg>,
@@ -188,26 +193,35 @@ fn msg_encode(
     loop {
         select! {
             recv(msg_rx) -> msg_msg => {
-                if let Ok(msg_msg) = msg_msg {
-                    let packet_msg = match &msg_msg {
-                        MsgMsg::LogMsg(log_msg) => {
-                            let packet = crate::encode_log_msg(log_msg);
-                            re_log::trace!("Encoded message of size {}", packet.len());
-                            PacketMsg::Packet(packet)
-                        }
-                        MsgMsg::Flush => PacketMsg::Flush,
-                    };
+                let Ok(msg_msg) = msg_msg else {
+                    return; // channel has closed
+                };
 
+                let packet_msg = match &msg_msg {
+                    MsgMsg::LogMsg(log_msg) => {
+                        match re_log_encoding::encoder::encode_to_bytes(encoding_options, std::iter::once(log_msg)) {
+                            Ok(packet) => {
+                                re_log::trace!("Encoded message of size {}", packet.len());
+                                Some(PacketMsg::Packet(packet))
+                            }
+                            Err(err) => {
+                                re_log::error_once!("Failed to encode log message: {err}");
+                                None
+                            }
+                        }
+                    }
+                    MsgMsg::Flush => Some(PacketMsg::Flush),
+                };
+
+                if let Some(packet_msg) = packet_msg {
                     if packet_tx.send(packet_msg).is_err() {
                         re_log::error!("Failed to send message to tcp_sender thread. Likely a shutdown race-condition.");
                         return;
                     }
-                    if msg_drop_tx.send(msg_msg).is_err() {
-                        re_log::error!("Failed to send message to msg_drop thread. Likely a shutdown race-condition");
-                        return;
-                    }
-                } else {
-                    return; // channel has closed
+                }
+                if msg_drop_tx.send(msg_msg).is_err() {
+                    re_log::error!("Failed to send message to msg_drop thread. Likely a shutdown race-condition");
+                    return;
                 }
             }
             recv(quit_rx) -> _quit_msg => {

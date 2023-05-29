@@ -1,19 +1,14 @@
-use glam::Mat4;
-
 use re_data_store::{EntityPath, InstancePathHash};
 use re_log_types::{
     component_types::{ClassId, ColorRGBA, InstanceKey, KeypointId, Label, Point2D, Radius},
     Component,
 };
 use re_query::{query_primary_with_history, EntityView, QueryError};
+use re_viewer_context::{ResolvedAnnotationInfo, SceneQuery, ViewerContext};
 
 use crate::{
-    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache, ViewerContext},
-    ui::{
-        annotations::ResolvedAnnotationInfo,
-        scene::SceneQuery,
-        view_spatial::{SceneSpatial, UiLabel, UiLabelTarget},
-    },
+    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache},
+    ui::view_spatial::{scene::EntityDepthOffsets, SceneSpatial, UiLabel, UiLabelTarget},
 };
 
 use super::{
@@ -64,8 +59,9 @@ impl Points2DPart {
         query: &SceneQuery<'_>,
         entity_view: &EntityView<Point2D>,
         ent_path: &EntityPath,
-        world_from_obj: Mat4,
+        world_from_obj: glam::Affine3A,
         entity_highlight: &SpaceViewOutlineMasks,
+        depth_offset: re_renderer::DepthOffset,
     ) -> Result<(), QueryError> {
         crate::profile_function!();
 
@@ -92,7 +88,7 @@ impl Points2DPart {
                         instance_path_hash_for_picking(
                             ent_path,
                             instance_key,
-                            entity_view,
+                            entity_view.num_instances(),
                             entity_highlight.any_selection_highlight,
                         )
                     })
@@ -112,6 +108,11 @@ impl Points2DPart {
                 .primitives
                 .points
                 .batch("2d points")
+                .depth_offset(depth_offset)
+                .flags(
+                    re_renderer::renderer::PointCloudBatchFlags::FLAG_DRAW_AS_CIRCLES
+                        | re_renderer::renderer::PointCloudBatchFlags::FLAG_ENABLE_SHADING,
+                )
                 .world_from_obj(world_from_obj)
                 .outline_mask_ids(entity_highlight.overall)
                 .picking_object_id(re_renderer::PickingLayerObjectId(ent_path.hash64()));
@@ -126,7 +127,7 @@ impl Points2DPart {
             let picking_instance_ids = entity_view.iter_instance_keys()?.map(|instance_key| {
                 instance_key_to_picking_id(
                     instance_key,
-                    entity_view,
+                    entity_view.num_instances(),
                     entity_highlight.any_selection_highlight,
                 )
             });
@@ -172,6 +173,7 @@ impl ScenePart for Points2DPart {
         query: &SceneQuery<'_>,
         transforms: &TransformCache,
         highlights: &SpaceViewHighlights,
+        depth_offsets: &EntityDepthOffsets,
     ) {
         crate::profile_scope!("Points2DPart");
 
@@ -206,6 +208,7 @@ impl ScenePart for Points2DPart {
                         ent_path,
                         world_from_obj,
                         entity_highlight,
+                        depth_offsets.get(ent_path).unwrap_or(depth_offsets.points),
                     )?;
                 }
                 Ok(())

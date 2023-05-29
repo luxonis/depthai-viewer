@@ -1,22 +1,19 @@
 use re_data_store::{EntityPath, EntityProperties};
 use re_log_types::{
-    component_types::InstanceKey,
+    component_types::{InstanceKey, Pinhole},
     coordinates::{Handedness, SignedAxis3},
-    Pinhole, Transform, ViewCoordinates,
+    ViewCoordinates,
 };
-use re_query::{query_entity_with_primary, EntityView, QueryError};
 use re_renderer::renderer::LineStripFlags;
+use re_viewer_context::TimeControl;
+use re_viewer_context::{SceneQuery, ViewerContext};
 
 use crate::{
     misc::{
-        instance_hash_conversions::picking_layer_id_from_instance_path_hash,
-        space_info::query_view_coordinates, SpaceViewHighlights, SpaceViewOutlineMasks,
-        TransformCache, ViewerContext,
+        instance_hash_conversions::picking_layer_id_from_instance_path_hash, SpaceViewHighlights,
+        SpaceViewOutlineMasks, TransformCache,
     },
-    ui::{
-        scene::SceneQuery,
-        view_spatial::{SceneSpatial, SpaceCamera3D},
-    },
+    ui::view_spatial::{scene::EntityDepthOffsets, SceneSpatial, SpaceCamera3D},
 };
 
 use super::{instance_path_hash_for_picking, ScenePart};
@@ -29,13 +26,13 @@ use super::{instance_path_hash_for_picking, ScenePart};
 ///
 /// TODO(andreas): Doing a search upwards here isn't great. Maybe this can be part of the transform cache or similar?
 fn determine_view_coordinates(
-    entity_db: &re_data_store::log_db::EntityDb,
-    time_ctrl: &crate::misc::TimeControl,
+    store: &re_arrow_store::DataStore,
+    time_ctrl: &TimeControl,
     mut entity_path: EntityPath,
 ) -> ViewCoordinates {
     loop {
         if let Some(view_coordinates) =
-            query_view_coordinates(entity_db, &entity_path, &time_ctrl.current_query())
+            store.query_latest_component(&entity_path, &time_ctrl.current_query())
         {
             return view_coordinates;
         }
@@ -59,7 +56,6 @@ impl CamerasPart {
     #[allow(clippy::too_many_arguments)]
     fn visit_instance(
         scene: &mut SceneSpatial,
-        entity_view: &EntityView<Transform>,
         ent_path: &EntityPath,
         instance_key: InstanceKey,
         props: &EntityProperties,
@@ -81,20 +77,32 @@ impl CamerasPart {
                 return;
             };
 
-        // If this transform is not representable as rigid transform, the camera is probably under another camera transform,
-        // in which case we don't (yet) know how to deal with this!
-        let Some(world_from_camera) = macaw::IsoTransform::from_mat4(&world_from_parent) else {
+        let frustum_length = *props.pinhole_image_plane_distance.get();
+
+        // If the camera is our reference, there is nothing for us to display.
+        if transforms.reference_path() == ent_path {
+            scene.space_cameras.push(SpaceCamera3D {
+                ent_path: ent_path.clone(),
+                view_coordinates,
+                world_from_camera: macaw::IsoTransform::IDENTITY,
+                pinhole: Some(pinhole),
+                picture_plane_distance: frustum_length,
+            });
+            return;
+        }
+
+        // If this transform is not representable an iso transform transform we can't display it yet.
+        // This would happen if the camera is under another camera or under a transform with non-uniform scale.
+        let Some(world_from_camera) = macaw::IsoTransform::from_mat4(&world_from_parent.into()) else {
             return;
         };
-
-        let frustum_length = *props.pinhole_image_plane_distance.get();
 
         scene.space_cameras.push(SpaceCamera3D {
             ent_path: ent_path.clone(),
             view_coordinates,
             world_from_camera,
             pinhole: Some(pinhole),
-            picture_plane_distance: Some(frustum_length),
+            picture_plane_distance: frustum_length,
         });
 
         // TODO(andreas): FOV fallback doesn't make much sense. What does pinhole without fov mean?
@@ -143,10 +151,11 @@ impl CamerasPart {
 
         let radius = re_renderer::Size::new_points(1.0);
         let color = SceneSpatial::CAMERA_COLOR;
+        let num_instances = 1; // There is only ever one instance of `Transform` per entity.
         let instance_path_for_picking = instance_path_hash_for_picking(
             ent_path,
             instance_key,
-            entity_view,
+            num_instances,
             entity_highlight.any_selection_highlight,
         );
         let instance_layer_id = picking_layer_id_from_instance_path_hash(instance_path_for_picking);
@@ -162,11 +171,7 @@ impl CamerasPart {
             .add_segments(segments.into_iter())
             .radius(radius)
             .color(color)
-            .flags(
-                LineStripFlags::NO_COLOR_GRADIENT
-                    | LineStripFlags::CAP_END_ROUND
-                    | LineStripFlags::CAP_START_ROUND,
-            )
+            .flags(LineStripFlags::FLAG_CAP_END_ROUND | LineStripFlags::FLAG_CAP_START_ROUND)
             .picking_instance_id(instance_layer_id.instance);
 
         if let Some(outline_mask_ids) = entity_highlight.instances.get(&instance_key) {
@@ -183,48 +188,32 @@ impl ScenePart for CamerasPart {
         query: &SceneQuery<'_>,
         transforms: &TransformCache,
         highlights: &SpaceViewHighlights,
+        _depth_offsets: &EntityDepthOffsets,
     ) {
         crate::profile_scope!("CamerasPart");
 
+        let store = &ctx.log_db.entity_db.data_store;
         for (ent_path, props) in query.iter_entities() {
             let query = re_arrow_store::LatestAtQuery::new(query.timeline, query.latest_at);
 
-            match query_entity_with_primary::<Transform>(
-                &ctx.log_db.entity_db.data_store,
-                &query,
-                ent_path,
-                &[],
-            )
-            .and_then(|entity_view| {
-                entity_view.visit1(|instance_key, transform| {
-                    let Transform::Pinhole(pinhole) = transform else {
-                        return;
-                    };
-                    let entity_highlight = highlights.entity_outline_mask(ent_path.hash());
+            if let Some(pinhole) = store.query_latest_component::<Pinhole>(ent_path, &query) {
+                let view_coordinates = determine_view_coordinates(
+                    &ctx.log_db.entity_db.data_store,
+                    &ctx.rec_cfg.time_ctrl,
+                    ent_path.clone(),
+                );
+                let entity_highlight = highlights.entity_outline_mask(ent_path.hash());
 
-                    let view_coordinates = determine_view_coordinates(
-                        &ctx.log_db.entity_db,
-                        &ctx.rec_cfg.time_ctrl,
-                        ent_path.clone(),
-                    );
-
-                    Self::visit_instance(
-                        scene,
-                        &entity_view,
-                        ent_path,
-                        instance_key,
-                        &props,
-                        transforms,
-                        pinhole,
-                        view_coordinates,
-                        entity_highlight,
-                    );
-                })
-            }) {
-                Ok(_) | Err(QueryError::PrimaryNotFound) => {}
-                Err(err) => {
-                    re_log::error_once!("Unexpected error querying {ent_path:?}: {err}");
-                }
+                Self::visit_instance(
+                    scene,
+                    ent_path,
+                    InstanceKey(0),
+                    &props,
+                    transforms,
+                    pinhole,
+                    view_coordinates,
+                    entity_highlight,
+                );
             }
         }
     }

@@ -10,31 +10,33 @@ use re_log_types::{EntityPathPart, Time};
 
 use crate::{
     depthai::depthai,
-    misc::{space_info::SpaceInfoCollection, Item, SpaceViewHighlights, ViewerContext},
+    misc::{SpaceViewHighlights, space_info::{SpaceInfoCollection}},
     ui::{space_view_heuristics::default_created_space_views, stats_panel::StatsPanel},
 };
+
+use re_viewer_context::{Item, ViewerContext, SpaceViewId};
 
 use super::{
     device_settings_panel::DeviceSettingsPanel, selection_panel::SelectionPanel,
     space_view_entity_picker::SpaceViewEntityPicker,
     space_view_heuristics::all_possible_space_views, stats_panel::StatsPanelState,
-    view_category::ViewCategory, SpaceView, SpaceViewId, SpaceViewKind,
+    view_category::ViewCategory, SpaceView, SpaceViewKind,
 };
 
 // ----------------------------------------------------------------------------
 
 /// What views are visible?
-type VisibilitySet = std::collections::BTreeSet<SpaceViewId>;
+pub type VisibilitySet = std::collections::BTreeSet<SpaceViewId>;
 
 /// Describes the layout and contents of the Viewport Panel.
-#[derive(Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Viewport {
     /// Where the space views are stored.
-    space_views: HashMap<SpaceViewId, SpaceView>,
+    pub(crate) space_views: HashMap<SpaceViewId, SpaceView>,
 
     /// Which views are visible.
-    visible: VisibilitySet,
+    pub(crate) visible: VisibilitySet,
 
     /// The layouts of all the space views.
     ///
@@ -44,7 +46,7 @@ pub struct Viewport {
     trees: HashMap<VisibilitySet, egui_dock::Tree<Tab>>,
 
     /// Show one tab as maximized?
-    maximized: Option<SpaceViewId>,
+    pub(crate) maximized: Option<SpaceViewId>,
 
     /// Store for each space view if the user has edited it (eg. removed).
     /// Is reset when a space view get's automatically removed.
@@ -65,11 +67,15 @@ impl Viewport {
     pub fn new(ctx: &mut ViewerContext<'_>, spaces_info: &SpaceInfoCollection) -> Self {
         crate::profile_function!();
 
-        let mut blueprint = Self::default();
+        let mut viewport = Self::default();
         for space_view in default_created_space_views(ctx, spaces_info) {
-            blueprint.add_space_view(space_view);
+            viewport.add_space_view(space_view);
         }
-        blueprint
+        viewport
+    }
+
+    pub(crate) fn space_view_ids(&self) -> impl Iterator<Item = &SpaceViewId> + '_ {
+        self.space_views.keys()
     }
 
     pub(crate) fn space_view(&self, space_view: &SpaceViewId) -> Option<&SpaceView> {
@@ -117,8 +123,8 @@ impl Viewport {
     ) {
         crate::profile_function!();
 
-        egui::ScrollArea::vertical()
-            .auto_shrink([false; 2])
+        egui::ScrollArea::both()
+            .auto_shrink([true, false])
             .show(ui, |ui| {
                 ui.style_mut().wrap = Some(false);
 
@@ -317,15 +323,20 @@ impl Viewport {
         true
     }
 
-    pub fn viewport_ui(&mut self, ui: &mut egui::Ui, ctx: &mut ViewerContext<'_>) {
-        if let Some(window) = &mut self.space_view_entity_window {
+    pub fn viewport_ui(
+        &mut self,
+        state: &mut ViewportState,
+        ui: &mut egui::Ui,
+        ctx: &mut ViewerContext<'_>,
+    ) {
+        if let Some(window) = &mut state.space_view_entity_window {
             if let Some(space_view) = self.space_views.get_mut(&window.space_view_id) {
                 if !window.ui(ctx, ui, space_view) {
-                    self.space_view_entity_window = None;
+                    state.space_view_entity_window = None;
                 }
             } else {
                 // The space view no longer exist, close the window!
-                self.space_view_entity_window = None;
+                state.space_view_entity_window = None;
             }
         }
 
@@ -368,8 +379,11 @@ impl Viewport {
         };
 
         ui.scope(|ui| {
-            // we need a scope, because egui_dock unfortunately messes with the ui clip rect
-
+            let mut tab_viewer = TabViewer {
+                ctx,
+                space_views: &mut self.space_views,
+                maximized: &mut self.maximized,
+            };
             ui.spacing_mut().item_spacing.x = re_ui::ReUi::view_padding();
 
             egui_dock::DockArea::new(&mut tree)
@@ -440,6 +454,19 @@ impl Viewport {
                 }
             })
             .collect()
+    }
+}
+
+/// State for the blueprint that persists across frames but otherwise
+/// is not saved.
+#[derive(Clone, Default)]
+pub struct ViewportState {
+    pub(crate) space_view_entity_window: Option<SpaceViewEntityPicker>,
+}
+
+impl ViewportState {
+    pub fn show_add_remove_entities_window(&mut self, space_view_id: SpaceViewId) {
+        self.space_view_entity_window = Some(SpaceViewEntityPicker { space_view_id });
     }
 }
 
@@ -653,7 +680,7 @@ impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
     }
 }
 
-fn help_text_ui(ui: &mut egui::Ui, space_view: &SpaceView) {
+fn help_text_ui(ui: &mut egui::Ui, re_ui: &re_ui::ReUi, space_view: &SpaceView) {
     let help_text = match space_view.category {
         ViewCategory::TimeSeries => Some(crate::ui::view_time_series::HELP_TEXT),
         ViewCategory::BarChart => Some(crate::ui::view_bar_chart::HELP_TEXT),
@@ -663,7 +690,7 @@ fn help_text_ui(ui: &mut egui::Ui, space_view: &SpaceView) {
     };
 
     if let Some(help_text) = help_text {
-        crate::misc::help_hover_button(ui).on_hover_text(help_text);
+        re_ui::help_hover_button(ui).on_hover_text(help_text);
     }
 }
 
@@ -780,7 +807,7 @@ fn space_view_ui(
 ) {
     let Some(latest_at) = ctx.rec_cfg.time_ctrl.time_int() else {
         ui.centered_and_justified(|ui| {
-            ui.label(ctx.re_ui.warning_text("No time selected"));
+            ui.weak("No time selected");
         });
         return;
     };

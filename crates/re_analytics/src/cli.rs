@@ -93,7 +93,7 @@ const DETAILS: &str = "
           multiple sessions together. To regenerate it run `rerun analytics clear`.
     - We may associate these events with a hashed `application_id` and `recording_id`,
       so that we can understand if users are more likely to look at few applications often,
-      or tend to use Rerun for many temporary scripts. Again, this helps us prioritize.
+      or tend to use depthai_viewer for many temporary scripts. Again, this helps us prioritize.
     - We may for instance add events that help us understand how well the auto-layout works.
 
     What data is not collected?

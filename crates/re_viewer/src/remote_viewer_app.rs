@@ -36,9 +36,14 @@ impl RemoteViewerApp {
     }
 
     fn connect(&mut self, storage: Option<&dyn eframe::Storage>) {
-        let (tx, rx) = re_smart_channel::smart_channel(re_smart_channel::Source::WsClient {
-            ws_server_url: self.url.clone(),
-        });
+        let (tx, rx) = re_smart_channel::smart_channel(
+            re_smart_channel::SmartMessageSource::WsClient {
+                ws_server_url: self.url.clone(),
+            },
+            re_smart_channel::SmartChannelSource::WsClient {
+                ws_server_url: self.url.clone(),
+            },
+        );
 
         let egui_ctx = self.re_ui.egui_ctx.clone();
 
@@ -48,7 +53,10 @@ impl RemoteViewerApp {
             match re_ws_comms::decode_log_msg(&binary) {
                 Ok(log_msg) => {
                     if tx.send(log_msg).is_ok() {
-                        egui_ctx.request_repaint(); // Wake up UI thread
+                        // Spend a few more milliseconds decoding incoming messages,
+                        // then trigger a repaint (#963):
+                        egui_ctx.request_repaint_after(std::time::Duration::from_millis(10));
+
                         std::ops::ControlFlow::Continue(())
                     } else {
                         re_log::info!("Failed to send log message to viewer - closing");
@@ -71,7 +79,6 @@ impl RemoteViewerApp {
                     self.re_ui.clone(),
                     storage,
                     rx,
-                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 );
 
                 self.app = Some((connection, app));

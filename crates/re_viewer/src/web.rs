@@ -1,117 +1,186 @@
 use eframe::wasm_bindgen::{self, prelude::*};
+
 use std::sync::Arc;
 
+use re_error::ResultExt as _;
 use re_memory::AccountingAllocator;
 
 #[global_allocator]
 static GLOBAL: AccountingAllocator<std::alloc::System> =
     AccountingAllocator::new(std::alloc::System);
 
-/// This is the entry-point for all the Wasm.
-///
-/// This is called once from the HTML.
-/// It loads the app, installs some callbacks, then returns.
-/// The `url` is an optional URL to either an .rrd file over http, or a Rerun WebSocket server.
 #[wasm_bindgen]
-pub async fn start(
-    canvas_id: &str,
-    url: Option<String>,
-) -> std::result::Result<(), eframe::wasm_bindgen::JsValue> {
-    // Make sure panics are logged using `console.error`.
-    console_error_panic_hook::set_once();
+pub struct WebHandle {
+    runner: eframe::WebRunner,
+}
 
-    re_log::setup_web_logging();
+#[wasm_bindgen]
+impl WebHandle {
+    #[allow(clippy::new_without_default)]
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        re_log::setup_web_logging();
 
-    let web_options = eframe::WebOptions {
-        follow_system_theme: false,
-        default_theme: eframe::Theme::Light,
-        wgpu_options: crate::wgpu_options(),
-        depth_buffer: 0,
-    };
+        Self {
+            runner: eframe::WebRunner::new(),
+        }
+    }
 
-    eframe::start_web(
-        canvas_id,
-        web_options,
-        Box::new(move |cc| {
-            let build_info = re_build_info::build_info!();
-            let app_env = crate::AppEnvironment::Web;
-            let persist_state = get_persist_state(&cc.integration_info);
-            let startup_options = crate::StartupOptions {
-                memory_limit: re_memory::MemoryLimit {
-                    // On wasm32 we only have 4GB of memory to play around with.
-                    limit: Some(2_500_000_000),
-                },
-                persist_state,
-            };
-            let re_ui = crate::customize_eframe(cc);
-            let url = url.unwrap_or_else(|| get_url(&cc.integration_info));
+    /// The `url` is an optional URL to either an .rrd file over http, or a Rerun WebSocket server.
+    #[wasm_bindgen]
+    pub async fn start(
+        &self,
+        canvas_id: &str,
+        url: Option<String>,
+    ) -> Result<(), wasm_bindgen::JsValue> {
+        let web_options = eframe::WebOptions {
+            follow_system_theme: false,
+            default_theme: eframe::Theme::Dark,
+            wgpu_options: crate::wgpu_options(),
+            depth_buffer: 0,
+        };
 
-            match categorize_uri(url) {
-                EndpointCategory::HttpRrd(url) => {
-                    // Download an .rrd file over http:
-                    let (tx, rx) =
-                        re_smart_channel::smart_channel(re_smart_channel::Source::RrdHttpStream {
-                            url: url.clone(),
-                        });
-                    let egui_ctx = cc.egui_ctx.clone();
-                    re_log_encoding::stream_rrd_from_http::stream_rrd_from_http(
-                        url,
-                        Arc::new(move |msg| {
-                            egui_ctx.request_repaint(); // wake up ui thread
-                            tx.send(msg).ok();
-                        }),
-                    );
+        self.runner
+            .start(
+                canvas_id,
+                web_options,
+                Box::new(move |cc| {
+                    let build_info = re_build_info::build_info!();
+                    let app_env = crate::AppEnvironment::Web;
+                    let persist_state = get_persist_state(&cc.integration_info);
+                    let startup_options = crate::StartupOptions {
+                        memory_limit: re_memory::MemoryLimit {
+                            // On wasm32 we only have 4GB of memory to play around with.
+                            limit: Some(2_500_000_000),
+                        },
+                        persist_state,
+                    };
+                    let re_ui = crate::customize_eframe(cc);
+                    let url = url.unwrap_or_else(|| get_url(&cc.integration_info));
 
-                    Box::new(crate::App::from_receiver(
-                        build_info,
-                        &app_env,
-                        startup_options,
-                        re_ui,
-                        cc.storage,
-                        rx,
-                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                    ))
-                }
-                EndpointCategory::WebEventListener => {
-                    // Process an rrd when it's posted via `window.postMessage`
-                    let (tx, rx) = re_smart_channel::smart_channel(
-                        re_smart_channel::Source::RrdWebEventListener,
-                    );
-                    let egui_ctx = cc.egui_ctx.clone();
-                    re_log_encoding::stream_rrd_from_http::stream_rrd_from_event_listener(
-                        Arc::new(move |msg| {
-                            egui_ctx.request_repaint(); // wake up ui thread
-                            tx.send(msg).ok();
-                        }),
-                    );
+                    match categorize_uri(url) {
+                        EndpointCategory::HttpRrd(url) => {
+                            // Download an .rrd file over http:
+                            let (tx, rx) = re_smart_channel::smart_channel(
+                                re_smart_channel::SmartMessageSource::RrdHttpStream {
+                                    url: url.clone(),
+                                },
+                                re_smart_channel::SmartChannelSource::RrdHttpStream {
+                                    url: url.clone(),
+                                },
+                            );
+                            re_log_encoding::stream_rrd_from_http::stream_rrd_from_http(
+                                url,
+                                Arc::new({
+                                    let egui_ctx = cc.egui_ctx.clone();
+                                    move |msg| {
+                                        egui_ctx.request_repaint(); // wake up ui thread
+                                        use re_log_encoding::stream_rrd_from_http::HttpMessage;
+                                        match msg {
+                                            HttpMessage::LogMsg(msg) => tx
+                                                .send(msg)
+                                                .warn_on_err_once("failed to send message"),
+                                            HttpMessage::Success => tx
+                                                .quit(None)
+                                                .warn_on_err_once("failed to send quit marker"),
+                                            HttpMessage::Failure(err) => tx
+                                                .quit(Some(err))
+                                                .warn_on_err_once("failed to send quit marker"),
+                                        };
+                                    }
+                                }),
+                            );
 
-                    Box::new(crate::App::from_receiver(
-                        build_info,
-                        &app_env,
-                        startup_options,
-                        re_ui,
-                        cc.storage,
-                        rx,
-                        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                    ))
-                }
-                EndpointCategory::WebSocket(url) => {
-                    // Connect to a Rerun server over WebSockets.
-                    Box::new(crate::RemoteViewerApp::new(
-                        build_info,
-                        app_env,
-                        startup_options,
-                        re_ui,
-                        cc.storage,
-                        url,
-                    ))
-                }
-            }
-        }),
-    )
-    .await?;
+                            Box::new(crate::App::from_receiver(
+                                build_info,
+                                &app_env,
+                                startup_options,
+                                re_ui,
+                                cc.storage,
+                                rx,
+                            ))
+                        }
+                        EndpointCategory::WebEventListener => {
+                            // Process an rrd when it's posted via `window.postMessage`
+                            let (tx, rx) = re_smart_channel::smart_channel(
+                                re_smart_channel::SmartMessageSource::RrdWebEventCallback,
+                                re_smart_channel::SmartChannelSource::RrdWebEventListener,
+                            );
+                            re_log_encoding::stream_rrd_from_http::stream_rrd_from_event_listener(
+                                Arc::new({
+                                    let egui_ctx = cc.egui_ctx.clone();
+                                    move |msg| {
+                                        egui_ctx.request_repaint(); // wake up ui thread
+                                        use re_log_encoding::stream_rrd_from_http::HttpMessage;
+                                        match msg {
+                                            HttpMessage::LogMsg(msg) => tx
+                                                .send(msg)
+                                                .warn_on_err_once("failed to send message"),
+                                            HttpMessage::Success => tx
+                                                .quit(None)
+                                                .warn_on_err_once("failed to send quit marker"),
+                                            HttpMessage::Failure(err) => tx
+                                                .quit(Some(err))
+                                                .warn_on_err_once("failed to send quit marker"),
+                                        };
+                                    }
+                                }),
+                            );
 
-    Ok(())
+                            Box::new(crate::App::from_receiver(
+                                build_info,
+                                &app_env,
+                                startup_options,
+                                re_ui,
+                                cc.storage,
+                                rx,
+                            ))
+                        }
+                        EndpointCategory::WebSocket(url) => {
+                            // Connect to a Rerun server over WebSockets.
+                            Box::new(crate::RemoteViewerApp::new(
+                                build_info,
+                                app_env,
+                                startup_options,
+                                re_ui,
+                                cc.storage,
+                                url,
+                            ))
+                        }
+                    }
+                }),
+            )
+            .await?;
+
+        re_log::debug!("Web app started.");
+
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub fn destroy(&self) {
+        self.runner.destroy();
+    }
+
+    #[wasm_bindgen]
+    pub fn has_panicked(&self) -> bool {
+        self.runner.panic_summary().is_some()
+    }
+
+    #[wasm_bindgen]
+    pub fn panic_message(&self) -> Option<String> {
+        self.runner.panic_summary().map(|s| s.message())
+    }
+
+    #[wasm_bindgen]
+    pub fn panic_callstack(&self) -> Option<String> {
+        self.runner.panic_summary().map(|s| s.callstack())
+    }
+}
+
+#[wasm_bindgen]
+pub fn is_webgpu_build() -> bool {
+    !cfg!(feature = "webgl")
 }
 
 enum EndpointCategory {
@@ -149,7 +218,12 @@ fn get_url(info: &eframe::IntegrationInfo) -> String {
         url = param.clone();
     }
     if url.is_empty() {
-        re_ws_comms::server_url(&info.web_info.location.hostname, Default::default())
+        format!(
+            "{}://{}:{}",
+            re_ws_comms::PROTOCOL,
+            &info.web_info.location.hostname,
+            re_ws_comms::DEFAULT_WS_SERVER_PORT
+        )
     } else {
         url
     }

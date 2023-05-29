@@ -8,7 +8,7 @@
 
 <head>
     <link rel="icon" href="favicon.svg" />
-    <title>rerun viewer</title>
+    <title>Rerun Viewer</title>
     <style>
         html {
             /* Remove touch delay: */
@@ -103,7 +103,6 @@
                 transform: rotate(360deg);
             }
         }
-
     </style>
 </head>
 
@@ -168,14 +167,60 @@
         }
 
         function on_wasm_loaded() {
-            console.debug("wasm loaded. starting app…");
+            // WebGPU version is currently only supported on browsers with WebGPU support, there is no dynamic fallback to WebGL.
+            if (wasm_bindgen.is_webgpu_build() && typeof navigator.gpu === 'undefined') {
+                console.debug("`navigator.gpu` is undefined. This indicates lack of WebGPU support.");
+                document.getElementById("center_text").innerHTML = `
+                <p>
+                    Missing WebGPU support.
+                </p>
+                <p style="font-size:18px">
+                    This version of Rerun requires WebGPU support which is not available in your browser.
+                    Either try a different browser or use the WebGL version of Rerun.
+                </p>`;
+                return;
+            }
 
-            // This call installs a bunch of callbacks and then returns:
+            console.debug("Wasm loaded. Starting app…");
+
+            let handle = new wasm_bindgen.WebHandle();
+
+            function check_for_panic() {
+                if (handle.has_panicked()) {
+                    console.error("Rerun has crashed");
+
+                    document.getElementById("the_canvas_id").remove();
+                    document.getElementById("center_text").innerHTML = `
+                        <p>
+                            Rerun has crashed.
+                        </p>
+                        <p style="font-size:10px" align="left">
+                            ${handle.panic_message()}
+                        </p>
+                        <p style="font-size:14px">
+                            See the console for details.
+                        </p>
+                        <p style="font-size:14px">
+                            Reload the page to try again.
+                        </p>`;
+                } else {
+                    let delay_ms = 1000;
+                    setTimeout(check_for_panic, delay_ms);
+                }
+            }
+
+            check_for_panic();
+
             let url = null; // you can use this to point to an .rrd file over http, or a WebSocket Rerun server.
-            wasm_bindgen.start("the_canvas_id", url);
+            handle.start("the_canvas_id", url).then(on_app_started).catch(on_wasm_error);
+        }
 
-            console.debug("app started.");
-            document.getElementById("center_text").remove();
+        function on_app_started(handle) {
+            // Call `handle.destroy()` to stop. Uncomment to quick result:
+            // setTimeout(() => { handle.destroy(); handle.free()) }, 2000)
+
+            console.debug("App started.");
+            document.getElementById("center_text").innerHTML = '';
 
             if (window.location !== window.parent.location) {
                 window.parent.postMessage("READY", "*");
@@ -184,6 +229,14 @@
 
         function on_wasm_error(error) {
             console.error("Failed to start: " + error);
+
+            let render_backend_name = "WebGPU/WebGL";
+            try {
+                render_backend_name = wasm_bindgen.is_webgpu_build() ? "WebGPU" : "WebGL";
+            } catch (e) {
+                // loading the wasm probably failed.
+            }
+
             document.getElementById("center_text").innerHTML = `
                 <p>
                     An error occurred during loading:
@@ -192,7 +245,7 @@
                     ${error}
                 </p>
                 <p style="font-size:14px">
-                    Make sure you use a modern browser with WebGL and Wasm enabled.
+                        Make sure you use a modern browser with ${render_backend_name} and Wasm enabled.
                 </p>`;
         }
     </script>

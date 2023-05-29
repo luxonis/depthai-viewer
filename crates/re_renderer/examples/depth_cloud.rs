@@ -123,6 +123,7 @@ impl RenderDepthClouds {
                 projection_from_view: Projection::Perspective {
                     vertical_fov: 70.0 * std::f32::consts::TAU / 360.0,
                     near_plane_distance: 0.01,
+                    aspect_ratio: resolution_in_pixel[0] as f32 / resolution_in_pixel[1] as f32,
                 },
                 pixels_from_point,
                 ..Default::default()
@@ -204,6 +205,7 @@ impl RenderDepthClouds {
                 projection_from_view: Projection::Perspective {
                     vertical_fov: 70.0 * std::f32::consts::TAU / 360.0,
                     near_plane_distance: 0.01,
+                    aspect_ratio: resolution_in_pixel[0] as f32 / resolution_in_pixel[1] as f32,
                 },
                 pixels_from_point,
                 ..Default::default()
@@ -289,9 +291,10 @@ impl framework::Example for RenderDepthClouds {
         let splits = framework::split_resolution(resolution, 1, 2).collect::<Vec<_>>();
 
         let frame_size = albedo.dimensions.as_vec2().extend(0.0) / 15.0;
-        let scale = glam::Mat4::from_scale(frame_size);
-        let rotation = glam::Mat4::IDENTITY;
-        let translation_center = glam::Mat4::from_translation(-glam::Vec3::splat(0.5) * frame_size);
+        let scale = glam::Affine3A::from_scale(frame_size);
+        let rotation = glam::Affine3A::IDENTITY;
+        let translation_center =
+            glam::Affine3A::from_translation(-glam::Vec3::splat(0.5) * frame_size);
         let world_from_model = rotation * translation_center * scale;
 
         let frame_draw_data = {
@@ -314,7 +317,7 @@ impl framework::Example for RenderDepthClouds {
                     .transform_point3(glam::Vec3::new(1.0, 1.0, 0.0)),
                 extent_u: world_from_model.transform_vector3(-glam::Vec3::X),
                 extent_v: world_from_model.transform_vector3(-glam::Vec3::Y),
-                colormapped_texture: ColormappedTexture::from_unorm_srgba(albedo.texture.clone()),
+                colormapped_texture: ColormappedTexture::from_unorm_rgba(albedo.texture.clone()),
                 options: RectangleOptions {
                     texture_filter_magnification: re_renderer::renderer::TextureFilterMag::Nearest,
                     texture_filter_minification: re_renderer::renderer::TextureFilterMin::Linear,

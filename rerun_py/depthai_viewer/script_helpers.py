@@ -7,20 +7,21 @@ Example
 -------
 ```python
 import argparse
-import depthai_viewer as viewer
+import rerun as rr
 
 parser = argparse.ArgumentParser()
-viewer.script_add_args(parser)
+rr.script_add_args(parser)
 args = parser.parse_args()
-viewer.script_setup(args, "my_application")
+rr.script_setup(args, "my_application")
 # ... Run your logging code here ...
-viewer.script_teardown(args)
+rr.script_teardown(args)
 ```
 
 """
 from argparse import ArgumentParser, Namespace
 
-import depthai_viewer as viewer
+import rerun as rr
+from rerun.recording_stream import RecordingStream
 
 
 def script_add_args(parser: ArgumentParser) -> None:
@@ -53,7 +54,7 @@ def script_add_args(parser: ArgumentParser) -> None:
 def script_setup(
     args: Namespace,
     application_id: str,
-) -> None:
+) -> RecordingStream:
     """
     Run common Rerun script setup actions. Connect to the viewer if necessary.
 
@@ -65,19 +66,28 @@ def script_setup(
         The application ID to use for the viewer.
 
     """
-    viewer.init(application_id=application_id, default_enabled=True, strict=True)
+    rr.init(
+        application_id=application_id,
+        default_enabled=True,
+        strict=True,
+    )
 
+    rec: RecordingStream = rr.get_global_data_recording()  # type: ignore[assignment]
+
+    # NOTE: mypy thinks these methods don't exist because they're monkey-patched.
     if args.serve:
-        viewer.serve()
+        rec.serve()  # type: ignore[attr-defined]
     elif args.connect:
         # Send logging data to separate `rerun` process.
         # You can omit the argument to connect to the default address,
         # which is `127.0.0.1:9876`.
-        viewer.connect(args.addr)
+        rec.connect(args.addr)  # type: ignore[attr-defined]
     elif args.save is not None:
-        viewer.save(args.save)
+        rec.save(args.save)  # type: ignore[attr-defined]
     elif not args.headless:
-        viewer.spawn()
+        rec.spawn()  # type: ignore[attr-defined]
+
+    return rec
 
 
 def script_teardown(args: Namespace) -> None:

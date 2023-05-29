@@ -1,8 +1,11 @@
-import numpy as np
+from typing import Optional
+
 import numpy.typing as npt
 
-from depthai_viewer import bindings
-from depthai_viewer.log.log_decorator import log_decorator
+from rerun import bindings
+from rerun.components.pinhole import Pinhole, PinholeArray
+from rerun.log.log_decorator import log_decorator
+from rerun.recording_stream import RecordingStream
 
 __all__ = [
     "log_pinhole",
@@ -17,6 +20,7 @@ def log_pinhole(
     width: int,
     height: int,
     timeless: bool = False,
+    recording: Optional[RecordingStream] = None,
 ) -> None:
     """
     Log a perspective camera model.
@@ -58,13 +62,12 @@ def log_pinhole(
         Height of the image in pixels.
     timeless:
         If true, the camera will be timeless (default: False).
+    recording:
+        Specifies the [`rerun.RecordingStream`][] to use.
+        If left unspecified, defaults to the current active data recording, if there is one.
+        See also: [`rerun.init`][], [`rerun.set_global_data_recording`][].
 
     """
 
-    # Transform arrow handling happens inside the python bridge
-    bindings.log_pinhole(
-        entity_path,
-        resolution=[width, height],
-        child_from_parent=np.asarray(child_from_parent).T.tolist(),
-        timeless=timeless,
-    )
+    instanced = {"rerun.pinhole": PinholeArray.from_pinhole(Pinhole(child_from_parent, [width, height]))}
+    bindings.log_arrow_msg(entity_path, components=instanced, timeless=timeless)

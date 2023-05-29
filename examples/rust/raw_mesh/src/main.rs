@@ -12,13 +12,14 @@ use std::path::PathBuf;
 
 use anyhow::anyhow;
 use bytes::Bytes;
-use depthai_viewer::components::{
-    ColorRGBA, Mesh3D, MeshId, RawMesh3D, Transform, Vec4D, ViewCoordinates,
+use rerun::components::{
+    ColorRGBA, Mesh3D, MeshId, RawMesh3D, Transform3D, Vec4D, ViewCoordinates,
 };
-use depthai_viewer::time::{TimeType, Timeline};
-use depthai_viewer::{
+use rerun::time::{TimeType, Timeline};
+use rerun::transform::TranslationRotationScale3D;
+use rerun::{
     external::{re_log, re_memory::AccountingAllocator},
-    EntityPath, MsgSender, Session,
+    EntityPath, MsgSender, RecordingStream,
 };
 
 // TODO(cmc): This example needs to support animations to showcase Rerun's time capabilities.
@@ -54,26 +55,22 @@ impl From<GltfPrimitive> for Mesh3D {
 }
 
 // Declare how to turn a glTF transform into a Rerun component (`Transform`).
-impl From<GltfTransform> for Transform {
+impl From<GltfTransform> for Transform3D {
     fn from(transform: GltfTransform) -> Self {
-        Transform::Rigid3(depthai_viewer::components::Rigid3 {
-            rotation: depthai_viewer::components::Quaternion {
-                x: transform.r[0],
-                y: transform.r[1],
-                z: transform.r[2],
-                w: transform.r[3],
-            },
-            translation: depthai_viewer::components::Vec3D(transform.t),
-        })
+        Transform3D::new(TranslationRotationScale3D::affine(
+            transform.t,
+            rerun::components::Quaternion::from_xyzw(transform.r),
+            transform.s,
+        ))
     }
 }
 
 /// Log a glTF node with Rerun.
-fn log_node(session: &Session, node: GltfNode) -> anyhow::Result<()> {
+fn log_node(rec_stream: &RecordingStream, node: GltfNode) -> anyhow::Result<()> {
     let ent_path = EntityPath::from(node.name.as_str());
 
     // Convert glTF objects into Rerun components.
-    let transform = node.transform.map(Transform::from);
+    let transform = node.transform.map(Transform3D::from);
     let primitives = node
         .primitives
         .into_iter()
@@ -85,19 +82,19 @@ fn log_node(session: &Session, node: GltfNode) -> anyhow::Result<()> {
         .with_time(timeline_keyframe, 0)
         .with_component(&primitives)?
         .with_component(transform.as_ref())?
-        .send(session)?;
+        .send(rec_stream)?;
 
     // Recurse through all of the node's children!
     for mut child in node.children {
         child.name = [node.name.as_str(), child.name.as_str()].join("/");
-        log_node(session, child)?;
+        log_node(rec_stream, child)?;
     }
 
     Ok(())
 }
 
 fn log_coordinate_space(
-    session: &Session,
+    rec_stream: &RecordingStream,
     ent_path: impl Into<EntityPath>,
     axes: &str,
 ) -> anyhow::Result<()> {
@@ -108,7 +105,7 @@ fn log_coordinate_space(
     MsgSender::new(ent_path)
         .with_timeless(true)
         .with_component(&[view_coords])?
-        .send(session)
+        .send(rec_stream)
         .map_err(Into::into)
 }
 
@@ -133,7 +130,7 @@ enum Scene {
 #[clap(author, version, about)]
 struct Args {
     #[command(flatten)]
-    rerun: depthai_viewer::clap::RerunArgs,
+    rerun: rerun::clap::RerunArgs,
 
     /// Specifies the glTF scene to load.
     #[clap(long, value_enum, default_value = "buggy")]
@@ -173,7 +170,7 @@ impl Args {
     }
 }
 
-fn run(session: &Session, args: &Args) -> anyhow::Result<()> {
+fn run(rec_stream: &RecordingStream, args: &Args) -> anyhow::Result<()> {
     // Read glTF scene
     let (doc, buffers, _) = gltf::import_slice(Bytes::from(std::fs::read(args.scene_path()?)?))?;
     let nodes = load_gltf(&doc, &buffers);
@@ -181,8 +178,8 @@ fn run(session: &Session, args: &Args) -> anyhow::Result<()> {
     // Log raw glTF nodes and their transforms with Rerun
     for root in nodes {
         re_log::info!(scene = root.name, "logging glTF scene");
-        log_coordinate_space(session, root.name.as_str(), "RUB")?;
-        log_node(session, root)?;
+        log_coordinate_space(rec_stream, root.name.as_str(), "RUB")?;
+        log_node(rec_stream, root)?;
     }
 
     Ok(())
@@ -197,8 +194,8 @@ fn main() -> anyhow::Result<()> {
     let default_enabled = true;
     args.rerun
         .clone()
-        .run("raw_mesh_rs", default_enabled, move |session| {
-            run(&session, &args).unwrap();
+        .run("raw_mesh_rs", default_enabled, move |rec_stream| {
+            run(&rec_stream, &args).unwrap();
         })
 }
 
@@ -274,7 +271,7 @@ fn node_primitives<'data>(
             let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
             let indices = reader.read_indices();
-            let indices = indices.map(|indices| indices.into_u32().into_iter().collect());
+            let indices = indices.map(|indices| indices.into_u32().collect());
 
             let vertex_positions = reader.read_positions().unwrap();
             let vertex_positions = vertex_positions.collect();

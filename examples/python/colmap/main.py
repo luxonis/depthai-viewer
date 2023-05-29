@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any, Final, Optional, Tuple
 
 import cv2
-import depthai_viewer as viewer
 import numpy as np
 import numpy.typing as npt
 import requests
+import rerun as rr  # pip install rerun-sdk
 from read_write_model import Camera, read_model
 from tqdm import tqdm
 
@@ -99,7 +99,7 @@ def read_and_log_sparse_reconstruction(
         # Filter out noisy points
         points3D = {id: point for id, point in points3D.items() if point.rgb.any() and len(point.image_ids) > 4}
 
-    viewer.log_view_coordinates("/", up="-Y", timeless=True)
+    rr.log_view_coordinates("/", up="-Y", timeless=True)
 
     # Iterate through images (video frames) logging data related to each frame.
     for image in sorted(images.values(), key=lambda im: im.name):  # type: ignore[no-any-return]
@@ -114,7 +114,6 @@ def read_and_log_sparse_reconstruction(
         frame_idx = int(idx_match.group(0))
 
         quat_xyzw = image.qvec[[1, 2, 3, 0]]  # COLMAP uses wxyz quaternions
-        camera_from_world = (image.tvec, quat_xyzw)  # COLMAP's camera transform is "camera from world"
         camera = cameras[image.camera_id]
         if resize:
             camera, scale_factor = scale_camera(camera, resize)
@@ -134,24 +133,24 @@ def read_and_log_sparse_reconstruction(
         if resize:
             visible_xys *= scale_factor
 
-        viewer.set_time_sequence("frame", frame_idx)
+        rr.set_time_sequence("frame", frame_idx)
 
         points = [point.xyz for point in visible_xyzs]
         point_colors = [point.rgb for point in visible_xyzs]
         point_errors = [point.error for point in visible_xyzs]
 
-        viewer.log_scalar("plot/avg_reproj_err", np.mean(point_errors), color=[240, 45, 58])
+        rr.log_scalar("plot/avg_reproj_err", np.mean(point_errors), color=[240, 45, 58])
 
-        viewer.log_points("points", points, colors=point_colors, ext={"error": point_errors})
+        rr.log_points("points", points, colors=point_colors, ext={"error": point_errors})
 
-        viewer.log_rigid3(
-            "camera",
-            child_from_parent=camera_from_world,
-            xyz="RDF",  # X=Right, Y=Down, Z=Forward
+        # COLMAP's camera transform is "camera from world"
+        rr.log_transform3d(
+            "camera", rr.TranslationRotationScale3D(image.tvec, rr.Quaternion(xyzw=quat_xyzw)), from_parent=True
         )
+        rr.log_view_coordinates("camera", xyz="RDF")  # X=Right, Y=Down, Z=Forward
 
         # Log camera intrinsics
-        viewer.log_pinhole(
+        rr.log_pinhole(
             "camera/image",
             child_from_parent=intrinsics,
             width=camera.width,
@@ -163,11 +162,11 @@ def read_and_log_sparse_reconstruction(
             img = cv2.resize(img, resize)
             jpeg_quality = [int(cv2.IMWRITE_JPEG_QUALITY), 75]
             _, encimg = cv2.imencode(".jpg", img, jpeg_quality)
-            viewer.log_image_file("camera/image", img_bytes=encimg)
+            rr.log_image_file("camera/image", img_bytes=encimg)
         else:
-            viewer.log_image_file("camera/image", img_path=dataset_path / "images" / image.name)
+            rr.log_image_file("camera/image", img_path=dataset_path / "images" / image.name)
 
-        viewer.log_points("camera/image/keypoints", visible_xys, colors=[34, 138, 167])
+        rr.log_points("camera/image/keypoints", visible_xys, colors=[34, 138, 167])
 
 
 def main() -> None:
@@ -181,17 +180,17 @@ def main() -> None:
         help="Which dataset to download",
     )
     parser.add_argument("--resize", action="store", help="Target resolution to resize images")
-    viewer.script_add_args(parser)
+    rr.script_add_args(parser)
     args, unknown = parser.parse_known_args()
     [__import__("logging").warning(f"unknown arg: {arg}") for arg in unknown]
 
     if args.resize:
         args.resize = tuple(int(x) for x in args.resize.split("x"))
 
-    viewer.script_setup(args, "colmap")
+    rr.script_setup(args, "colmap")
     dataset_path = get_downloaded_dataset_path(args.dataset)
     read_and_log_sparse_reconstruction(dataset_path, filter_output=not args.unfiltered, resize=args.resize)
-    viewer.script_teardown(args)
+    rr.script_teardown(args)
 
 
 if __name__ == "__main__":

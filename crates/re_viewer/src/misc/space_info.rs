@@ -3,11 +3,22 @@ use std::collections::BTreeMap;
 use nohash_hasher::IntSet;
 
 use re_arrow_store::{LatestAtQuery, TimeInt, Timeline};
-use re_data_store::{log_db::EntityDb, query_latest_single, EntityPath, EntityTree};
-use re_log_types::{Transform, ViewCoordinates};
-use re_query::query_entity_with_primary;
+use re_data_store::{log_db::EntityDb, EntityPath, EntityTree};
+use re_log_types::component_types::{DisconnectedSpace, Pinhole, Transform3D};
 
 use super::UnreachableTransform;
+
+/// Transform connecting two space paths.
+#[derive(Clone, Debug)]
+pub enum SpaceInfoConnection {
+    Connected {
+        transform3d: Option<Transform3D>,
+        pinhole: Option<Pinhole>,
+    },
+
+    /// Explicitly disconnected via a [`DisconnectedSpace`] component.
+    Disconnected,
+}
 
 /// Information about one "space".
 ///
@@ -23,10 +34,10 @@ pub struct SpaceInfo {
 
     /// Nearest ancestor to whom we are not connected via an identity transform.
     /// The transform is from parent to child, i.e. the *same* as in its [`Self::child_spaces`] array.
-    parent: Option<(EntityPath, Transform)>,
+    parent: Option<(EntityPath, SpaceInfoConnection)>,
 
     /// Nearest descendants to whom we are not connected with an identity transform.
-    pub child_spaces: BTreeMap<EntityPath, Transform>,
+    pub child_spaces: BTreeMap<EntityPath, SpaceInfoConnection>,
 }
 
 impl SpaceInfo {
@@ -55,29 +66,28 @@ impl SpaceInfo {
         ) {
             visitor(space_info);
 
-            for (child_path, transform) in &space_info.child_spaces {
+            for (child_path, connection) in &space_info.child_spaces {
                 let Some(child_space) = space_info_collection.spaces.get(child_path) else {
                     re_log::warn_once!("Child space info {} not part of space info collection", child_path);
                     continue;
                 };
 
-                let is_pinhole = match transform {
-                    Transform::Unknown => {
-                        continue;
+                // don't allow nested pinhole
+                let has_pinhole = matches!(
+                    connection,
+                    SpaceInfoConnection::Connected {
+                        pinhole: Some(_),
+                        ..
                     }
-                    Transform::Rigid3(_) => false,
-                    Transform::Pinhole(_) => {
-                        // Don't allow nested pinhole
-                        if encountered_pinhole {
-                            continue;
-                        }
-                        true
-                    }
-                };
+                );
+                if encountered_pinhole && has_pinhole {
+                    continue;
+                }
+
                 visit_descendants_with_reachable_transform_recursively(
                     child_space,
                     space_info_collection,
-                    is_pinhole,
+                    has_pinhole,
                     visitor,
                 );
             }
@@ -112,15 +122,33 @@ impl SpaceInfoCollection {
             tree: &EntityTree,
             query: &LatestAtQuery,
         ) {
-            if let Some(transform) = query_latest_single::<Transform>(entity_db, &tree.path, query)
+            // Determine how the paths are connected.
+            let store = &entity_db.data_store;
+            let transform3d = store.query_latest_component::<Transform3D>(&tree.path, query);
+            let pinhole = store.query_latest_component::<Pinhole>(&tree.path, query);
+
+            let connection = if transform3d.is_some() || pinhole.is_some() {
+                Some(SpaceInfoConnection::Connected {
+                    transform3d,
+                    pinhole,
+                })
+            } else if store
+                .query_latest_component::<DisconnectedSpace>(&tree.path, query)
+                .is_some()
             {
-                // A set transform (likely non-identity) - create a new space.
+                Some(SpaceInfoConnection::Disconnected)
+            } else {
+                None
+            };
+
+            if let Some(connection) = connection {
+                // A set transform - create a new space.
                 parent_space
                     .child_spaces
-                    .insert(tree.path.clone(), transform.clone());
+                    .insert(tree.path.clone(), connection.clone());
 
                 let mut child_space_info = SpaceInfo::new(tree.path.clone());
-                child_space_info.parent = Some((parent_space.path.clone(), transform));
+                child_space_info.parent = Some((parent_space.path.clone(), connection));
                 child_space_info
                     .descendants_without_transform
                     .insert(tree.path.clone()); // spaces includes self
@@ -138,7 +166,7 @@ impl SpaceInfoCollection {
                     .spaces
                     .insert(tree.path.clone(), child_space_info);
             } else {
-                // no transform == identity transform.
+                // no transform == implicit identity transform.
                 parent_space
                     .descendants_without_transform
                     .insert(tree.path.clone()); // spaces includes self
@@ -157,7 +185,11 @@ impl SpaceInfoCollection {
         let mut spaces_info = Self::default();
 
         // Start at the root. The root is always part of the collection!
-        if query_latest_single::<Transform>(entity_db, &EntityPath::root(), &query).is_some() {
+        if entity_db
+            .data_store
+            .query_latest_component::<Transform3D>(&EntityPath::root(), &query)
+            .is_some()
+        {
             re_log::warn_once!("The root entity has a 'transform' component! This will have no effect. Did you mean to apply the transform elsewhere?");
         }
         let mut root_space_info = SpaceInfo::new(EntityPath::root());
@@ -223,12 +255,16 @@ impl SpaceInfoCollection {
                 &to_reference_space.parent
             };
 
-            if let Some((parent_path, transform)) = parent {
+            if let Some((parent_path, connection)) = parent {
                 // Matches the connectedness requirements in `inverse_transform_at`/`transform_at` in `transform_cache.rs`
-                match transform {
-                    Transform::Unknown => Err(UnreachableTransform::UnknownTransform),
-                    Transform::Rigid3(_) => Ok(()),
-                    Transform::Pinhole(pinhole) => {
+                match connection {
+                    SpaceInfoConnection::Disconnected => {
+                        Err(UnreachableTransform::DisconnectedSpace)
+                    }
+                    SpaceInfoConnection::Connected {
+                        pinhole: Some(pinhole),
+                        ..
+                    } => {
                         if encountered_pinhole {
                             Err(UnreachableTransform::NestedPinholeCameras)
                         } else {
@@ -240,6 +276,7 @@ impl SpaceInfoCollection {
                             }
                         }
                     }
+                    SpaceInfoConnection::Connected { .. } => Ok(()),
                 }?;
 
                 let Some(parent_space) = self.spaces.get(parent_path)
@@ -268,24 +305,3 @@ impl SpaceInfoCollection {
 }
 
 // ----------------------------------------------------------------------------
-
-pub fn query_view_coordinates(
-    entity_db: &EntityDb,
-    ent_path: &EntityPath,
-    query: &LatestAtQuery,
-) -> Option<re_log_types::ViewCoordinates> {
-    let data_store = &entity_db.data_store;
-
-    let entity_view =
-        query_entity_with_primary::<ViewCoordinates>(data_store, query, ent_path, &[]).ok()?;
-
-    let mut iter = entity_view.iter_primary().ok()?;
-
-    let view_coords = iter.next()?;
-
-    if iter.next().is_some() {
-        re_log::warn_once!("Unexpected batch for ViewCoordinates at: {}", ent_path);
-    }
-
-    view_coords
-}

@@ -1,12 +1,15 @@
 use egui::RichText;
 use re_ui::Command;
-
-use super::{SelectionHistory, Viewport};
-use crate::{misc::ItemCollection, Item};
+use re_viewer_context::{Item, ItemCollection, SelectionHistory};
+use super::Viewport;
 
 // ---
 
-impl SelectionHistory {
+#[derive(Default, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct SelectionHistoryUi {}
+
+impl SelectionHistoryUi {
     pub(crate) fn selection_ui(
         &mut self,
         re_ui: &re_ui::ReUi,
@@ -37,37 +40,15 @@ impl SelectionHistory {
         })
         .inner
     }
-
-    #[must_use]
-    pub fn select_previous(&mut self) -> Option<ItemCollection> {
-        if let Some(previous) = self.previous() {
-            if previous.index != self.current {
-                self.current = previous.index;
-                return self.current().map(|s| s.selection);
-            }
-        }
-        None
-    }
-
-    #[must_use]
-    pub fn select_next(&mut self) -> Option<ItemCollection> {
-        if let Some(next) = self.next() {
-            if next.index != self.current {
-                self.current = next.index;
-                return self.current().map(|s| s.selection);
-            }
-        }
-        None
-    }
-
     fn prev_button_ui(
         &mut self,
         re_ui: &re_ui::ReUi,
         ui: &mut egui::Ui,
         viewport: &Viewport,
+        history: &mut SelectionHistory,
     ) -> Option<ItemCollection> {
         // undo selection
-        if let Some(previous) = self.previous() {
+        if let Some(previous) = history.previous() {
             let response = re_ui
                 .small_icon_button(ui, &re_ui::icons::ARROW_LEFT)
                 .on_hover_text(format!(
@@ -76,13 +57,13 @@ impl SelectionHistory {
                 \n\
                 Right-click for more.",
                     Command::SelectionPrevious.format_shortcut_tooltip_suffix(ui.ctx()),
-                    item_collection_to_string(viewport, &previous.selection),
+                    item_collection_to_string(blueprint, &previous.selection),
                 ));
 
             let response = response.context_menu(|ui| {
                 // undo: newest on top, oldest on bottom
-                for i in (0..self.current).rev() {
-                    self.history_item_ui(viewport, ui, i);
+                for i in (0..history.current).rev() {
+                    self.history_item_ui(blueprint, ui, i, history);
                 }
             });
 
@@ -90,7 +71,7 @@ impl SelectionHistory {
             // button or something (but then again it, it'd make more sense to do that
             // at the egui level rather than specifically here).
             if response.clicked() {
-                return self.select_previous();
+                return history.select_previous();
             }
         } else {
             ui.add_enabled_ui(false, |ui| {
@@ -108,9 +89,9 @@ impl SelectionHistory {
         re_ui: &re_ui::ReUi,
         ui: &mut egui::Ui,
         viewport: &Viewport,
-    ) -> Option<ItemCollection> {
-        // redo selection
-        if let Some(next) = self.next() {
+        history: &mut SelectionHistory,
+    ) -> Option<ItemCollection> {        // redo selection
+        if let Some(next) = history.next() {
             let response = re_ui
                 .small_icon_button(ui, &re_ui::icons::ARROW_RIGHT)
                 .on_hover_text(format!(
@@ -133,7 +114,7 @@ impl SelectionHistory {
             // button or something (but then again it, it'd make more sense to do that
             // at the egui level rather than specifically here).
             if response.clicked() {
-                return self.select_next();
+                return history.select_next();
             }
         } else {
             ui.add_enabled_ui(false, |ui| {
@@ -146,13 +127,23 @@ impl SelectionHistory {
         None
     }
 
-    fn history_item_ui(&mut self, viewport: &Viewport, ui: &mut egui::Ui, index: usize) {
-        if let Some(sel) = self.stack.get(index) {
+    #[allow(clippy::unused_self)]
+    fn history_item_ui(
+        &mut self,
+        viewport: &Viewport,
+        ui: &mut egui::Ui,
+        index: usize,
+        history: &mut SelectionHistory,
+    ) {
+        if let Some(sel) = history.stack.get(index) {
             ui.horizontal(|ui| {
                 {
                     // borrow checker workaround
-                    let sel = item_collection_to_string(viewport, sel);
-                    if ui.selectable_value(&mut self.current, index, sel).clicked() {
+                    let sel = item_collection_to_string(blueprint, sel);
+                    if ui
+                        .selectable_value(&mut history.current, index, sel)
+                        .clicked()
+                    {
                         ui.close_menu();
                     }
                 }

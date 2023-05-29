@@ -1,24 +1,22 @@
-use glam::Mat4;
-
 use re_data_store::{EntityPath, InstancePathHash};
 use re_log_types::{
     component_types::{ClassId, ColorRGBA, InstanceKey, KeypointId, Label, Point3D, Radius},
     Component,
 };
 use re_query::{query_primary_with_history, EntityView, QueryError};
+use re_viewer_context::{ResolvedAnnotationInfo, SceneQuery, ViewerContext};
 
 use crate::{
-    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache, ViewerContext},
-    ui::{
-        annotations::ResolvedAnnotationInfo,
-        scene::SceneQuery,
-        view_spatial::{
-            scene::scene_part::{
+    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache},
+    ui::view_spatial::{
+        scene::{
+            scene_part::{
                 instance_key_to_picking_id, instance_path_hash_for_picking,
                 process_annotations_and_keypoints, process_colors, process_radii,
             },
-            SceneSpatial, UiLabel, UiLabelTarget,
+            EntityDepthOffsets,
         },
+        SceneSpatial, UiLabel, UiLabelTarget,
     },
 };
 
@@ -35,7 +33,7 @@ impl Points3DPart {
         instance_path_hashes: &'a [InstancePathHash],
         colors: &'a [egui::Color32],
         annotation_infos: &'a [ResolvedAnnotationInfo],
-        world_from_obj: Mat4,
+        world_from_obj: glam::Affine3A,
     ) -> Result<impl Iterator<Item = UiLabel> + 'a, QueryError> {
         let labels = itertools::izip!(
             annotation_infos.iter(),
@@ -70,7 +68,7 @@ impl Points3DPart {
         query: &SceneQuery<'_>,
         entity_view: &EntityView<Point3D>,
         ent_path: &EntityPath,
-        world_from_obj: Mat4,
+        world_from_obj: glam::Affine3A,
         entity_highlight: &SpaceViewOutlineMasks,
     ) -> Result<(), QueryError> {
         crate::profile_function!();
@@ -98,7 +96,7 @@ impl Points3DPart {
                         instance_path_hash_for_picking(
                             ent_path,
                             instance_key,
-                            entity_view,
+                            entity_view.num_instances(),
                             entity_highlight.any_selection_highlight,
                         )
                     })
@@ -133,7 +131,7 @@ impl Points3DPart {
             let picking_instance_ids = entity_view.iter_instance_keys()?.map(|instance_key| {
                 instance_key_to_picking_id(
                     instance_key,
-                    entity_view,
+                    entity_view.num_instances(),
                     entity_highlight.any_selection_highlight,
                 )
             });
@@ -178,6 +176,7 @@ impl ScenePart for Points3DPart {
         query: &SceneQuery<'_>,
         transforms: &TransformCache,
         highlights: &SpaceViewHighlights,
+        _depth_offsets: &EntityDepthOffsets,
     ) {
         crate::profile_scope!("Points3DPart");
 

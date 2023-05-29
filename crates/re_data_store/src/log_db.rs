@@ -5,9 +5,9 @@ use nohash_hasher::IntMap;
 
 use re_arrow_store::{DataStoreConfig, TimeInt};
 use re_log_types::{
-    component_types::InstanceKey, ArrowMsg, BeginRecordingMsg, Component as _, ComponentPath,
-    DataCell, DataRow, DataTable, EntityPath, EntityPathHash, EntityPathOpMsg, LogMsg, PathOp,
-    RecordingId, RecordingInfo, RowId, Time, TimePoint, Timeline,
+    component_types::InstanceKey, ArrowMsg, Component as _, ComponentPath, DataCell, DataRow,
+    DataTable, EntityPath, EntityPathHash, EntityPathOpMsg, LogMsg, PathOp, RecordingId,
+    RecordingInfo, RecordingType, RowId, SetRecordingInfo, TimePoint, Timeline, Time
 };
 
 use crate::{Error, TimesPerTimeline};
@@ -62,7 +62,7 @@ impl EntityDb {
         let mut table = DataTable::from_arrow_msg(msg)?;
         table.compute_all_size_bytes();
 
-        // TODO(#1619): batch all of this
+        // TODO(cmc): batch all of this
         for row in table.to_rows() {
             self.try_add_data_row(&row)?;
         }
@@ -70,7 +70,8 @@ impl EntityDb {
         Ok(())
     }
 
-    fn try_add_data_row(&mut self, row: &DataRow) -> Result<(), Error> {
+    // TODO(jleibs): If this shouldn't be public, chain together other setters
+    pub fn try_add_data_row(&mut self, row: &DataRow) -> Result<(), Error> {
         for (&timeline, &time_int) in row.timepoint().iter() {
             self.times_per_timeline.insert(timeline, time_int);
         }
@@ -88,6 +89,8 @@ impl EntityDb {
                 let cell =
                     DataCell::from_arrow_empty(cell.component_name(), cell.datatype().clone());
 
+                // NOTE(cmc): The fact that this inserts data to multiple entity paths using a
+                // single `RowId` is... interesting. Keep it in mind.
                 let row = DataRow::from_cells1(
                     row_id,
                     row.entity_path.clone(),
@@ -117,6 +120,9 @@ impl EntityDb {
                 // TODO(jleibs): Faster empty-array creation
                 let cell =
                     DataCell::from_arrow_empty(component_path.component_name, data_type.clone());
+
+                // NOTE(cmc): The fact that this inserts data to multiple entity paths using a
+                // single `RowId` is... interesting. Keep it in mind.
                 let row = DataRow::from_cells1(
                     row_id,
                     component_path.entity_path.clone(),
@@ -160,23 +166,35 @@ impl EntityDb {
 // ----------------------------------------------------------------------------
 
 /// A in-memory database built from a stream of [`LogMsg`]es.
-#[derive(Default)]
 pub struct LogDb {
+    /// The [`RecordingId`] for this log.
+    recording_id: RecordingId,
+
     /// All [`EntityPathOpMsg`]s ever received.
     entity_op_msgs: BTreeMap<RowId, EntityPathOpMsg>,
 
     /// Set by whomever created this [`LogDb`].
-    pub data_source: Option<re_smart_channel::Source>,
+    pub data_source: Option<re_smart_channel::SmartChannelSource>,
 
-    /// Comes in a special message, [`LogMsg::BeginRecordingMsg`].
-    recording_msg: Option<BeginRecordingMsg>,
+    /// Comes in a special message, [`LogMsg::SetRecordingInfo`].
+    recording_msg: Option<SetRecordingInfo>,
 
     /// Where we store the entities.
     pub entity_db: EntityDb,
 }
 
 impl LogDb {
-    pub fn recording_msg(&self) -> Option<&BeginRecordingMsg> {
+    pub fn new(recording_id: RecordingId) -> Self {
+        Self {
+            recording_id,
+            entity_op_msgs: Default::default(),
+            data_source: None,
+            recording_msg: None,
+            entity_db: Default::default(),
+        }
+    }
+
+    pub fn recording_msg(&self) -> Option<&SetRecordingInfo> {
         self.recording_msg.as_ref()
     }
 
@@ -184,12 +202,12 @@ impl LogDb {
         self.recording_msg().map(|msg| &msg.info)
     }
 
-    pub fn recording_id(&self) -> RecordingId {
-        if let Some(msg) = &self.recording_msg {
-            msg.info.recording_id
-        } else {
-            RecordingId::ZERO
-        }
+    pub fn recording_type(&self) -> RecordingType {
+        self.recording_id.variant
+    }
+
+    pub fn recording_id(&self) -> &RecordingId {
+        &self.recording_id
     }
 
     pub fn timelines(&self) -> impl ExactSizeIterator<Item = &Timeline> {
@@ -209,7 +227,7 @@ impl LogDb {
             + self.entity_db.data_store.num_temporal_rows() as usize
     }
 
-    pub fn is_default(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.recording_msg.is_none() && self.num_rows() == 0
     }
 
@@ -217,7 +235,7 @@ impl LogDb {
         crate::profile_function!();
 
         match &msg {
-            LogMsg::BeginRecordingMsg(msg) => self.add_begin_recording_msg(msg),
+            LogMsg::SetRecordingInfo(msg) => self.add_begin_recording_msg(msg),
             LogMsg::EntityPathOpMsg(_, msg) => {
                 let EntityPathOpMsg {
                     row_id,
@@ -228,13 +246,12 @@ impl LogDb {
                 self.entity_db.add_path_op(*row_id, time_point, path_op);
             }
             LogMsg::ArrowMsg(_, inner) => self.entity_db.try_add_arrow_msg(inner)?,
-            LogMsg::Goodbye(_) => {}
         }
 
         Ok(())
     }
 
-    fn add_begin_recording_msg(&mut self, msg: &BeginRecordingMsg) {
+    pub fn add_begin_recording_msg(&mut self, msg: &SetRecordingInfo) {
         self.recording_msg = Some(msg.clone());
     }
 
@@ -265,6 +282,7 @@ impl LogDb {
         let cutoff_times = self.entity_db.data_store.oldest_time_per_timeline();
 
         let Self {
+            recording_id: _,
             entity_op_msgs,
             data_source: _,
             recording_msg: _,

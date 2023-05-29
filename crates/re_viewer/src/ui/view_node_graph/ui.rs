@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use crate::ViewerContext;
+use re_viewer_context::ViewerContext;
 use re_data_store::{EntityPath, Timeline};
 
 use super::{NodeGraphEntry, SceneNodeGraph};

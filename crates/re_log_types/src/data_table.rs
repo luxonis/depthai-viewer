@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use ahash::HashMap;
 use itertools::Itertools as _;
-use nohash_hasher::{IntMap, IntSet};
+use nohash_hasher::IntSet;
 use smallvec::SmallVec;
 
 use crate::{
@@ -155,12 +155,6 @@ impl TableId {
     #[inline]
     pub fn random() -> Self {
         Self(re_tuid::Tuid::random())
-    }
-
-    /// Temporary utility while we transition to batching. See #1619.
-    #[doc(hidden)]
-    pub fn into_row_id(self) -> RowId {
-        RowId(self.0)
     }
 }
 
@@ -353,7 +347,7 @@ pub struct DataTable {
     ///
     /// The cells are optional since not all rows will have data for every single component
     /// (i.e. the table is sparse).
-    pub columns: IntMap<ComponentName, DataCellColumn>,
+    pub columns: BTreeMap<ComponentName, DataCellColumn>,
 }
 
 impl DataTable {
@@ -424,7 +418,7 @@ impl DataTable {
         }
 
         // Pre-allocate all columns (one per component).
-        let mut columns = IntMap::default();
+        let mut columns = BTreeMap::default();
         for component in components {
             columns.insert(
                 component,
@@ -439,12 +433,6 @@ impl DataTable {
                 // NOTE: unwrap cannot fail, all arrays pre-allocated above.
                 columns.get_mut(&component).unwrap()[i] = Some(cell);
             }
-        }
-
-        if col_row_id.len() > 1 {
-            re_log::warn_once!(
-                "batching features are not ready for use, use single-row data tables instead!"
-            );
         }
 
         Self {
@@ -782,9 +770,15 @@ impl DataTable {
         let mut columns = Vec::new();
 
         for (component, rows) in table {
-            let (field, column) = Self::serialize_data_column(component.as_str(), rows)?;
-            schema.fields.push(field);
-            columns.push(column);
+            // If none of the rows have any data, there's nothing to do here
+            // TODO(jleibs): would be nice to make serialize_data_column robust to this case
+            // but I'm not sure if returning an empty column is the right thing to do there.
+            // See: https://github.com/rerun-io/rerun/issues/2005
+            if rows.iter().any(|c| c.is_some()) {
+                let (field, column) = Self::serialize_data_column(component.as_str(), rows)?;
+                schema.fields.push(field);
+                columns.push(column);
+            }
         }
 
         Ok((schema, columns))
@@ -1077,15 +1071,19 @@ impl DataTable {
 
         let table_id = TableId::random();
 
-        let timepoint = |frame_nr: i64| {
-            if timeless {
+        let mut tick = 0i64;
+        let mut timepoint = |frame_nr: i64| {
+            let tp = if timeless {
                 TimePoint::timeless()
             } else {
                 TimePoint::from([
-                    (Timeline::new_temporal("log_time"), Time::now().into()),
+                    (Timeline::log_time(), Time::now().into()),
+                    (Timeline::log_tick(), tick.into()),
                     (Timeline::new_sequence("frame_nr"), frame_nr.into()),
                 ])
-            }
+            };
+            tick += 1;
+            tp
         };
 
         let row0 = {
@@ -1129,4 +1127,317 @@ impl DataTable {
 
         table
     }
+}
+
+#[test]
+fn data_table_sizes_basics() {
+    use crate::Component as _;
+    use arrow2::array::{BooleanArray, UInt64Array};
+
+    fn expect(mut cell: DataCell, num_rows: usize, num_bytes: u64) {
+        cell.compute_size_bytes();
+
+        let row = DataRow::from_cells1(
+            RowId::random(),
+            "a/b/c",
+            TimePoint::default(),
+            cell.num_instances(),
+            cell,
+        );
+
+        let table = DataTable::from_rows(
+            TableId::random(),
+            std::iter::repeat_with(|| row.clone()).take(num_rows),
+        );
+        assert_eq!(num_bytes, table.heap_size_bytes());
+
+        let mut table = DataTable::from_arrow_msg(&table.to_arrow_msg().unwrap()).unwrap();
+        table.compute_all_size_bytes();
+        let num_bytes = table.heap_size_bytes();
+        assert_eq!(num_bytes, table.heap_size_bytes());
+    }
+
+    // boolean
+    let mut cell = DataCell::from_arrow(
+        "some_bools".into(),
+        BooleanArray::from(vec![Some(true), Some(false), Some(true)]).boxed(),
+    );
+    cell.compute_size_bytes();
+    expect(
+        cell.clone(), //
+        10_000,       // num_rows
+        2_690_064,    // expected_num_bytes
+    );
+    expect(
+        DataCell::from_arrow("some_bools".into(), cell.to_arrow().sliced(1, 1)),
+        10_000,    // num_rows
+        2_690_064, // expected_num_bytes
+    );
+
+    // primitive
+    let mut cell = DataCell::from_arrow(
+        "some_u64s".into(),
+        UInt64Array::from_vec(vec![1, 2, 3]).boxed(),
+    );
+    cell.compute_size_bytes();
+    expect(
+        cell.clone(), //
+        10_000,       // num_rows
+        2_840_064,    // expected_num_bytes
+    );
+    expect(
+        DataCell::from_arrow("some_u64s".into(), cell.to_arrow().sliced(1, 1)),
+        10_000,    // num_rows
+        2_680_064, // expected_num_bytes
+    );
+
+    // utf8 (and more generally: dyn_binary)
+    let mut cell = DataCell::from_native(
+        [
+            crate::component_types::Label("hey".into()),
+            crate::component_types::Label("hey".into()),
+            crate::component_types::Label("hey".into()),
+        ]
+        .as_slice(),
+    );
+    cell.compute_size_bytes();
+    expect(
+        cell.clone(), //
+        10_000,       // num_rows
+        3_090_064,    // expected_num_bytes
+    );
+    expect(
+        DataCell::from_arrow(
+            crate::component_types::Label::name(),
+            cell.to_arrow().sliced(1, 1),
+        ),
+        10_000,    // num_rows
+        2_950_064, // expected_num_bytes
+    );
+
+    // struct
+    let mut cell = DataCell::from_native(
+        [
+            crate::component_types::Point2D::new(42.0, 666.0),
+            crate::component_types::Point2D::new(42.0, 666.0),
+            crate::component_types::Point2D::new(42.0, 666.0),
+        ]
+        .as_slice(),
+    );
+    cell.compute_size_bytes();
+    expect(
+        cell.clone(), //
+        10_000,       // num_rows
+        5_260_064,    // expected_num_bytes
+    );
+    expect(
+        DataCell::from_arrow(
+            crate::component_types::Point2D::name(),
+            cell.to_arrow().sliced(1, 1),
+        ),
+        10_000,    // num_rows
+        5_100_064, // expected_num_bytes
+    );
+
+    // struct + fixedsizelist
+    let mut cell = DataCell::from_native(
+        [
+            crate::component_types::Vec2D::from([42.0, 666.0]),
+            crate::component_types::Vec2D::from([42.0, 666.0]),
+            crate::component_types::Vec2D::from([42.0, 666.0]),
+        ]
+        .as_slice(),
+    );
+    cell.compute_size_bytes();
+    expect(
+        cell.clone(), //
+        10_000,       // num_rows
+        4_080_064,    // expected_num_bytes
+    );
+    expect(
+        DataCell::from_arrow(
+            crate::component_types::Point2D::name(),
+            cell.to_arrow().sliced(1, 1),
+        ),
+        10_000,    // num_rows
+        3_920_064, // expected_num_bytes
+    );
+
+    // variable list
+    let mut cell = DataCell::from_native(
+        [
+            crate::component_types::LineStrip2D::from(vec![
+                [42.0, 666.0],
+                [42.0, 666.0],
+                [42.0, 666.0],
+            ]),
+            crate::component_types::LineStrip2D::from(vec![
+                [42.0, 666.0],
+                [42.0, 666.0],
+                [42.0, 666.0],
+            ]),
+            crate::component_types::LineStrip2D::from(vec![
+                [42.0, 666.0],
+                [42.0, 666.0],
+                [42.0, 666.0],
+            ]),
+        ]
+        .as_slice(),
+    );
+    cell.compute_size_bytes();
+    expect(
+        cell.clone(), //
+        10_000,       // num_rows
+        6_120_064,    // expected_num_bytes
+    );
+    expect(
+        DataCell::from_arrow(
+            crate::component_types::Point2D::name(),
+            cell.to_arrow().sliced(1, 1),
+        ),
+        10_000,    // num_rows
+        5_560_064, // expected_num_bytes
+    );
+}
+
+#[test]
+fn data_table_sizes_unions() {
+    use arrow2_convert::{ArrowDeserialize, ArrowField, ArrowSerialize};
+
+    fn expect(mut cell: DataCell, num_rows: usize, num_bytes: u64) {
+        cell.compute_size_bytes();
+
+        let row = DataRow::from_cells1(
+            RowId::random(),
+            "a/b/c",
+            TimePoint::default(),
+            cell.num_instances(),
+            cell,
+        );
+
+        let table = DataTable::from_rows(
+            TableId::random(),
+            std::iter::repeat_with(|| row.clone()).take(num_rows),
+        );
+        assert_eq!(num_bytes, table.heap_size_bytes());
+
+        let err_margin = (num_bytes as f64 * 0.01) as u64;
+        let num_bytes_min = num_bytes;
+        let num_bytes_max = num_bytes + err_margin;
+
+        let mut table = DataTable::from_arrow_msg(&table.to_arrow_msg().unwrap()).unwrap();
+        table.compute_all_size_bytes();
+        let num_bytes = table.heap_size_bytes();
+        assert!(
+            num_bytes_min <= num_bytes && num_bytes <= num_bytes_max,
+            "{num_bytes_min} <= {num_bytes} <= {num_bytes_max}"
+        );
+    }
+
+    // This test uses an artificial enum type to test the union serialization.
+    // The transform type does *not* represent our current transform representation.
+
+    // --- Dense ---
+
+    #[derive(Clone, Debug, PartialEq, ArrowField, ArrowSerialize, ArrowDeserialize)]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[arrow_field(type = "dense")]
+    enum DenseTransform {
+        Unknown,
+        Transform3D(crate::component_types::Transform3DRepr),
+        Pinhole(crate::component_types::Pinhole),
+    }
+
+    impl crate::Component for DenseTransform {
+        #[inline]
+        fn name() -> crate::ComponentName {
+            "rerun.dense_transform".into()
+        }
+    }
+
+    // dense union (uniform)
+    expect(
+        DataCell::from_native(
+            [
+                DenseTransform::Unknown,
+                DenseTransform::Unknown,
+                DenseTransform::Unknown,
+            ]
+            .as_slice(),
+        ),
+        10_000,     // num_rows
+        49_030_064, // expected_num_bytes
+    );
+
+    // dense union (varying)
+    expect(
+        DataCell::from_native(
+            [
+                DenseTransform::Unknown,
+                DenseTransform::Transform3D(
+                    crate::component_types::TranslationAndMat3 {
+                        translation: Some([10.0, 11.0, 12.0].into()),
+                        matrix: [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0], [19.0, 20.0, 21.0]].into(),
+                    }
+                    .into(),
+                ),
+                DenseTransform::Pinhole(crate::component_types::Pinhole {
+                    image_from_cam: [[21.0, 22.0, 23.0], [24.0, 25.0, 26.0], [27.0, 28.0, 29.0]]
+                        .into(),
+                    resolution: Some([123.0, 456.0].into()),
+                }),
+            ]
+            .as_slice(),
+        ),
+        10_000,     // num_rows
+        49_020_064, // expected_num_bytes
+    );
+
+    // --- Sparse ---
+
+    #[derive(Clone, Debug, PartialEq, ArrowField, ArrowSerialize, ArrowDeserialize)]
+    #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+    #[arrow_field(type = "sparse")]
+    enum SparseTransform {
+        Unknown,
+        Pinhole(crate::component_types::Pinhole),
+    }
+
+    impl crate::Component for SparseTransform {
+        #[inline]
+        fn name() -> crate::ComponentName {
+            "rerun.sparse_transform".into()
+        }
+    }
+
+    // sparse union (uniform)
+    expect(
+        DataCell::from_native(
+            [
+                SparseTransform::Unknown,
+                SparseTransform::Unknown,
+                SparseTransform::Unknown,
+            ]
+            .as_slice(),
+        ),
+        10_000,     // num_rows
+        22_180_064, // expected_num_bytes
+    );
+
+    // sparse union (varying)
+    expect(
+        DataCell::from_native(
+            [
+                SparseTransform::Unknown,
+                SparseTransform::Pinhole(crate::component_types::Pinhole {
+                    image_from_cam: [[21.0, 22.0, 23.0], [24.0, 25.0, 26.0], [27.0, 28.0, 29.0]]
+                        .into(),
+                    resolution: Some([123.0, 456.0].into()),
+                }),
+            ]
+            .as_slice(),
+        ),
+        10_000,     // num_rows
+        21_730_064, // expected_num_bytes
+    );
 }

@@ -54,6 +54,11 @@ pub enum TextureFilterMin {
 pub struct ColormappedTexture {
     pub texture: GpuTexture2D,
 
+    /// Decode 0-1 sRGB gamma values to linear space before filtering?
+    ///
+    /// Only applies to [`wgpu::TextureFormat::Rgba8Unorm`] and float textures.
+    pub decode_srgb: bool,
+
     /// Min/max range of the values in the texture.
     /// Used to normalize the input values (squash them to the 0-1 range).
     pub range: [f32; 2],
@@ -89,9 +94,13 @@ pub enum ColorMapper {
 }
 
 impl ColormappedTexture {
-    pub fn from_unorm_srgba(texture: GpuTexture2D) -> Self {
+    /// Assumes a separate/unmultiplied alpha.
+    pub fn from_unorm_rgba(texture: GpuTexture2D) -> Self {
+        // If the texture is an sRGB texture, the GPU will decode it for us.
+        let decode_srgb = !texture.format().is_srgb();
         Self {
             texture,
+            decode_srgb,
             range: [0.0, 1.0],
             gamma: 1.0,
             color_mapper: None,
@@ -166,6 +175,9 @@ pub enum RectangleError {
 
     #[error("Invalid color map texture format: {0:?}")]
     UnsupportedColormapTextureFormat(wgpu::TextureFormat),
+
+    #[error("decode_srgb set to true, but the texture was already sRGB aware")]
+    DoubleDecodingSrgbTexture,
 }
 
 mod gpu_data {
@@ -176,10 +188,9 @@ mod gpu_data {
     // Keep in sync with mirror in rectangle.wgsl
 
     // Which texture to read from?
-    const SAMPLE_TYPE_FLOAT_FILTER: u32 = 1;
-    const SAMPLE_TYPE_FLOAT_NOFILTER: u32 = 2;
-    const SAMPLE_TYPE_SINT_NOFILTER: u32 = 3;
-    const SAMPLE_TYPE_UINT_NOFILTER: u32 = 4;
+    const SAMPLE_TYPE_FLOAT: u32 = 1;
+    const SAMPLE_TYPE_SINT: u32 = 2;
+    const SAMPLE_TYPE_UINT: u32 = 3;
 
     // How do we do colormapping?
     const COLOR_MAPPER_OFF: u32 = 1;
@@ -213,7 +224,10 @@ mod gpu_data {
         minification_filter: u32,
         magnification_filter: u32,
 
-        _end_padding: [wgpu_buffer_types::PaddingRow; 16 - 6],
+        decode_srgb: u32,
+        _row_padding: [u32; 3],
+
+        _end_padding: [wgpu_buffer_types::PaddingRow; 16 - 7],
     }
 
     impl UniformBuffer {
@@ -222,6 +236,10 @@ mod gpu_data {
             device_features: wgpu::Features,
         ) -> Result<Self, RectangleError> {
             let texture_format = rectangle.colormapped_texture.texture.format();
+
+            if texture_format.is_srgb() && rectangle.colormapped_texture.decode_srgb {
+                return Err(RectangleError::DoubleDecodingSrgbTexture);
+            }
 
             let TexturedRect {
                 top_left_corner_position,
@@ -233,6 +251,7 @@ mod gpu_data {
 
             let super::ColormappedTexture {
                 texture: _,
+                decode_srgb,
                 range,
                 gamma,
                 color_mapper,
@@ -247,15 +266,9 @@ mod gpu_data {
             } = options;
 
             let sample_type = match texture_format.sample_type(None) {
-                Some(wgpu::TextureSampleType::Float { .. }) => {
-                    if texture_info::is_float_filterable(texture_format, device_features) {
-                        SAMPLE_TYPE_FLOAT_FILTER
-                    } else {
-                        SAMPLE_TYPE_FLOAT_NOFILTER
-                    }
-                }
-                Some(wgpu::TextureSampleType::Sint) => SAMPLE_TYPE_SINT_NOFILTER,
-                Some(wgpu::TextureSampleType::Uint) => SAMPLE_TYPE_UINT_NOFILTER,
+                Some(wgpu::TextureSampleType::Float { .. }) => SAMPLE_TYPE_FLOAT,
+                Some(wgpu::TextureSampleType::Sint) => SAMPLE_TYPE_SINT,
+                Some(wgpu::TextureSampleType::Uint) => SAMPLE_TYPE_UINT,
                 _ => {
                     return Err(RectangleError::DepthTexturesNotSupported);
                 }
@@ -312,6 +325,8 @@ mod gpu_data {
                 gamma: *gamma,
                 minification_filter,
                 magnification_filter,
+                decode_srgb: *decode_srgb as _,
+                _row_padding: Default::default(),
                 _end_padding: Default::default(),
             })
         }
@@ -386,6 +401,8 @@ impl RectangleDrawData {
                         TextureFilterMin::Nearest => wgpu::FilterMode::Nearest,
                     },
                     mipmap_filter: wgpu::FilterMode::Nearest,
+                    address_mode_u: wgpu::AddressMode::ClampToEdge,
+                    address_mode_v: wgpu::AddressMode::ClampToEdge,
                     ..Default::default()
                 },
             );
@@ -399,18 +416,13 @@ impl RectangleDrawData {
             }
 
             // We set up several texture sources, then instruct the shader to read from at most one of them.
-            let mut texture_float_filterable = ctx.texture_manager_2d.zeroed_texture_float().handle;
-            let mut texture_float_nofilter = ctx.texture_manager_2d.zeroed_texture_float().handle;
+            let mut texture_float = ctx.texture_manager_2d.zeroed_texture_float().handle;
             let mut texture_sint = ctx.texture_manager_2d.zeroed_texture_sint().handle;
             let mut texture_uint = ctx.texture_manager_2d.zeroed_texture_uint().handle;
 
             match texture_format.sample_type(None) {
                 Some(wgpu::TextureSampleType::Float { .. }) => {
-                    if texture_info::is_float_filterable(texture_format, ctx.device.features()) {
-                        texture_float_filterable = texture.handle;
-                    } else {
-                        texture_float_nofilter = texture.handle;
-                    }
+                    texture_float = texture.handle;
                 }
                 Some(wgpu::TextureSampleType::Sint) => {
                     texture_sint = texture.handle;
@@ -445,11 +457,10 @@ impl RectangleDrawData {
                         entries: smallvec![
                             uniform_buffer,
                             BindGroupEntry::Sampler(sampler),
-                            BindGroupEntry::DefaultTextureView(texture_float_nofilter),
+                            BindGroupEntry::DefaultTextureView(texture_float),
                             BindGroupEntry::DefaultTextureView(texture_sint),
                             BindGroupEntry::DefaultTextureView(texture_uint),
                             BindGroupEntry::DefaultTextureView(colormap_texture),
-                            BindGroupEntry::DefaultTextureView(texture_float_filterable),
                         ],
                         layout: rectangle_renderer.bind_group_layout,
                     },
@@ -543,17 +554,6 @@ impl Renderer for RectangleRenderer {
                     // colormap texture:
                     wgpu::BindGroupLayoutEntry {
                         binding: 5,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    // float textures with filtering (e.g. Rgba8UnormSrgb):
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 6,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Float { filterable: true },

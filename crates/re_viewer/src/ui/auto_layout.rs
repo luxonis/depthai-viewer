@@ -26,8 +26,9 @@ use super::{
     space_view::{SpaceView, SpaceViewKind},
     view_category::ViewCategory,
     viewport::Tab,
-    SpaceViewId,
 };
+
+use re_viewer_context::SpaceViewId;
 
 #[derive(Clone, Debug)]
 pub struct SpaceMakeInfo {

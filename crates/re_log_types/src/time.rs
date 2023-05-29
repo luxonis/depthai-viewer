@@ -7,10 +7,9 @@ use time::OffsetDateTime;
 pub struct Time(i64);
 
 impl Time {
-    #[cfg(not(target_arch = "wasm32"))]
     #[inline]
     pub fn now() -> Self {
-        let nanos_since_epoch = std::time::SystemTime::UNIX_EPOCH
+        let nanos_since_epoch = web_time::SystemTime::UNIX_EPOCH
             .elapsed()
             .expect("Expected system clock to be set to after 1970")
             .as_nanos() as _;
@@ -152,6 +151,18 @@ impl TryFrom<std::time::SystemTime> for Time {
 
     fn try_from(time: std::time::SystemTime) -> Result<Time, Self::Error> {
         time.duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .map(|duration_since_epoch| Time(duration_since_epoch.as_nanos() as _))
+    }
+}
+
+// On non-wasm32 builds, `web_time::SystemTime` is a re-export of `std::time::SystemTime`,
+// so it's covered by the above `TryFrom`.
+#[cfg(target_arch = "wasm32")]
+impl TryFrom<web_time::SystemTime> for Time {
+    type Error = web_time::SystemTimeError;
+
+    fn try_from(time: web_time::SystemTime) -> Result<Time, Self::Error> {
+        time.duration_since(web_time::SystemTime::UNIX_EPOCH)
             .map(|duration_since_epoch| Time(duration_since_epoch.as_nanos() as _))
     }
 }

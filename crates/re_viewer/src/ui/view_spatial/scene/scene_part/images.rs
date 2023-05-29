@@ -1,11 +1,11 @@
-use egui::NumExt;
-use glam::Vec3;
-use itertools::Itertools;
+use std::collections::BTreeMap;
 
-use re_data_store::{query_latest_single, EntityPath, EntityProperties};
+use egui::NumExt;
+
+use re_data_store::{EntityPath, EntityProperties};
 use re_log_types::{
-    component_types::{ColorRGBA, InstanceKey, Tensor, TensorData, TensorDataMeaning},
-    Component, DecodedTensor, Transform,
+    component_types::{ColorRGBA, InstanceKey, Pinhole, Tensor, TensorData, TensorDataMeaning},
+    Component, DecodedTensor, DrawOrder, EntityPathHash,
 };
 use re_query::{query_primary_with_history, EntityView, QueryError};
 use re_renderer::{
@@ -13,35 +13,37 @@ use re_renderer::{
     resource_managers::Texture2DCreationDesc,
     Colormap, OutlineMaskPreference,
 };
+use re_viewer_context::{
+    gpu_bridge, Annotations, DefaultColor, SceneQuery, TensorDecodeCache, TensorStatsCache,
+    ViewerContext,
+};
 
 use crate::{
-    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache, ViewerContext},
-    ui::{
-        scene::SceneQuery,
-        view_spatial::{Image, SceneSpatial},
-        Annotations, DefaultColor,
-    },
+    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache},
+    ui::view_spatial::{scene::EntityDepthOffsets, Image, SceneSpatial},
 };
 
 use super::ScenePart;
 
+#[allow(clippy::too_many_arguments)]
 fn to_textured_rect(
     ctx: &mut ViewerContext<'_>,
     annotations: &Annotations,
-    world_from_obj: glam::Mat4,
+    world_from_obj: glam::Affine3A,
     ent_path: &EntityPath,
     tensor: &DecodedTensor,
     multiplicative_tint: egui::Rgba,
     outline_mask: OutlineMaskPreference,
+    depth_offset: re_renderer::DepthOffset,
 ) -> Option<re_renderer::renderer::TexturedRect> {
     crate::profile_function!();
 
     let Some([height, width, _]) = tensor.image_height_width_channels() else { return None; };
 
     let debug_name = ent_path.to_string();
-    let tensor_stats = ctx.cache.tensor_stats(tensor);
+    let tensor_stats = ctx.cache.entry::<TensorStatsCache>().entry(tensor);
 
-    match crate::gpu_bridge::tensor_to_gpu(
+    match gpu_bridge::tensor_to_gpu(
         ctx.render_ctx,
         &debug_name,
         tensor,
@@ -75,7 +77,7 @@ fn to_textured_rect(
                     texture_filter_magnification,
                     texture_filter_minification,
                     multiplicative_tint,
-                    depth_offset: -1, // Push to background. Mostly important for mouse picking order!
+                    depth_offset,
                     outline_mask,
                 },
             })
@@ -87,66 +89,51 @@ fn to_textured_rect(
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ImageGrouping {
+    parent_pinhole: Option<EntityPathHash>,
+    draw_order: DrawOrder,
+}
+
 fn handle_image_layering(scene: &mut SceneSpatial) {
     crate::profile_function!();
 
-    // Handle layered rectangles that are on (roughly) the same plane and were logged in sequence.
-    // First, group by similar plane.
-    // TODO(andreas): Need planes later for picking as well!
-    let images_grouped_by_plane = {
-        let mut cur_plane = macaw::Plane3::from_normal_dist(Vec3::NAN, std::f32::NAN);
-        let mut rectangle_group = Vec::new();
-        scene
-            .primitives
-            .images
-            .drain(..) // We rebuild the list as we might reorder as well!
-            .batching(move |it| {
-                for image in it {
-                    let rect = &image.textured_rect;
-
-                    let prev_plane = cur_plane;
-                    cur_plane = macaw::Plane3::from_normal_point(
-                        rect.extent_u.cross(rect.extent_v).normalize(),
-                        rect.top_left_corner_position,
-                    );
-
-                    // Are the image planes too unsimilar? Then this is a new group.
-                    if !rectangle_group.is_empty()
-                        && prev_plane.normal.dot(cur_plane.normal) < 0.99
-                        && (prev_plane.d - cur_plane.d) < 0.01
-                    {
-                        let previous_group = std::mem::replace(&mut rectangle_group, vec![image]);
-                        return Some(previous_group);
-                    }
-                    rectangle_group.push(image);
-                }
-                if !rectangle_group.is_empty() {
-                    Some(rectangle_group.drain(..).collect())
-                } else {
-                    None
-                }
+    // Rebuild the image list, grouped by "shared plane", identified with camera & draw order.
+    let mut image_groups: BTreeMap<ImageGrouping, Vec<Image>> = BTreeMap::new();
+    for image in scene.primitives.images.drain(..) {
+        image_groups
+            .entry(ImageGrouping {
+                parent_pinhole: image.parent_pinhole,
+                draw_order: image.draw_order,
             })
+            .or_default()
+            .push(image);
     }
-    .collect_vec();
 
-    // Then, for each planar group do resorting and change transparency.
-    for mut grouped_images in images_grouped_by_plane {
-        // Class id images should generally come last as they typically have large areas being zeroed out (which maps to fully transparent).
-        grouped_images.sort_by_key(|image| image.tensor.meaning == TensorDataMeaning::ClassId);
+    // Then, for each group do resorting and change transparency.
+    for (_, mut images) in image_groups {
+        // Since we change transparency depending on order and re_renderer doesn't handle transparency
+        // ordering either, we need to ensure that sorting is stable at the very least.
+        // Sorting is done by depth offset, not by draw order which is the same for the entire group.
+        //
+        // Class id images should generally come last within the same layer as
+        // they typically have large areas being zeroed out (which maps to fully transparent).
+        images.sort_by_key(|image| {
+            (
+                image.textured_rect.options.depth_offset,
+                image.tensor.meaning == TensorDataMeaning::ClassId,
+            )
+        });
 
-        let total_num_images = grouped_images.len();
-        for (idx, image) in grouped_images.iter_mut().enumerate() {
-            // Set depth offset for correct order and avoid z fighting when there is a 3d camera.
-            // Keep behind depth offset 0 for correct picking order.
-            image.textured_rect.options.depth_offset =
-                (idx as isize - total_num_images as isize) as re_renderer::DepthOffset;
-
+        let total_num_images = images.len();
+        for (idx, image) in images.iter_mut().enumerate() {
             // make top images transparent
             let opacity = if idx == 0 {
                 1.0
             } else {
+                // avoid precision problems in framebuffer
                 1.0 / total_num_images.at_most(20) as f32
-            }; // avoid precision problems in framebuffer
+            };
             image.textured_rect.options.multiplicative_tint = image
                 .textured_rect
                 .options
@@ -154,7 +141,7 @@ fn handle_image_layering(scene: &mut SceneSpatial) {
                 .multiply(opacity);
         }
 
-        scene.primitives.images.extend(grouped_images);
+        scene.primitives.images.extend(images);
     }
 }
 
@@ -169,15 +156,17 @@ impl ImagesPart {
         transforms: &TransformCache,
         properties: &mut EntityProperties,
         ent_path: &EntityPath,
-        world_from_obj: glam::Mat4,
+        world_from_obj: glam::Affine3A,
         highlights: &SpaceViewHighlights,
+        depth_offset: re_renderer::DepthOffset,
     ) -> Result<(), QueryError> {
         crate::profile_function!();
 
         // Instance ids of tensors refer to entries inside the tensor.
-        for (tensor, color) in itertools::izip!(
+        for (tensor, color, draw_order) in itertools::izip!(
             entity_view.iter_primary()?,
-            entity_view.iter_component::<ColorRGBA>()?
+            entity_view.iter_component::<ColorRGBA>()?,
+            entity_view.iter_component::<DrawOrder>()?
         ) {
             crate::profile_scope!("loop_iter");
             let Some(tensor) = tensor else { continue; };
@@ -186,7 +175,7 @@ impl ImagesPart {
                 return Ok(());
             }
 
-            let tensor = match ctx.cache.decode.try_decode_tensor_if_necessary(tensor) {
+            let tensor = match ctx.cache.entry::<TensorDecodeCache>().entry(tensor) {
                 Ok(tensor) => tensor,
                 Err(err) => {
                     re_log::warn_once!(
@@ -239,11 +228,14 @@ impl ImagesPart {
                 &tensor,
                 color.into(),
                 entity_highlight.overall,
+                depth_offset,
             ) {
                 scene.primitives.images.push(Image {
                     ent_path: ent_path.clone(),
                     tensor,
                     textured_rect,
+                    parent_pinhole: transforms.parent_pinhole(ent_path),
+                    draw_order: draw_order.unwrap_or(DrawOrder::DEFAULT_IMAGE),
                 });
             }
         }
@@ -264,8 +256,8 @@ impl ImagesPart {
     ) -> Result<(), String> {
         crate::profile_function!();
 
-        let Some(re_log_types::Transform::Pinhole(intrinsics)) = query_latest_single::<Transform>(
-            &ctx.log_db.entity_db,
+        let store = &ctx.log_db.entity_db.data_store;
+        let Some(intrinsics) = store.query_latest_component::<Pinhole>(
             pinhole_ent_path,
             &ctx.current_query(),
         ) else {
@@ -392,20 +384,21 @@ impl ImagesPart {
         let radius_scale = *properties.backproject_radius_scale.get();
         let point_radius_from_world_depth = radius_scale * pixel_width_from_depth;
 
-        let max_data_value = if let Some((_min, max)) = ctx.cache.tensor_stats(tensor).range {
-            max as f32
-        } else {
-            // This could only happen for Jpegs, and we should never get here.
-            // TODO(emilk): refactor the code so that we can always calculate a range for the tensor
-            re_log::warn_once!("Couldn't calculate range for a depth tensor!?");
-            match tensor.data {
-                TensorData::U16(_) => u16::MAX as f32,
-                _ => 10.0,
-            }
-        };
+        let max_data_value =
+            if let Some((_min, max)) = ctx.cache.entry::<TensorStatsCache>().entry(tensor).range {
+                max as f32
+            } else {
+                // This could only happen for Jpegs, and we should never get here.
+                // TODO(emilk): refactor the code so that we can always calculate a range for the tensor
+                re_log::warn_once!("Couldn't calculate range for a depth tensor!?");
+                match tensor.data {
+                    TensorData::U16(_) => u16::MAX as f32,
+                    _ => 10.0,
+                }
+            };
 
         scene.primitives.depth_clouds.clouds.push(DepthCloud {
-            world_from_obj,
+            world_from_obj: world_from_obj.into(),
             depth_camera_intrinsics: intrinsics.image_from_cam.into(),
             world_depth_from_texture_depth,
             point_radius_from_world_depth,
@@ -431,6 +424,7 @@ impl ScenePart for ImagesPart {
         query: &SceneQuery<'_>,
         transforms: &TransformCache,
         highlights: &SpaceViewHighlights,
+        depth_offsets: &EntityDepthOffsets,
     ) {
         crate::profile_scope!("ImagesPart");
 
@@ -439,13 +433,18 @@ impl ScenePart for ImagesPart {
                 continue;
             };
 
-            match query_primary_with_history::<Tensor, 3>(
+            match query_primary_with_history::<Tensor, 4>(
                 &ctx.log_db.entity_db.data_store,
                 &query.timeline,
                 &query.latest_at,
                 &props.visible_history,
                 ent_path,
-                [Tensor::name(), InstanceKey::name(), ColorRGBA::name()],
+                [
+                    Tensor::name(),
+                    InstanceKey::name(),
+                    ColorRGBA::name(),
+                    DrawOrder::name(),
+                ],
             )
             .and_then(|entities| {
                 for entity in entities {
@@ -458,6 +457,7 @@ impl ScenePart for ImagesPart {
                         ent_path,
                         world_from_obj,
                         highlights,
+                        depth_offsets.get(ent_path).unwrap_or(depth_offsets.image),
                     )?;
                 }
                 Ok(())

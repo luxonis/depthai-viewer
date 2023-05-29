@@ -5,7 +5,10 @@
 //! There is also a `rerun` binary.
 //! The binary is required in order to stream log data
 //! over the networks, and to open our `.rrd` data files.
-//! If you need it, install the `rerun` binary with `cargo install rerun`.
+//! If you need it, install the `rerun` binary with `cargo install rerun-cli`.
+//!
+//! ## Feature flags
+#![doc = document_features::document_features!()]
 //!
 //! ## Links
 //! - [Examples](https://github.com/rerun-io/rerun/tree/latest/examples/rust)
@@ -40,7 +43,7 @@
 //! depthai_viewer::MsgSender::new("points")
 //!     .with_component(&points)?
 //!     .with_component(&colors)?
-//!     .send(&mut rr_session)?;
+//!     .send(&rec_stream)?;
 //!
 //! depthai_viewer::MsgSender::new("image")
 //!     .with_component(&[depthai_viewer::components::Tensor::from_image(image)?])?
@@ -49,7 +52,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
-//! See [`Session`] and [`MsgSender`] for details.
+//! See [`RecordingStream`] and [`MsgSender`] for details.
 //!
 //! #### Streaming
 //! To stream log data to an awaiting `rerun` process, you can do this:
@@ -82,10 +85,6 @@
 //! cargo install rerun
 //! rerun --help
 //! ```
-//!
-//! ## Feature flags
-#![doc = document_features::document_features!()]
-//!
 
 #![warn(missing_docs)] // Let's keep the this crate well-documented!
 

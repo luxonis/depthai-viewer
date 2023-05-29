@@ -2,12 +2,11 @@
 
 use std::{net::SocketAddr, path::PathBuf};
 
+use re_sdk::RecordingStream;
 #[cfg(feature = "web_viewer")]
 use re_web_viewer_server::WebViewerServerPort;
 #[cfg(feature = "web_viewer")]
 use re_ws_comms::RerunServerPort;
-
-use crate::Session;
 
 // ---
 
@@ -23,6 +22,9 @@ enum RerunBehavior {
     #[cfg(feature = "native_viewer")]
     Spawn,
 }
+
+// TODO(cmc): There are definitely ways of making this all nicer now (this, native_viewer and
+// web_viewer).. but one thing at a time.
 
 /// This struct implements a `clap::Parser` that defines all the arguments that a typical Rerun
 /// application might use, and provides helpers to evaluate those arguments and behave
@@ -64,10 +66,14 @@ pub struct RerunArgs {
     #[cfg(feature = "web_viewer")]
     #[clap(long)]
     serve: bool,
+
+    /// What bind address IP to use.
+    #[clap(long, default_value = "0.0.0.0")]
+    bind: String,
 }
 
 impl RerunArgs {
-    /// Set up Rerun, and run the given code with a [`Session`] object
+    /// Set up Rerun, and run the given code with a [`RecordingStream`] object
     /// that can be used to log data.
     ///
     /// Logging will be controlled by the `RERUN` environment variable,
@@ -77,26 +83,25 @@ impl RerunArgs {
         &self,
         application_id: &str,
         default_enabled: bool,
-        run: impl FnOnce(Session) + Send + 'static,
+        run: impl FnOnce(RecordingStream) + Send + 'static,
     ) -> anyhow::Result<()> {
         // Ensure we have a running tokio runtime.
-        #[allow(unused_assignments)]
         let mut tokio_runtime = None;
         let tokio_runtime_handle = if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle
         } else {
-            tokio_runtime =
-                Some(tokio::runtime::Runtime::new().expect("Failed to create tokio runtime"));
-            tokio_runtime.as_ref().unwrap().handle().clone()
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            tokio_runtime.get_or_insert(rt).handle().clone()
         };
         let _tokio_runtime_guard = tokio_runtime_handle.enter();
 
-        let (rerun_enabled, recording_info) = crate::SessionBuilder::new(application_id)
-            .default_enabled(default_enabled)
-            .finalize();
+        let (rerun_enabled, recording_info, batcher_config) =
+            crate::RecordingStreamBuilder::new(application_id)
+                .default_enabled(default_enabled)
+                .into_args();
 
         if !rerun_enabled {
-            run(Session::disabled());
+            run(RecordingStream::disabled());
             return Ok(());
         }
 
@@ -110,6 +115,7 @@ impl RerunArgs {
                 let open_browser = true;
                 crate::web_viewer::new_sink(
                     open_browser,
+                    &self.bind,
                     WebViewerServerPort::default(),
                     RerunServerPort::default(),
                 )?
@@ -117,23 +123,24 @@ impl RerunArgs {
 
             #[cfg(feature = "native_viewer")]
             RerunBehavior::Spawn => {
-                crate::native_viewer::spawn(recording_info, run)?;
+                crate::native_viewer::spawn(recording_info, batcher_config, run)?;
                 return Ok(());
             }
         };
 
-        let session = Session::new(recording_info, sink);
-        let _sink = session.sink().clone(); // Keep sink (and potential associated servers) alive until the end of this function scope.
-        run(session);
+        let rec_stream = RecordingStream::new(recording_info, batcher_config, sink)?;
+        run(rec_stream.clone());
+
+        // The user callback is done executing, it's a good opportunity to flush the pipeline
+        // independently of the current flush thresholds (which might be `NEVER`).
+        rec_stream.flush_async();
 
         #[cfg(feature = "web_viewer")]
         if matches!(self.to_behavior(), Ok(RerunBehavior::Serve)) {
-            use anyhow::Context as _;
-
-            let (mut shutdown_rx, _) = crate::run::setup_ctrl_c_handler();
-            return tokio_runtime_handle
-                .block_on(async { shutdown_rx.recv().await })
-                .context("Failed to wait for shutdown signal.");
+            // Sleep waiting for Ctrl-C:
+            tokio_runtime_handle.block_on(async {
+                tokio::time::sleep(std::time::Duration::from_secs(u64::MAX)).await;
+            });
         }
 
         Ok(())

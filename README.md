@@ -17,7 +17,7 @@
 Use one of our logging APIs (Python or Rust) to log rich data, such as images and point clouds, to the Rerun Viewer, where it is visualized live or after the fact.
 
 ```py
-import rerun as rr
+import depthai_viewer as viewer
 
 viewer.init("my_app", spawn = True) # Spawn a Rerun Viewer and stream log events to it
 

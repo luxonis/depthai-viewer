@@ -14,8 +14,8 @@ import argparse
 from pathlib import Path
 from typing import Optional, cast
 
-import depthai_viewer as viewer
 import numpy as np
+import rerun as rr  # pip install rerun-sdk
 import trimesh
 from download_dataset import AVAILABLE_MESHES, ensure_mesh_downloaded
 
@@ -37,14 +37,15 @@ def log_scene(scene: trimesh.Scene, node: str, path: Optional[str] = None) -> No
     node_data = scene.graph.get(frame_to=node, frame_from=parent)
     if node_data:
         # Log the transform between this node and its direct parent (if it has one!).
-        # TODO(cmc): Not ideal that the user has to decompose the matrix before logging it.
         if parent:
+            # TODO(andreas): We should support 4x4 matrices directly
             world_from_mesh = node_data[0]
-            t = trimesh.transformations.translation_from_matrix(world_from_mesh)
-            q = trimesh.transformations.quaternion_from_matrix(world_from_mesh)
-            # `trimesh` stores quaternions in `wxyz` format, rerun needs `xyzw`
-            q = np.array([q[1], q[2], q[3], q[0]])
-            viewer.log_rigid3(path, parent_from_child=(t, q))
+            rr.log_transform3d(
+                path,
+                rr.TranslationAndMat3(
+                    trimesh.transformations.translation_from_matrix(world_from_mesh), world_from_mesh[0:3, 0:3]
+                ),
+            )
 
         # Log this node's mesh, if it has one.
         mesh = cast(trimesh.Trimesh, scene.geometry.get(node_data[1]))
@@ -58,7 +59,7 @@ def log_scene(scene: trimesh.Scene, node: str, path: Optional[str] = None) -> No
                     albedo_factor = np.array(colors) / 255.0
             except Exception:
                 pass
-            viewer.log_mesh(
+            rr.log_mesh(
                 path, mesh.vertices, indices=mesh.faces, normals=mesh.vertex_normals, albedo_factor=albedo_factor
             )
 
@@ -83,11 +84,11 @@ def main() -> None:
         type=Path,
         help="Path to a scene to analyze. If set, overrides the `--scene` argument.",
     )
-    viewer.script_add_args(parser)
+    rr.script_add_args(parser)
     args, unknown = parser.parse_known_args()
     [__import__("logging").warning(f"unknown arg: {arg}") for arg in unknown]
 
-    viewer.script_setup(args, "raw_mesh")
+    rr.script_setup(args, "raw_mesh")
 
     scene_path = args.scene_path
     if scene_path is None:
@@ -97,10 +98,10 @@ def main() -> None:
     root = next(iter(scene.graph.nodes))
 
     # glTF always uses a right-handed coordinate system when +Y is up and meshes face +Z.
-    viewer.log_view_coordinates(root, xyz="RUB", timeless=True)
+    rr.log_view_coordinates(root, xyz="RUB", timeless=True)
     log_scene(scene, root)
 
-    viewer.script_teardown(args)
+    rr.script_teardown(args)
 
 
 if __name__ == "__main__":

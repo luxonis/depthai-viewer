@@ -17,13 +17,14 @@ use lazy_static::lazy_static;
 use crate::Component;
 
 mod arrow;
-mod arrow_convert_shims;
 mod bbox;
 mod class_id;
 mod color;
 pub mod context;
 pub mod coordinates;
 mod imu;
+mod disconnected_space;
+mod draw_order;
 mod instance_key;
 mod keypoint_id;
 mod label;
@@ -31,6 +32,7 @@ mod linestrip;
 mod mat;
 mod mesh3d;
 mod node_graph;
+mod pinhole;
 mod point;
 mod quaternion;
 mod radius;
@@ -38,18 +40,24 @@ mod rect;
 mod scalar;
 mod size;
 mod tensor;
+mod text_box;
 mod text_entry;
-mod transform;
+mod transform3d;
 mod vec;
 mod xlink_stats;
 
+pub use pinhole::Pinhole;
 pub use arrow::Arrow3D;
+pub use point::{Point2D, Point3D};
+pub use radius::Radius;
 pub use bbox::Box3D;
 pub use class_id::ClassId;
 pub use color::ColorRGBA;
 pub use context::{AnnotationContext, AnnotationInfo, ClassDescription};
 pub use coordinates::ViewCoordinates;
 pub use imu::ImuData;
+pub use disconnected_space::DisconnectedSpace;
+pub use draw_order::DrawOrder;
 pub use instance_key::InstanceKey;
 pub use keypoint_id::KeypointId;
 pub use label::Label;
@@ -57,9 +65,7 @@ pub use linestrip::{LineStrip2D, LineStrip3D};
 pub use mat::Mat3x3;
 pub use mesh3d::{EncodedMesh3D, Mesh3D, MeshFormat, MeshId, RawMesh3D};
 pub use node_graph::NodeGraph;
-pub use point::{Point2D, Point3D};
 pub use quaternion::Quaternion;
-pub use radius::Radius;
 pub use rect::Rect2D;
 pub use scalar::{Scalar, ScalarPlotProps};
 pub use size::Size3D;
@@ -69,25 +75,32 @@ pub use tensor::{
 };
 #[cfg(feature = "image")]
 pub use tensor::{TensorImageLoadError, TensorImageSaveError};
+pub use text_box::TextBox;
 pub use text_entry::TextEntry;
-pub use transform::{Pinhole, Rigid3, Transform};
+pub use transform3d::{
+    Angle, Rotation3D, RotationAxisAngle, Scale3D, Transform3D, Transform3DRepr,
+    TranslationAndMat3, TranslationRotationScale3D,
+};
 pub use vec::{Vec2D, Vec3D, Vec4D};
 pub use xlink_stats::XlinkStats;
 
 lazy_static! {
     //TODO(john): use a run-time type registry
-    static ref FIELDS: [Field; 28] = [
+    static ref FIELDS: [Field; 32] = [
         <AnnotationContext as Component>::field(),
         <Arrow3D as Component>::field(),
         <Box3D as Component>::field(),
         <ClassId as Component>::field(),
         <ColorRGBA as Component>::field(),
+        <DrawOrder as Component>::field(),
+        <DisconnectedSpace as Component>::field(),
         <InstanceKey as Component>::field(),
         <KeypointId as Component>::field(),
         <Label as Component>::field(),
         <LineStrip2D as Component>::field(),
         <LineStrip3D as Component>::field(),
         <Mesh3D as Component>::field(),
+        <Pinhole as Component>::field(),
         <Point2D as Component>::field(),
         <Point3D as Component>::field(),
         <Quaternion as Component>::field(),
@@ -97,8 +110,9 @@ lazy_static! {
         <ScalarPlotProps as Component>::field(),
         <Size3D as Component>::field(),
         <Tensor as Component>::field(),
+        <TextBox as Component>::field(),
         <TextEntry as Component>::field(),
-        <Transform as Component>::field(),
+        <Transform3D as Component>::field(),
         <Vec2D as Component>::field(),
         <Vec3D as Component>::field(),
         <ViewCoordinates as Component>::field(),

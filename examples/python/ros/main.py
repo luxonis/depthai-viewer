@@ -13,8 +13,8 @@ in addition to the packages from requirements.txt.
 import argparse
 import sys
 
-import depthai_viewer as viewer
 import numpy as np
+import rerun as rr  # pip install rerun-sdk
 
 try:
     import cv_bridge
@@ -81,7 +81,7 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
 
         # Log a bounding box as a visual placeholder for the map
         # # TODO(jleibs): Log the real map once [#1531](https://github.com/rerun-io/rerun/issues/1531) is merged
-        viewer.log_obb(
+        rr.log_obb(
             "map/box",
             half_size=[3, 3, 1],
             position=[0, 0, 1],
@@ -141,7 +141,7 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
 
     def log_tf_as_rigid3(self, path: str, time: Time) -> None:
         """
-        Helper to look up a transform with tf and log using `log_rigid3`.
+        Helper to look up a transform with tf and log using `log_transform3d`.
 
         Note: we do the lookup on the client side instead of re-logging the raw transforms until
         Rerun has support for Derived Transforms [#1533](https://github.com/rerun-io/rerun/issues/1533)
@@ -158,18 +158,20 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
             tf = self.tf_buffer.lookup_transform(parent_frame, child_frame, time, timeout=Duration(seconds=0.1))
             t = tf.transform.translation
             q = tf.transform.rotation
-            viewer.log_rigid3(path, parent_from_child=([t.x, t.y, t.z], [q.x, q.y, q.z, q.w]))
+            rr.log_transform3d(
+                path, rr.TranslationRotationScale3D([t.x, t.y, t.z], rr.Quaternion([q.x, q.y, q.z, q.w]))
+            )
         except TransformException as ex:
             print("Failed to get transform: {}".format(ex))
 
     def cam_info_callback(self, info: CameraInfo) -> None:
         """Log a `CameraInfo` with `log_pinhole`."""
         time = Time.from_msg(info.header.stamp)
-        viewer.set_time_nanos("ros_time", time.nanoseconds)
+        rr.set_time_nanos("ros_time", time.nanoseconds)
 
         self.model.fromCameraInfo(info)
 
-        viewer.log_pinhole(
+        rr.log_pinhole(
             "map/robot/camera/img",
             child_from_parent=self.model.intrinsicMatrix(),
             width=self.model.width,
@@ -179,11 +181,11 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
     def odom_callback(self, odom: Odometry) -> None:
         """Update transforms when odom is updated."""
         time = Time.from_msg(odom.header.stamp)
-        viewer.set_time_nanos("ros_time", time.nanoseconds)
+        rr.set_time_nanos("ros_time", time.nanoseconds)
 
         # Capture time-series data for the linear and angular velocities
-        viewer.log_scalar("odometry/vel", odom.twist.twist.linear.x)
-        viewer.log_scalar("odometry/ang_vel", odom.twist.twist.angular.z)
+        rr.log_scalar("odometry/vel", odom.twist.twist.linear.x)
+        rr.log_scalar("odometry/ang_vel", odom.twist.twist.angular.z)
 
         # Update the robot pose itself via TF
         self.log_tf_as_rigid3("map/robot", time)
@@ -191,15 +193,15 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
     def image_callback(self, img: Image) -> None:
         """Log an `Image` with `log_image` using `cv_bridge`."""
         time = Time.from_msg(img.header.stamp)
-        viewer.set_time_nanos("ros_time", time.nanoseconds)
+        rr.set_time_nanos("ros_time", time.nanoseconds)
 
-        viewer.log_image("map/robot/camera/img", self.cv_bridge.imgmsg_to_cv2(img))
+        rr.log_image("map/robot/camera/img", self.cv_bridge.imgmsg_to_cv2(img))
         self.log_tf_as_rigid3("map/robot/camera", time)
 
     def points_callback(self, points: PointCloud2) -> None:
         """Log a `PointCloud2` with `log_points`."""
         time = Time.from_msg(points.header.stamp)
-        viewer.set_time_nanos("ros_time", time.nanoseconds)
+        rr.set_time_nanos("ros_time", time.nanoseconds)
 
         pts = point_cloud2.read_points(points, field_names=["x", "y", "z"], skip_nans=True)
 
@@ -219,7 +221,7 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
 
         # Log points once rigidly under robot/camera/points. This is a robot-centric
         # view of the world.
-        viewer.log_points("map/robot/camera/points", positions=pts, colors=colors)
+        rr.log_points("map/robot/camera/points", positions=pts, colors=colors)
         self.log_tf_as_rigid3("map/robot/camera/points", time)
 
         # Log points a second time after transforming to the map frame. This is a map-centric
@@ -227,7 +229,7 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
         #
         # Once Rerun supports fixed-frame aware transforms [#1522](https://github.com/rerun-io/rerun/issues/1522)
         # this will no longer be necessary.
-        viewer.log_points("map/points", positions=pts, colors=colors)
+        rr.log_points("map/points", positions=pts, colors=colors)
         self.log_tf_as_rigid3("map/points", time)
 
     def scan_callback(self, scan: LaserScan) -> None:
@@ -239,7 +241,7 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
         [#1534](https://github.com/rerun-io/rerun/issues/1534)
         """
         time = Time.from_msg(scan.header.stamp)
-        viewer.set_time_nanos("ros_time", time.nanoseconds)
+        rr.set_time_nanos("ros_time", time.nanoseconds)
 
         # Project the laser scan to a collection of points
         points = self.laser_proj.projectLaser(scan)
@@ -250,7 +252,7 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
         origin = (pts / np.linalg.norm(pts, axis=1).reshape(-1, 1)) * 0.3
         segs = np.hstack([origin, pts]).reshape(pts.shape[0] * 2, 3)
 
-        viewer.log_line_segments("map/robot/scan", segs, stroke_width=0.005)
+        rr.log_line_segments("map/robot/scan", segs, stroke_width=0.005)
         self.log_tf_as_rigid3("map/robot/scan", time)
 
     def urdf_callback(self, urdf_msg: String) -> None:
@@ -269,9 +271,9 @@ class TurtleSubscriber(Node):  # type: ignore[misc]
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Simple example of a ROS node that republishes to Rerun.")
-    viewer.script_add_args(parser)
+    rr.script_add_args(parser)
     args, unknownargs = parser.parse_known_args()
-    viewer.script_setup(args, "turtlebot_viz")
+    rr.script_setup(args, "turtlebot_viz")
 
     # Any remaining args go to rclpy
     rclpy.init(args=unknownargs)

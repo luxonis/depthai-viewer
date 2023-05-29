@@ -5,14 +5,15 @@ use re_renderer::{GpuReadbackIdentifier, ScreenshotProcessor};
 
 use crate::{
     depthai::depthai,
-    misc::{space_info::SpaceInfoCollection, SpaceViewHighlights, TransformCache, ViewerContext},
+    misc::{space_info::SpaceInfoCollection, SpaceViewHighlights, TransformCache},
     ui::view_category::categorize_entity_path,
 };
+use re_viewer_context::{SpaceViewId, ViewerContext};
 
 use super::{
     data_blueprint::DataBlueprintTree, space_view_heuristics::default_queried_entities,
     view_bar_chart, view_category::ViewCategory, view_node_graph, view_spatial, view_tensor,
-    view_text, view_time_series,
+    view_text, view_time_series, view_text_box
 };
 
 // ----------------------------------------------------------------------------
@@ -21,7 +22,6 @@ use super::{
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Deserialize, serde::Serialize,
 )]
-pub struct SpaceViewId(uuid::Uuid);
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum SpaceViewKind {
@@ -46,15 +46,13 @@ impl SpaceViewId {
 #[derive(PartialEq, Eq, Clone, Copy)]
 #[allow(dead_code)] // Not used on the web.
 pub enum ScreenshotMode {
-    /// The screenshot will be saved to disc and copied to the clipboard.
-    SaveAndCopyToClipboard,
 
     /// The screenshot will be copied to the clipboard.
     CopyToClipboard,
 }
 
 /// A view of a space.
-#[derive(Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct SpaceView {
     pub id: SpaceViewId,
     pub display_name: String,
@@ -177,7 +175,7 @@ impl SpaceView {
     fn handle_pending_screenshots(&self, data: &[u8], extent: glam::UVec2, mode: ScreenshotMode) {
         // Set to clipboard.
         #[cfg(not(target_arch = "wasm32"))]
-        crate::misc::Clipboard::with(|clipboard| {
+        re_viewer_context::Clipboard::with(|clipboard| {
             clipboard.set_image([extent.x as _, extent.y as _], data);
         });
         if mode == ScreenshotMode::CopyToClipboard {
@@ -221,6 +219,9 @@ impl SpaceView {
             ViewCategory::Text => {
                 self.view_state.state_text.selection_ui(ctx.re_ui, ui);
             }
+            ViewCategory::TextBox => {
+                self.view_state.state_textbox.selection_ui(ctx.re_ui, ui);
+            }
             ViewCategory::TimeSeries => {}
             ViewCategory::BarChart => {}
             ViewCategory::Spatial => {
@@ -259,7 +260,7 @@ impl SpaceView {
             return;
         }
 
-        let query = crate::ui::scene::SceneQuery {
+        let query = re_viewer_context::SceneQuery {
             entity_paths: self.data_blueprint.entity_paths(),
             timeline: *ctx.rec_cfg.time_ctrl.timeline(),
             latest_at,
@@ -271,6 +272,12 @@ impl SpaceView {
                 let mut scene = view_text::SceneText::default();
                 scene.load(ctx, &query, &self.view_state.state_text.filters);
                 self.view_state.ui_text(ctx, ui, &scene);
+            }
+
+            ViewCategory::TextBox => {
+                let mut scene = view_text_box::SceneTextBox::default();
+                scene.load(ctx, &query);
+                self.view_state.ui_textbox(ctx, ui, &scene);
             }
 
             ViewCategory::TimeSeries => {
@@ -370,12 +377,13 @@ impl SpaceView {
 // ----------------------------------------------------------------------------
 
 /// Camera position and similar.
-#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Default, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct ViewState {
     /// Selects in [`Self::state_tensors`].
     selected_tensor: Option<InstancePath>,
 
     state_text: view_text::ViewTextState,
+    state_textbox: view_text_box::ViewTextBoxState,
     state_time_series: view_time_series::ViewTimeSeriesState,
     state_bar_chart: view_bar_chart::BarChartState,
     pub state_spatial: view_spatial::ViewSpatialState,
@@ -473,13 +481,7 @@ impl ViewState {
         ui: &mut egui::Ui,
         scene: &view_node_graph::SceneNodeGraph,
     ) {
-        egui::Frame {
-            inner_margin: re_ui::ReUi::view_padding().into(),
-            ..egui::Frame::default()
-        }
-        .show(ui, |ui| {
-            view_node_graph::view_node_graph(ctx, ui, &mut self.state_node_graph, scene)
-        });
+            view_text_box::view_text_box(ctx, ui, &mut self.state_textbox, scene);
     }
 
     fn ui_bar_chart(
@@ -506,5 +508,42 @@ impl ViewState {
                 view_time_series::view_time_series(ctx, ui, &mut self.state_time_series, scene);
             });
         });
+    }
+}
+
+// TODO(andreas): This should be part of re_data_ui::item_ui.
+pub mod item_ui {
+    use re_data_ui::item_ui;
+    use re_viewer_context::{Item, SpaceViewId, ViewerContext};
+
+    pub fn space_view_button(
+        ctx: &mut ViewerContext<'_>,
+        ui: &mut egui::Ui,
+        space_view: &crate::ui::SpaceView,
+    ) -> egui::Response {
+        space_view_button_to(
+            ctx,
+            ui,
+            space_view.display_name.clone(),
+            space_view.id,
+            space_view.category,
+        )
+    }
+
+    pub fn space_view_button_to(
+        ctx: &mut ViewerContext<'_>,
+        ui: &mut egui::Ui,
+        text: impl Into<egui::WidgetText>,
+        space_view_id: SpaceViewId,
+        space_view_category: crate::ui::ViewCategory,
+    ) -> egui::Response {
+        let item = Item::SpaceView(space_view_id);
+        let is_selected = ctx.selection().contains(&item);
+
+        let response = ctx
+            .re_ui
+            .selectable_label_with_icon(ui, space_view_category.icon(), text, is_selected)
+            .on_hover_text("Space View");
+        item_ui::cursor_interact_with_selectable(ctx.selection_state_mut(), response, item)
     }
 }

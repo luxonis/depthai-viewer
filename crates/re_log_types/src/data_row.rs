@@ -87,6 +87,13 @@ impl std::ops::IndexMut<usize> for DataCellRow {
     }
 }
 
+impl SizeBytes for DataCellRow {
+    #[inline]
+    fn heap_size_bytes(&self) -> u64 {
+        self.0.heap_size_bytes()
+    }
+}
+
 // ---
 
 /// A unique ID for a [`DataRow`].
@@ -119,12 +126,6 @@ impl RowId {
     #[inline]
     pub fn random() -> Self {
         Self(re_tuid::Tuid::random())
-    }
-
-    /// Temporary utility while we transition to batching. See #1619.
-    #[doc(hidden)]
-    pub fn into_table_id(self) -> TableId {
-        TableId(self.0)
     }
 }
 
@@ -315,13 +316,46 @@ impl DataRow {
         Self::try_from_cells(row_id, timepoint, entity_path, num_instances, cells).unwrap()
     }
 
-    /// Turns the `DataRow` into a single-row [`DataTable`] that carries the same ID.
+    /// A helper that combines [`Self::from_cells`] followed by [`Self::compute_all_size_bytes`].
     ///
-    /// This only makes sense as part of our transition to batching. See #1619.
-    #[doc(hidden)]
+    /// See respective documentations for more information.
+    ///
+    /// Beware: this is costly!
+    pub fn from_cells_sized(
+        row_id: RowId,
+        timepoint: impl Into<TimePoint>,
+        entity_path: impl Into<EntityPath>,
+        num_instances: u32,
+        cells: impl IntoIterator<Item = DataCell>,
+    ) -> Self {
+        let mut this =
+            Self::try_from_cells(row_id, timepoint, entity_path, num_instances, cells).unwrap();
+        this.compute_all_size_bytes();
+        this
+    }
+
+    /// Turns the `DataRow` into a single-row [`DataTable`].
     #[inline]
     pub fn into_table(self) -> DataTable {
-        DataTable::from_rows(self.row_id.into_table_id(), [self])
+        DataTable::from_rows(TableId::random(), [self])
+    }
+}
+
+impl SizeBytes for DataRow {
+    fn heap_size_bytes(&self) -> u64 {
+        let Self {
+            row_id,
+            timepoint,
+            entity_path,
+            num_instances,
+            cells,
+        } = self;
+
+        row_id.heap_size_bytes()
+            + timepoint.heap_size_bytes()
+            + entity_path.heap_size_bytes()
+            + num_instances.heap_size_bytes()
+            + cells.heap_size_bytes()
     }
 }
 
@@ -412,6 +446,32 @@ impl DataRow {
         )
     }
 
+    /// A helper that combines [`Self::from_cells1`] followed by [`Self::compute_all_size_bytes`].
+    ///
+    /// See respective documentations for more information.
+    ///
+    /// Beware: this is costly!
+    pub fn from_cells1_sized<C0>(
+        row_id: RowId,
+        entity_path: impl Into<EntityPath>,
+        timepoint: impl Into<TimePoint>,
+        num_instances: u32,
+        into_cells: C0,
+    ) -> DataRow
+    where
+        C0: Into<DataCell>,
+    {
+        let mut this = Self::from_cells(
+            row_id,
+            timepoint.into(),
+            entity_path.into(),
+            num_instances,
+            [into_cells.into()],
+        );
+        this.compute_all_size_bytes();
+        this
+    }
+
     pub fn try_from_cells1<C0>(
         row_id: RowId,
         entity_path: impl Into<EntityPath>,
@@ -453,6 +513,36 @@ impl DataRow {
                 into_cells.1.into(), //
             ],
         )
+    }
+
+    /// A helper that combines [`Self::from_cells2`] followed by [`Self::compute_all_size_bytes`].
+    ///
+    /// See respective documentations for more information.
+    ///
+    /// Beware: this is costly!
+    pub fn from_cells2_sized<C0, C1>(
+        row_id: RowId,
+        entity_path: impl Into<EntityPath>,
+        timepoint: impl Into<TimePoint>,
+        num_instances: u32,
+        into_cells: (C0, C1),
+    ) -> DataRow
+    where
+        C0: Into<DataCell>,
+        C1: Into<DataCell>,
+    {
+        let mut this = Self::from_cells(
+            row_id,
+            timepoint.into(),
+            entity_path.into(),
+            num_instances,
+            [
+                into_cells.0.into(), //
+                into_cells.1.into(), //
+            ],
+        );
+        this.compute_all_size_bytes();
+        this
     }
 
     pub fn try_from_cells2<C0, C1>(
@@ -503,6 +593,38 @@ impl DataRow {
                 into_cells.2.into(), //
             ],
         )
+    }
+
+    /// A helper that combines [`Self::from_cells3`] followed by [`Self::compute_all_size_bytes`].
+    ///
+    /// See respective documentations for more information.
+    ///
+    /// Beware: this is costly!
+    pub fn from_cells3_sized<C0, C1, C2>(
+        row_id: RowId,
+        entity_path: impl Into<EntityPath>,
+        timepoint: impl Into<TimePoint>,
+        num_instances: u32,
+        into_cells: (C0, C1, C2),
+    ) -> DataRow
+    where
+        C0: Into<DataCell>,
+        C1: Into<DataCell>,
+        C2: Into<DataCell>,
+    {
+        let mut this = Self::from_cells(
+            row_id,
+            timepoint.into(),
+            entity_path.into(),
+            num_instances,
+            [
+                into_cells.0.into(), //
+                into_cells.1.into(), //
+                into_cells.2.into(), //
+            ],
+        );
+        this.compute_all_size_bytes();
+        this
     }
 
     pub fn try_from_cells3<C0, C1, C2>(

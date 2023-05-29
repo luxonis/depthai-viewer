@@ -3,18 +3,19 @@ from typing import Any, Dict, Optional
 import numpy as np
 import numpy.typing as npt
 
-from depthai_viewer import bindings
-from depthai_viewer.components.annotation import ClassIdArray
-from depthai_viewer.components.box import Box3DArray
-from depthai_viewer.components.color import ColorRGBAArray
-from depthai_viewer.components.instance import InstanceArray
-from depthai_viewer.components.label import LabelArray
-from depthai_viewer.components.quaternion import QuaternionArray
-from depthai_viewer.components.radius import RadiusArray
-from depthai_viewer.components.vec import Vec3DArray
-from depthai_viewer.log import Color, _normalize_colors, _normalize_ids, _normalize_radii
-from depthai_viewer.log.extension_components import _add_extension_components
-from depthai_viewer.log.log_decorator import log_decorator
+from rerun import bindings
+from rerun.components.annotation import ClassIdArray
+from rerun.components.box import Box3DArray
+from rerun.components.color import ColorRGBAArray
+from rerun.components.instance import InstanceArray
+from rerun.components.label import LabelArray
+from rerun.components.quaternion import QuaternionArray
+from rerun.components.radius import RadiusArray
+from rerun.components.vec import Vec3DArray
+from rerun.log import Color, _normalize_colors, _normalize_ids, _normalize_radii
+from rerun.log.extension_components import _add_extension_components
+from rerun.log.log_decorator import log_decorator
+from rerun.recording_stream import RecordingStream
 
 __all__ = [
     "log_obb",
@@ -34,6 +35,7 @@ def log_obb(
     class_id: Optional[int] = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
+    recording: Optional[RecordingStream] = None,
 ) -> None:
     """
     Log a 3D Oriented Bounding Box, or OBB.
@@ -41,7 +43,7 @@ def log_obb(
     Example:
     --------
     ```
-    viewer.log_obb("my_obb", half_size=[1.0, 2.0, 3.0], position=[0, 0, 0], rotation_q=[0, 0, 0, 1])
+    rr.log_obb("my_obb", half_size=[1.0, 2.0, 3.0], position=[0, 0, 0], rotation_q=[0, 0, 0, 1])
     ```
 
     Parameters
@@ -66,8 +68,13 @@ def log_obb(
         Optional dictionary of extension components. See [rerun.log_extension_components][]
     timeless:
         If true, the bounding box will be timeless (default: False).
+    recording:
+        Specifies the [`rerun.RecordingStream`][] to use.
+        If left unspecified, defaults to the current active data recording, if there is one.
+        See also: [`rerun.init`][], [`rerun.set_global_data_recording`][].
 
     """
+    recording = RecordingStream.to_native(recording)
 
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
@@ -117,8 +124,13 @@ def log_obb(
 
     if splats:
         splats["rerun.instance_key"] = InstanceArray.splat()
-        bindings.log_arrow_msg(entity_path, components=splats, timeless=timeless)
+        bindings.log_arrow_msg(
+            entity_path,
+            components=splats,
+            timeless=timeless,
+            recording=recording,
+        )
 
     # Always the primary component last so range-based queries will include the other data. See(#1215)
     if instanced:
-        bindings.log_arrow_msg(entity_path, components=instanced, timeless=timeless)
+        bindings.log_arrow_msg(entity_path, components=instanced, timeless=timeless, recording=recording)

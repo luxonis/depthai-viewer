@@ -13,11 +13,12 @@ import argparse
 import logging
 import math
 import os
+import threading
+from typing import Callable
 
 import cv2
 import depthai_viewer as viewer
 import numpy as np
-from scipy.spatial.transform import Rotation
 
 
 def run_segmentation() -> None:
@@ -31,18 +32,18 @@ def run_segmentation() -> None:
     viewer.log_segmentation_image("seg_demo/img", segmentation_img)
 
     # Log a bunch of classified 2D points
-    viewer.log_point("seg_demo/single_point", np.array([64, 64]), class_id=13)
-    viewer.log_point("seg_demo/single_point_labeled", np.array([90, 50]), class_id=13, label="labeled point")
-    viewer.log_points("seg_demo/several_points0", np.array([[20, 50], [100, 70], [60, 30]]), class_ids=42)
+    viewer.log_point("seg_demo/single_point", np.avieweray([64, 64]), class_id=13)
+    viewer.log_point("seg_demo/single_point_labeled", np.avieweray([90, 50]), class_id=13, label="labeled point")
+    viewer.log_points("seg_demo/several_points0", np.avieweray([[20, 50], [100, 70], [60, 30]]), class_ids=42)
     viewer.log_points(
         "seg_demo/several_points1",
-        np.array([[40, 50], [120, 70], [80, 30]]),
-        class_ids=np.array([13, 42, 99], dtype=np.uint8),
+        np.avieweray([[40, 50], [120, 70], [80, 30]]),
+        class_ids=np.avieweray([13, 42, 99], dtype=np.uint8),
     )
     viewer.log_points(
         "seg_demo/many points",
-        np.array([[100 + (int(i / 5)) * 2, 100 + (i % 5) * 2] for i in range(25)]),
-        class_ids=np.array([42], dtype=np.uint8),
+        np.avieweray([[100 + (int(i / 5)) * 2, 100 + (i % 5) * 2] for i in range(25)]),
+        class_ids=np.avieweray([42], dtype=np.uint8),
     )
 
     viewer.log_text_entry(
@@ -82,6 +83,82 @@ def run_segmentation() -> None:
     )
 
 
+def run_2d_layering() -> None:
+    viewer.set_time_seconds("sim_time", 1)
+
+    # Large gray background.
+    img = np.full((512, 512), 64, dtype="uint8")
+    viewer.log_image("2d_layering/background", img, draw_order=0.0)
+
+    # Smaller gradient in the middle.
+    img = np.zeros((256, 256, 3), dtype="uint8")
+    img[:, :, 0] = np.linspace(0, 255, 256, dtype="uint8")
+    img[:, :, 1] = np.linspace(0, 255, 256, dtype="uint8")
+    img[:, :, 1] = img[:, :, 1].transpose()
+    viewer.log_image("2d_layering/middle_gradient", img, draw_order=1.0)
+
+    # Slightly smaller blue in the middle, on the same layer as the previous.
+    img = np.full((192, 192, 3), (0, 0, 255), dtype="uint8")
+    viewer.log_image("2d_layering/middle_blue", img, draw_order=1.0)
+
+    # Small white on top.
+    img = np.full((128, 128), 255, dtype="uint8")
+    viewer.log_image("2d_layering/top", img, draw_order=2.0)
+
+    # Rectangle in between the top and the middle.
+    viewer.log_rect("2d_layering/rect_between_top_and_middle", (64, 64, 256, 256), draw_order=1.5)
+
+    # Lines behind the rectangle.
+    viewer.log_line_strip(
+        "2d_layering/lines_behind_rect", [(i * 20, i % 2 * 100 + 100) for i in range(20)], draw_order=1.25
+    )
+
+    # And some points in front of the rectangle.
+    viewer.log_points(
+        "2d_layering/points_between_top_and_middle",
+        [(32.0 + int(i / 16) * 16.0, 64.0 + (i % 16) * 16.0) for i in range(16 * 16)],
+        draw_order=1.51,
+    )
+
+
+def transform_test() -> None:
+    viewer.log_disconnected_space("transform_test/disconnected", timeless=True)
+    viewer.log_transform3d(
+        "transform_test/child_from_parent_mat3",
+        viewer.TranslationAndMat3((123, 456, 789), np.avieweray([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
+        from_parent=True,
+    )
+    viewer.log_transform3d("transform_test/parent_from_child_mat3", viewer.TranslationAndMat3((123, 456, 789)))
+    viewer.log_transform3d("transform_test/empty_translation_mat3", viewer.TranslationAndMat3())
+
+    # Log translation only.
+    viewer.log_transform3d("transform_test/translation", viewer.Translation3D((2, 1, 3)))
+
+    # Log scale along the x axis only.
+    viewer.log_transform3d("transform_test/x_scaled", viewer.Scale3D((3, 1, 1)))
+
+    # Log a rotation around the z axis.
+    viewer.log_transform3d("transform_test/z_rotated_object", viewer.RotationAxisAngle((0, 0, 1), degrees=20))
+
+    # Log scale followed by translation along the Y-axis.
+    viewer.log_transform3d(
+        "transform_test/scaled_and_translated_object", viewer.TranslationRotationScale3D([0.0, 1.0, 0.0], scale=2)
+    )
+
+    # Log translation + rotation, also called a rigid transform.
+    viewer.log_transform3d("transform_test/rigid3", viewer.Rigid3D([1, 2, 3], viewer.RotationAxisAngle((0, 1, 0), radians=1.57)))
+
+    # Log translation, rotation & scale all at once.
+    viewer.log_transform3d(
+        "transform_test/transformed",
+        viewer.TranslationRotationScale3D(
+            translation=[0, 1, 5],
+            rotation=viewer.RotationAxisAngle((0, 0, 1), degrees=20),
+            scale=2,
+        ),
+    )
+
+
 def run_2d_lines() -> None:
     import numpy as np
 
@@ -99,19 +176,19 @@ def run_3d_points() -> None:
     import random
 
     viewer.set_time_seconds("sim_time", 1)
-    viewer.log_point("3d_points/single_point_unlabeled", np.array([10.0, 0.0, 0.0]))
-    viewer.log_point("3d_points/single_point_labeled", np.array([0.0, 0.0, 0.0]), label="labeled point")
+    viewer.log_point("3d_points/single_point_unlabeled", np.avieweray([10.0, 0.0, 0.0]))
+    viewer.log_point("3d_points/single_point_labeled", np.avieweray([0.0, 0.0, 0.0]), label="labeled point")
     viewer.log_points(
         "3d_points/spiral_small",
-        np.array([[math.sin(i * 0.2) * 5, math.cos(i * 0.2) * 5 + 10.0, i * 4.0 - 5.0] for i in range(9)]),
+        np.avieweray([[math.sin(i * 0.2) * 5, math.cos(i * 0.2) * 5 + 10.0, i * 4.0 - 5.0] for i in range(9)]),
         labels=[str(i) for i in range(9)],
         radii=np.linspace(0.1, 2.0, num=9),
     )
     viewer.log_points(
         "3d_points/spiral_big",
-        np.array([[math.sin(i * 0.2) * 5, math.cos(i * 0.2) * 5 - 10.0, i * 0.4 - 5.0] for i in range(100)]),
+        np.avieweray([[math.sin(i * 0.2) * 5, math.cos(i * 0.2) * 5 - 10.0, i * 0.4 - 5.0] for i in range(100)]),
         labels=[str(i) for i in range(100)],
-        colors=np.array([[random.randrange(255) for _ in range(3)] for _ in range(100)]),
+        colors=np.avieweray([[random.randrange(255) for _ in range(3)] for _ in range(100)]),
     )
 
 
@@ -138,7 +215,7 @@ def run_rects() -> None:
     rects_xy = np.random.rand(20, 2) * 1024
     rects_wh = np.random.rand(20, 2) * (1024 - rects_xy + 1)
     rects = np.hstack((rects_xy, rects_wh))
-    colors = np.array([[random.randrange(255) for _ in range(3)] for _ in range(20)])
+    colors = np.avieweray([[random.randrange(255) for _ in range(3)] for _ in range(20)])
     viewer.log_rects("rects_demo/rects", rects, colors=colors, rect_format=viewer.RectFormat.XYWH)
 
     # Clear the rectangles by logging an empty set
@@ -195,14 +272,14 @@ def transforms_rigid_3d() -> None:
     height = np.power(np.random.rand(200), 0.2) * 0.5 - 0.5
     viewer.log_points(
         "transforms3d/sun/planet/dust",
-        np.array([np.sin(angles) * radii, np.cos(angles) * radii, height]).transpose(),
+        np.avieweray([np.sin(angles) * radii, np.cos(angles) * radii, height]).transpose(),
         colors=[80, 80, 80],
         radii=0.025,
     )
 
     # paths where the planet & moon move
     angles = np.arange(0.0, 1.01, 0.01) * math.tau
-    circle = np.array([np.sin(angles), np.cos(angles), angles * 0.0]).transpose()
+    circle = np.avieweray([np.sin(angles), np.cos(angles), angles * 0.0]).transpose()
     viewer.log_line_strip(
         "transforms3d/sun/planet_path",
         circle * sun_to_planet_distance,
@@ -216,29 +293,28 @@ def transforms_rigid_3d() -> None:
     for i in range(0, 6 * 120):
         time = i / 120.0
         viewer.set_time_seconds("sim_time", time)
-        rotation_q = [0, 0, 0, 1]
 
-        viewer.log_rigid3(
+        viewer.log_transform3d(
             "transforms3d/sun/planet",
-            parent_from_child=(
+            viewer.TranslationRotationScale3D(
                 [
                     math.sin(time * rotation_speed_planet) * sun_to_planet_distance,
                     math.cos(time * rotation_speed_planet) * sun_to_planet_distance,
                     0.0,
                 ],
-                Rotation.from_euler("x", 20, degrees=True).as_quat(),
+                viewer.RotationAxisAngle((1, 0, 0), degrees=20),
             ),
         )
-        viewer.log_rigid3(
+        viewer.log_transform3d(
             "transforms3d/sun/planet/moon",
-            child_from_parent=(
+            viewer.TranslationRotationScale3D(
                 [
                     math.cos(time * rotation_speed_moon) * planet_to_moon_distance,
                     math.sin(time * rotation_speed_moon) * planet_to_moon_distance,
                     0.0,
-                ],
-                rotation_q,
+                ]
             ),
+            from_parent=True,
         )
 
 
@@ -247,8 +323,8 @@ def run_bounding_box() -> None:
     viewer.log_obb(
         "bbox_demo/bbox",
         half_size=[1.0, 0.5, 0.25],
-        position=np.array([0.0, 0.0, 0.0]),
-        rotation_q=np.array([0, 0, np.sin(np.pi / 4), np.cos(np.pi / 4)]),
+        position=np.avieweray([0.0, 0.0, 0.0]),
+        rotation_q=np.avieweray([0, 0, np.sin(np.pi / 4), np.cos(np.pi / 4)]),
         color=[0, 255, 0],
         stroke_width=0.01,
         label="box/t0",
@@ -258,8 +334,8 @@ def run_bounding_box() -> None:
     viewer.log_obb(
         "bbox_demo/bbox",
         half_size=[1.0, 0.5, 0.25],
-        position=np.array([1.0, 0.0, 0.0]),
-        rotation_q=np.array([0, 0, np.sin(np.pi / 4), np.cos(np.pi / 4)]),
+        position=np.avieweray([1.0, 0.0, 0.0]),
+        rotation_q=np.avieweray([0, 0, np.sin(np.pi / 4), np.cos(np.pi / 4)]),
         color=[255, 255, 0],
         stroke_width=0.02,
         label="box/t1",
@@ -272,7 +348,7 @@ def run_extension_component() -> None:
     viewer.log_rect("extension_components", [0, 0, 128, 128])
 
     # Single point
-    viewer.log_point("extension_components/point", np.array([64, 64]), color=(255, 0, 0))
+    viewer.log_point("extension_components/point", np.avieweray([64, 64]), color=(255, 0, 0))
     # Separate extension component
     viewer.log_extension_components("extension_components/point", {"confidence": 0.9})
 
@@ -281,7 +357,7 @@ def run_extension_component() -> None:
     viewer.set_time_seconds("sim_time", 1)
     viewer.log_points(
         "extension_components/points",
-        np.array([[32, 32], [32, 96], [96, 32], [96, 96]]),
+        np.avieweray([[32, 32], [32, 96], [96, 32], [96, 96]]),
         colors=(0, 255, 0),
         ext={"corner": ["upper left", "lower left", "upper right", "lower right"], "training": True},
     )
@@ -305,7 +381,7 @@ def run_image_tensors() -> None:
         "uint16",
         "uint32",
         "uint64",
-        "int8",
+        "int8",  # produces wrap-around when casting, producing ugly images, but clipping which is not useful as a test
         "int16",
         "int32",
         "int64",
@@ -320,6 +396,11 @@ def run_image_tensors() -> None:
         viewer.log_image(f"img_gray_{dtype}", img_gray.astype(dtype))
 
 
+def spawn_demo(demo: Callable[[], None], rec: viewer.RecordingStream) -> None:
+    with rec:
+        demo()
+
+
 def main() -> None:
     demos = {
         "2d_lines": run_2d_lines,
@@ -332,32 +413,68 @@ def main() -> None:
         "rects": run_rects,
         "segmentation": run_segmentation,
         "text": run_text_logs,
-        "transforms_3d": transforms_rigid_3d,
+        "transforms_rigid_3d": transforms_rigid_3d,
+        "transform_test": transform_test,
+        "2d_layering": run_2d_layering,
     }
 
     parser = argparse.ArgumentParser(description="Logs rich data using the Rerun SDK.")
     parser.add_argument(
         "--demo", type=str, default="most", help="What demo to run", choices=["most", "all"] + list(demos.keys())
     )
+    parser.add_argument(
+        "--multithread",
+        dest="multithread",
+        action="store_true",
+        help="If specified, each demo will be run from its own python thread",
+    )
+    parser.add_argument(
+        "--split-recordings",
+        dest="split_recordings",
+        action="store_true",
+        help="If specified, each demo will be its own recording",
+    )
 
     viewer.script_add_args(parser)
     args, unknown = parser.parse_known_args()
     [__import__("logging").warning(f"unknown arg: {arg}") for arg in unknown]
-
-    viewer.script_setup(args, "api_demo")
+    if not args.split_recordings:
+        rec = viewer.script_setup(args, "api_demo")
 
     if args.demo in ["most", "all"]:
         print(f"Running {args.demo} demos…")
+        threads = []
         for name, demo in demos.items():
             # Some demos are just a bit… too much
-            if args.demo == "most" and name in ["image_tensors"]:
+            if args.demo == "most" and name in ["image_tensors", "transform_test"]:
                 continue
 
-            logging.info(f"Starting {name}")
-            demo()
+            if args.split_recordings:
+                rec = viewer.script_setup(args, f"api_demo/{name}")
+
+            if args.multithread:
+                t = threading.Thread(
+                    target=spawn_demo,
+                    args=(
+                        demo,
+                        rec,
+                    ),
+                )
+                t.start()
+                threads.append(t)
+            else:
+                logging.info(f"Starting {name}")
+                with rec:
+                    demo()
+
+        for t in threads:
+            t.join()
     else:
-        demo = demos[args.demo]
-        demo()
+        if args.split_recordings:
+            with viewer.script_setup(args, f"api_demo/{args.demo}"):
+                demos[args.demo]()
+        else:
+            demos[args.demo]()
 
     viewer.script_teardown(args)
 

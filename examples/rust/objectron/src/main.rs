@@ -18,10 +18,10 @@ use std::{
 
 use anyhow::{anyhow, Context as _};
 
-use depthai_viewer::{
+use rerun::{
     external::re_log,
     time::{Time, TimePoint, TimeType, Timeline},
-    MsgSender, Session,
+    MsgSender, RecordingStream,
 };
 
 // --- Rerun logging ---
@@ -73,44 +73,48 @@ impl<'a> From<&'a [objectron::FrameAnnotation]> for AnnotationsPerFrame<'a> {
 }
 
 fn log_coordinate_space(
-    session: &Session,
-    ent_path: impl Into<depthai_viewer::EntityPath>,
+    rec_stream: &RecordingStream,
+    ent_path: impl Into<rerun::EntityPath>,
     axes: &str,
 ) -> anyhow::Result<()> {
-    let view_coords: depthai_viewer::components::ViewCoordinates = axes
+    let view_coords: rerun::components::ViewCoordinates = axes
         .parse()
         .map_err(|err| anyhow!("couldn't parse {axes:?} as ViewCoordinates: {err}"))?;
     MsgSender::new(ent_path)
         .with_timeless(true)
         .with_component(&[view_coords])?
-        .send(session)
+        .send(rec_stream)
         .map_err(Into::into)
 }
 
 fn log_ar_frame(
-    session: &Session,
+    rec_stream: &RecordingStream,
     annotations: &AnnotationsPerFrame<'_>,
     ar_frame: &ArFrame,
 ) -> anyhow::Result<()> {
-    log_video_frame(session, ar_frame)?;
+    log_video_frame(rec_stream, ar_frame)?;
 
     if let Some(ar_camera) = ar_frame.data.camera.as_ref() {
-        log_ar_camera(session, ar_frame.timepoint.clone(), ar_camera)?;
+        log_ar_camera(rec_stream, ar_frame.timepoint.clone(), ar_camera)?;
     }
 
     if let Some(points) = ar_frame.data.raw_feature_points.as_ref() {
-        log_feature_points(session, ar_frame.timepoint.clone(), points)?;
+        log_feature_points(rec_stream, ar_frame.timepoint.clone(), points)?;
     }
 
     if let Some(&annotations) = annotations.0.get(&ar_frame.index) {
-        log_frame_annotations(session, &ar_frame.timepoint, annotations)?;
+        log_frame_annotations(rec_stream, &ar_frame.timepoint, annotations)?;
     }
 
     Ok(())
 }
 
-fn log_baseline_objects(session: &Session, objects: &[objectron::Object]) -> anyhow::Result<()> {
-    use depthai_viewer::components::{Box3D, ColorRGBA, Label, Rigid3, Transform};
+fn log_baseline_objects(
+    rec_stream: &RecordingStream,
+    objects: &[objectron::Object],
+) -> anyhow::Result<()> {
+    use rerun::components::{Box3D, ColorRGBA, Label, Transform3D};
+    use rerun::transform::TranslationAndMat3;
 
     let boxes = objects.iter().filter_map(|object| {
         Some({
@@ -121,14 +125,10 @@ fn log_baseline_objects(session: &Session, objects: &[objectron::Object]) -> any
 
             let box3: Box3D = glam::Vec3::from_slice(&object.scale).into();
             let transform = {
-                let translation = glam::Vec3::from_slice(&object.translation).into();
+                let translation = glam::Vec3::from_slice(&object.translation);
                 // NOTE: the dataset is all row-major, transpose those matrices!
                 let rotation = glam::Mat3::from_cols_slice(&object.rotation).transpose();
-                let rotation = glam::Quat::from_mat3(&rotation).into();
-                Transform::Rigid3(Rigid3 {
-                    rotation,
-                    translation,
-                })
+                Transform3D::new(TranslationAndMat3::new(translation, rotation))
             };
             let label = Label(object.category.clone());
 
@@ -143,26 +143,26 @@ fn log_baseline_objects(session: &Session, objects: &[objectron::Object]) -> any
             .with_component(&[transform])?
             .with_component(&[label])?
             .with_splat(ColorRGBA::from_rgb(160, 230, 130))?
-            .send(session)?;
+            .send(rec_stream)?;
     }
 
     Ok(())
 }
 
-fn log_video_frame(session: &Session, ar_frame: &ArFrame) -> anyhow::Result<()> {
+fn log_video_frame(rec_stream: &RecordingStream, ar_frame: &ArFrame) -> anyhow::Result<()> {
     let image_path = ar_frame.dir.join(format!("video/{}.jpg", ar_frame.index));
-    let tensor = depthai_viewer::components::Tensor::tensor_from_jpeg_file(image_path)?;
+    let tensor = rerun::components::Tensor::from_jpeg_file(&image_path)?;
 
     MsgSender::new("world/camera/video")
         .with_timepoint(ar_frame.timepoint.clone())
         .with_component(&[tensor])?
-        .send(session)?;
+        .send(rec_stream)?;
 
     Ok(())
 }
 
 fn log_ar_camera(
-    session: &Session,
+    rec_stream: &RecordingStream,
     timepoint: TimePoint,
     ar_camera: &objectron::ArCamera,
 ) -> anyhow::Result<()> {
@@ -189,31 +189,32 @@ fn log_ar_camera(
     // TODO(cmc): I can't figure out why I need to do this
     let rot = rot * glam::Quat::from_axis_angle(glam::Vec3::X, std::f32::consts::TAU / 2.0);
 
-    use depthai_viewer::components::{Pinhole, Rigid3, Transform};
+    use rerun::components::{Pinhole, Transform3D};
+    use rerun::transform::TranslationRotationScale3D;
     MsgSender::new("world/camera")
         .with_timepoint(timepoint.clone())
-        .with_component(&[Transform::Rigid3(Rigid3 {
-            rotation: rot.into(),
-            translation: translation.into(),
-        })])?
-        .send(session)?;
+        .with_component(&[Transform3D::new(TranslationRotationScale3D::rigid(
+            translation,
+            rot,
+        ))])?
+        .send(rec_stream)?;
     MsgSender::new("world/camera/video")
         .with_timepoint(timepoint)
-        .with_component(&[Transform::Pinhole(Pinhole {
+        .with_component(&[Pinhole {
             image_from_cam: intrinsics.into(),
             resolution: Some(resolution.into()),
-        })])?
-        .send(session)?;
+        }])?
+        .send(rec_stream)?;
 
     Ok(())
 }
 
 fn log_feature_points(
-    session: &Session,
+    rec_stream: &RecordingStream,
     timepoint: TimePoint,
     points: &objectron::ArPointCloud,
 ) -> anyhow::Result<()> {
-    use depthai_viewer::components::{ColorRGBA, InstanceKey, Point3D};
+    use rerun::components::{ColorRGBA, InstanceKey, Point3D};
 
     let ids = points.identifier.iter();
     let points = points.point.iter();
@@ -236,17 +237,17 @@ fn log_feature_points(
         .with_component(&points)?
         .with_component(&ids)?
         .with_splat(ColorRGBA::from_rgb(255, 255, 255))?
-        .send(session)?;
+        .send(rec_stream)?;
 
     Ok(())
 }
 
 fn log_frame_annotations(
-    session: &Session,
+    rec_stream: &RecordingStream,
     timepoint: &TimePoint,
     annotations: &objectron::FrameAnnotation,
 ) -> anyhow::Result<()> {
-    use depthai_viewer::components::{ColorRGBA, InstanceKey, LineStrip2D, Point2D};
+    use rerun::components::{ColorRGBA, InstanceKey, LineStrip2D, Point2D};
 
     for ann in &annotations.annotations {
         // TODO(cmc): we shouldn't be using those preprojected 2D points to begin with, Rerun is
@@ -306,7 +307,7 @@ fn log_frame_annotations(
                 .with_component(&points.into_iter().map(Point2D::from).collect::<Vec<_>>())?;
         }
 
-        msg.send(session)?;
+        msg.send(rec_stream)?;
     }
 
     Ok(())
@@ -332,7 +333,7 @@ enum Recording {
 #[clap(author, version, about)]
 struct Args {
     #[command(flatten)]
-    rerun: depthai_viewer::clap::RerunArgs,
+    rerun: rerun::clap::RerunArgs,
 
     /// Specifies the recording to replay.
     #[clap(long, value_enum, default_value = "book")]
@@ -360,7 +361,7 @@ fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseFloat
     Ok(std::time::Duration::from_secs_f64(seconds))
 }
 
-fn run(session: &Session, args: &Args) -> anyhow::Result<()> {
+fn run(rec_stream: &RecordingStream, args: &Args) -> anyhow::Result<()> {
     // Parse protobuf dataset
     let rec_info = args.recording.info().with_context(|| {
         use clap::ValueEnum as _;
@@ -374,10 +375,10 @@ fn run(session: &Session, args: &Args) -> anyhow::Result<()> {
     let annotations = read_annotations(&rec_info.path_annotations)?;
 
     // See https://github.com/google-research-datasets/Objectron/issues/39
-    log_coordinate_space(session, "world", "RUB")?;
-    log_coordinate_space(session, "world/camera", "RDF")?;
+    log_coordinate_space(rec_stream, "world", "RUB")?;
+    log_coordinate_space(rec_stream, "world/camera", "RDF")?;
 
-    log_baseline_objects(session, &annotations.objects)?;
+    log_baseline_objects(rec_stream, &annotations.objects)?;
 
     let mut global_frame_offset = 0;
     let mut global_time_offset = 0.0;
@@ -404,7 +405,7 @@ fn run(session: &Session, args: &Args) -> anyhow::Result<()> {
                 ar_frame,
             );
             let annotations = annotations.frame_annotations.as_slice().into();
-            log_ar_frame(session, &annotations, &ar_frame)?;
+            log_ar_frame(rec_stream, &annotations, &ar_frame)?;
 
             if let Some(d) = args.per_frame_sleep {
                 std::thread::sleep(d);
@@ -434,8 +435,8 @@ fn main() -> anyhow::Result<()> {
     let default_enabled = true;
     args.rerun
         .clone()
-        .run("objectron_rs", default_enabled, move |session| {
-            run(&session, &args).unwrap();
+        .run("objectron_rs", default_enabled, move |rec_stream| {
+            run(&rec_stream, &args).unwrap();
         })
 }
 

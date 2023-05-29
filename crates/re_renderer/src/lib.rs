@@ -25,6 +25,7 @@ mod global_bindings;
 mod line_strip_builder;
 mod point_cloud_builder;
 mod size;
+mod transform;
 mod wgpu_buffer_types;
 mod wgpu_resources;
 
@@ -41,7 +42,9 @@ pub use debug_label::DebugLabel;
 pub use depth_offset::DepthOffset;
 pub use line_strip_builder::{LineStripBuilder, LineStripSeriesBuilder};
 pub use point_cloud_builder::{PointCloudBatchBuilder, PointCloudBuilder};
+pub use rect::{RectF32, RectInt};
 pub use size::Size;
+pub use transform::RectTransform;
 pub use view_builder::{AutoSizeConfig, ViewBuilder};
 pub use wgpu_resources::WgpuResourcePoolStatistics;
 
@@ -67,7 +70,6 @@ mod file_server;
 pub use self::file_server::FileServer;
 
 mod rect;
-pub use rect::IntRect;
 
 #[cfg(not(all(not(target_arch = "wasm32"), debug_assertions)))] // wasm or release builds
 #[rustfmt::skip] // it's auto-generated
@@ -109,4 +111,27 @@ macro_rules! profile_scope {
         #[cfg(not(target_arch = "wasm32"))]
         puffin::profile_scope!($($arg)*);
     };
+}
+
+// ---------------------------------------------------------------------------
+
+/// Pad `RGB` to `RGBA` with the given alpha.
+pub fn pad_rgb_to_rgba<T: Copy>(rgb: &[T], alpha: T) -> Vec<T> {
+    crate::profile_function!();
+    if cfg!(debug_assertions) {
+        // fastest version in debug builds.
+        // 5x faster in debug builds, but 2x slower in release
+        let mut rgba = vec![alpha; rgb.len() / 3 * 4];
+        for i in 0..(rgb.len() / 3) {
+            rgba[4 * i] = rgb[3 * i];
+            rgba[4 * i + 1] = rgb[3 * i + 1];
+            rgba[4 * i + 2] = rgb[3 * i + 2];
+        }
+        rgba
+    } else {
+        // fastest version in optimized builds
+        rgb.chunks_exact(3)
+            .flat_map(|chunk| [chunk[0], chunk[1], chunk[2], alpha])
+            .collect()
+    }
 }

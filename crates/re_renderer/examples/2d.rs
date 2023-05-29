@@ -26,15 +26,7 @@ impl framework::Example for Render2D {
         let rerun_logo =
             image::load_from_memory(include_bytes!("../../re_ui/data/logo_dark_mode.png")).unwrap();
 
-        let mut image_data = rerun_logo.as_rgba8().unwrap().to_vec();
-
-        // Premultiply alpha.
-        for color in image_data.chunks_exact_mut(4) {
-            color.clone_from_slice(
-                &ecolor::Color32::from_rgba_unmultiplied(color[0], color[1], color[2], color[3])
-                    .to_array(),
-            );
-        }
+        let image_data = rerun_logo.as_rgba8().unwrap().to_vec();
 
         let rerun_logo_texture = re_ctx
             .texture_manager_2d
@@ -103,14 +95,14 @@ impl framework::Example for Render2D {
             let mut line_batch = line_strip_builder.batch("line cap variations");
             for (i, flags) in [
                 LineStripFlags::empty(),
-                LineStripFlags::CAP_START_ROUND,
-                LineStripFlags::CAP_END_ROUND,
-                LineStripFlags::CAP_START_TRIANGLE,
-                LineStripFlags::CAP_END_TRIANGLE,
-                LineStripFlags::CAP_START_ROUND | LineStripFlags::CAP_END_ROUND,
-                LineStripFlags::CAP_START_ROUND | LineStripFlags::CAP_END_TRIANGLE,
-                LineStripFlags::CAP_START_TRIANGLE | LineStripFlags::CAP_END_ROUND,
-                LineStripFlags::CAP_START_TRIANGLE | LineStripFlags::CAP_END_TRIANGLE,
+                LineStripFlags::FLAG_CAP_START_ROUND,
+                LineStripFlags::FLAG_CAP_END_ROUND,
+                LineStripFlags::FLAG_CAP_START_TRIANGLE,
+                LineStripFlags::FLAG_CAP_END_TRIANGLE,
+                LineStripFlags::FLAG_CAP_START_ROUND | LineStripFlags::FLAG_CAP_END_ROUND,
+                LineStripFlags::FLAG_CAP_START_ROUND | LineStripFlags::FLAG_CAP_END_TRIANGLE,
+                LineStripFlags::FLAG_CAP_START_TRIANGLE | LineStripFlags::FLAG_CAP_END_ROUND,
+                LineStripFlags::FLAG_CAP_START_TRIANGLE | LineStripFlags::FLAG_CAP_END_TRIANGLE,
             ]
             .iter()
             .enumerate()
@@ -119,7 +111,7 @@ impl framework::Example for Render2D {
                 line_batch
                     .add_segment_2d(glam::vec2(70.0, y), glam::vec2(400.0, y))
                     .radius(Size::new_scene(15.0))
-                    .flags(*flags);
+                    .flags(*flags | LineStripFlags::FLAG_COLOR_GRADIENT);
             }
         }
 
@@ -174,16 +166,48 @@ impl framework::Example for Render2D {
             std::iter::repeat(re_renderer::PickingLayerInstanceId::default()),
         );
 
-        // Pile stuff to test for overlap handling
+        // Pile stuff to test for overlap handling.
+        // Do in individual batches to test depth offset.
         {
-            let mut batch = line_strip_builder.batch("overlapping objects");
-            for i in 0..10 {
-                let x = 5.0 * i as f32 + 20.0;
+            let num_lines = 20_i16;
+            let y_range = 700.0..780.0;
+
+            // Cycle through which line is on top.
+            let top_line = ((time.seconds_since_startup() * 6.0) as i16 % (num_lines * 2 - 1)
+                - num_lines)
+                .abs();
+            for i in 0..num_lines {
+                let depth_offset = if i < top_line { i } else { top_line * 2 - i };
+                let mut batch = line_strip_builder
+                    .batch(format!("overlapping objects {i}"))
+                    .depth_offset(depth_offset);
+
+                let x = 15.0 * i as f32 + 20.0;
                 batch
-                    .add_segment_2d(glam::vec2(x, 700.0), glam::vec2(x, 780.0))
-                    .color(Hsva::new(10.0 / i as f32, 1.0, 0.5, 1.0).into())
-                    .radius(Size::new_points(10.0));
+                    .add_segment_2d(glam::vec2(x, y_range.start), glam::vec2(x, y_range.end))
+                    .color(Hsva::new(0.25 / num_lines as f32 * i as f32, 1.0, 0.5, 1.0).into())
+                    .radius(Size::new_points(10.0))
+                    .flags(LineStripFlags::FLAG_COLOR_GRADIENT);
             }
+
+            let num_points = 8;
+            let size = Size::new_points(3.0);
+            point_cloud_builder
+                .batch("points overlapping with lines")
+                .depth_offset(5)
+                .add_points_2d(
+                    num_points,
+                    (0..num_points).map(|i| {
+                        glam::vec2(
+                            30.0 * i as f32 + 20.0,
+                            y_range.start
+                                + (y_range.end - y_range.start) / num_points as f32 * i as f32,
+                        )
+                    }),
+                    std::iter::repeat(size),
+                    std::iter::repeat(Color32::WHITE),
+                    std::iter::repeat(re_renderer::PickingLayerInstanceId::default()),
+                );
         }
 
         let line_strip_draw_data = line_strip_builder.to_draw_data(re_ctx).unwrap();
@@ -197,7 +221,7 @@ impl framework::Example for Render2D {
                     top_left_corner_position: glam::vec3(500.0, 120.0, -0.05),
                     extent_u: self.rerun_logo_texture_width as f32 * image_scale * glam::Vec3::X,
                     extent_v: self.rerun_logo_texture_height as f32 * image_scale * glam::Vec3::Y,
-                    colormapped_texture: ColormappedTexture::from_unorm_srgba(
+                    colormapped_texture: ColormappedTexture::from_unorm_rgba(
                         self.rerun_logo_texture.clone(),
                     ),
                     options: RectangleOptions {
@@ -215,7 +239,7 @@ impl framework::Example for Render2D {
                     ),
                     extent_u: self.rerun_logo_texture_width as f32 * image_scale * glam::Vec3::X,
                     extent_v: self.rerun_logo_texture_height as f32 * image_scale * glam::Vec3::Y,
-                    colormapped_texture: ColormappedTexture::from_unorm_srgba(
+                    colormapped_texture: ColormappedTexture::from_unorm_rgba(
                         self.rerun_logo_texture.clone(),
                     ),
                     options: RectangleOptions {
@@ -284,6 +308,7 @@ impl framework::Example for Render2D {
                         projection_from_view: Projection::Perspective {
                             vertical_fov: 70.0 * std::f32::consts::TAU / 360.0,
                             near_plane_distance: 0.01,
+                            aspect_ratio: resolution[0] as f32 / resolution[1] as f32,
                         },
                         pixels_from_point,
                         ..Default::default()

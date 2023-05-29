@@ -6,7 +6,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use re_log_types::{
     datagen::{build_frame_nr, build_some_colors, build_some_point2d},
-    entity_path, DataRow, DataTable, Index, LogMsg, RecordingId, RowId, TableId,
+    entity_path, DataRow, DataTable, Index, LogMsg, RecordingId, RecordingType, RowId, TableId,
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -27,8 +27,9 @@ criterion_group!(
 criterion_main!(benches);
 
 fn encode_log_msgs(messages: &[LogMsg]) -> Vec<u8> {
+    let encoding_options = re_log_encoding::EncodingOptions::COMPRESSED;
     let mut bytes = vec![];
-    re_log_encoding::encoder::encode(messages.iter(), &mut bytes).unwrap();
+    re_log_encoding::encoder::encode(encoding_options, messages.iter(), &mut bytes).unwrap();
     assert!(bytes.len() > messages.len());
     bytes
 }
@@ -42,10 +43,10 @@ fn decode_log_msgs(mut bytes: &[u8]) -> Vec<LogMsg> {
     messages
 }
 
-fn generate_messages(recording_id: RecordingId, tables: &[DataTable]) -> Vec<LogMsg> {
+fn generate_messages(recording_id: &RecordingId, tables: &[DataTable]) -> Vec<LogMsg> {
     tables
         .iter()
-        .map(|table| LogMsg::ArrowMsg(recording_id, table.to_arrow_msg().unwrap()))
+        .map(|table| LogMsg::ArrowMsg(recording_id.clone(), table.to_arrow_msg().unwrap()))
         .collect()
 }
 
@@ -81,7 +82,7 @@ fn mono_points_arrow(c: &mut Criterion) {
     }
 
     {
-        let recording_id = RecordingId::random();
+        let recording_id = RecordingId::random(RecordingType::Data);
         let mut group = c.benchmark_group("mono_points_arrow");
         group.throughput(criterion::Throughput::Elements(NUM_POINTS as _));
         group.bench_function("generate_message_bundles", |b| {
@@ -89,14 +90,14 @@ fn mono_points_arrow(c: &mut Criterion) {
         });
         let tables = generate_tables();
         group.bench_function("generate_messages", |b| {
-            b.iter(|| generate_messages(recording_id, &tables));
+            b.iter(|| generate_messages(&recording_id, &tables));
         });
-        let messages = generate_messages(recording_id, &tables);
+        let messages = generate_messages(&recording_id, &tables);
         group.bench_function("encode_log_msg", |b| {
             b.iter(|| encode_log_msgs(&messages));
         });
         group.bench_function("encode_total", |b| {
-            b.iter(|| encode_log_msgs(&generate_messages(recording_id, &generate_tables())));
+            b.iter(|| encode_log_msgs(&generate_messages(&recording_id, &generate_tables())));
         });
 
         let encoded = encode_log_msgs(&messages);
@@ -137,7 +138,7 @@ fn mono_points_arrow_batched(c: &mut Criterion) {
     }
 
     {
-        let recording_id = RecordingId::random();
+        let recording_id = RecordingId::random(RecordingType::Data);
         let mut group = c.benchmark_group("mono_points_arrow_batched");
         group.throughput(criterion::Throughput::Elements(NUM_POINTS as _));
         group.bench_function("generate_message_bundles", |b| {
@@ -145,14 +146,14 @@ fn mono_points_arrow_batched(c: &mut Criterion) {
         });
         let tables = [generate_table()];
         group.bench_function("generate_messages", |b| {
-            b.iter(|| generate_messages(recording_id, &tables));
+            b.iter(|| generate_messages(&recording_id, &tables));
         });
-        let messages = generate_messages(recording_id, &tables);
+        let messages = generate_messages(&recording_id, &tables);
         group.bench_function("encode_log_msg", |b| {
             b.iter(|| encode_log_msgs(&messages));
         });
         group.bench_function("encode_total", |b| {
-            b.iter(|| encode_log_msgs(&generate_messages(recording_id, &[generate_table()])));
+            b.iter(|| encode_log_msgs(&generate_messages(&recording_id, &[generate_table()])));
         });
 
         let encoded = encode_log_msgs(&messages);
@@ -194,7 +195,7 @@ fn batch_points_arrow(c: &mut Criterion) {
     }
 
     {
-        let recording_id = RecordingId::random();
+        let recording_id = RecordingId::random(RecordingType::Data);
         let mut group = c.benchmark_group("batch_points_arrow");
         group.throughput(criterion::Throughput::Elements(NUM_POINTS as _));
         group.bench_function("generate_message_bundles", |b| {
@@ -202,14 +203,14 @@ fn batch_points_arrow(c: &mut Criterion) {
         });
         let tables = generate_tables();
         group.bench_function("generate_messages", |b| {
-            b.iter(|| generate_messages(recording_id, &tables));
+            b.iter(|| generate_messages(&recording_id, &tables));
         });
-        let messages = generate_messages(recording_id, &tables);
+        let messages = generate_messages(&recording_id, &tables);
         group.bench_function("encode_log_msg", |b| {
             b.iter(|| encode_log_msgs(&messages));
         });
         group.bench_function("encode_total", |b| {
-            b.iter(|| encode_log_msgs(&generate_messages(recording_id, &generate_tables())));
+            b.iter(|| encode_log_msgs(&generate_messages(&recording_id, &generate_tables())));
         });
 
         let encoded = encode_log_msgs(&messages);

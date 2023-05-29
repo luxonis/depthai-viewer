@@ -5,7 +5,8 @@ use crate::{
         PointCloudBatchFlags, PointCloudBatchInfo, PointCloudDrawData, PointCloudDrawDataError,
         PointCloudVertex,
     },
-    Color32, DebugLabel, OutlineMaskPreference, PickingLayerInstanceId, RenderContext, Size,
+    Color32, DebugLabel, DepthOffset, OutlineMaskPreference, PickingLayerInstanceId, RenderContext,
+    Size,
 };
 
 /// Builder for point clouds, making it easy to create [`crate::renderer::PointCloudDrawData`].
@@ -63,12 +64,13 @@ impl PointCloudBuilder {
     pub fn batch(&mut self, label: impl Into<DebugLabel>) -> PointCloudBatchBuilder<'_> {
         self.batches.push(PointCloudBatchInfo {
             label: label.into(),
-            world_from_obj: glam::Mat4::IDENTITY,
-            flags: PointCloudBatchFlags::ENABLE_SHADING,
+            world_from_obj: glam::Affine3A::IDENTITY,
+            flags: PointCloudBatchFlags::FLAG_ENABLE_SHADING,
             point_count: 0,
             overall_outline_mask_ids: OutlineMaskPreference::NONE,
             additional_outline_mask_ids_vertex_ranges: Vec::new(),
             picking_object_id: Default::default(),
+            depth_offset: 0,
         });
 
         PointCloudBatchBuilder(self)
@@ -128,7 +130,7 @@ impl<'a> PointCloudBatchBuilder<'a> {
 
     /// Sets the `world_from_obj` matrix for the *entire* batch.
     #[inline]
-    pub fn world_from_obj(mut self, world_from_obj: glam::Mat4) -> Self {
+    pub fn world_from_obj(mut self, world_from_obj: glam::Affine3A) -> Self {
         self.batch_mut().world_from_obj = world_from_obj;
         self
     }
@@ -137,6 +139,13 @@ impl<'a> PointCloudBatchBuilder<'a> {
     #[inline]
     pub fn outline_mask_ids(mut self, outline_mask_ids: OutlineMaskPreference) -> Self {
         self.batch_mut().overall_outline_mask_ids = outline_mask_ids;
+        self
+    }
+
+    /// Sets the depth offset for the entire batch.
+    #[inline]
+    pub fn depth_offset(mut self, depth_offset: DepthOffset) -> Self {
+        self.batch_mut().depth_offset = depth_offset;
         self
     }
 
@@ -244,11 +253,12 @@ impl<'a> PointCloudBatchBuilder<'a> {
             colors,
             picking_instance_ids,
         )
+        .flags(PointCloudBatchFlags::FLAG_DRAW_AS_CIRCLES)
     }
 
-    /// Set flags for this batch.
+    /// Adds (!) flags for this batch.
     pub fn flags(mut self, flags: PointCloudBatchFlags) -> Self {
-        self.batch_mut().flags = flags;
+        self.batch_mut().flags |= flags;
         self
     }
 

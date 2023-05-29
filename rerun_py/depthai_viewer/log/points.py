@@ -6,6 +6,7 @@ import numpy.typing as npt
 from depthai_viewer import bindings
 from depthai_viewer.components.annotation import ClassIdArray
 from depthai_viewer.components.color import ColorRGBAArray
+from depthai_viewer.components.draw_order import DrawOrderArray
 from depthai_viewer.components.instance import InstanceArray
 from depthai_viewer.components.label import LabelArray
 from depthai_viewer.components.point import Point2DArray, Point3DArray
@@ -23,25 +24,22 @@ from depthai_viewer.log import (
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.extension_components import _add_extension_components
 from depthai_viewer.log.log_decorator import log_decorator
-
-__all__ = [
-    "log_point",
-    "log_points",
-]
+from depthai_viewer.recording_stream import RecordingStream
 
 
 @log_decorator
 def log_point(
     entity_path: str,
-    position: Optional[npt.ArrayLike] = None,
     *,
     radius: Optional[float] = None,
     color: Optional[Color] = None,
     label: Optional[str] = None,
     class_id: Optional[int] = None,
     keypoint_id: Optional[int] = None,
+    draw_order: Optional[float] = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
+    recording: Optional[RecordingStream] = None,
 ) -> None:
     """
     Log a 2D or 3D point, with a position and optional color, radii, label, etc.
@@ -79,12 +77,20 @@ def log_point(
         This is useful to identify points within a single classification (which is identified with class_id).
         E.g. the classification might be 'Person' and the keypoints refer to joints on a detected skeleton.
         See [rerun.log_annotation_context][]
+    draw_order:
+        An optional floating point value that specifies the 2D drawing order.
+        Objects with higher values are drawn on top of those with lower values.
+        The default for 2D points is 30.0.
     ext:
         Optional dictionary of extension components. See [rerun.log_extension_components][]
     timeless:
         If true, the point will be timeless (default: False).
-
+    recording:
+        Specifies the [`rerun.RecordingStream`][] to use.
+        If left unspecified, defaults to the current active data recording, if there is one.
+        See also: [`rerun.init`][], [`rerun.set_global_data_recording`][].
     """
+    recording = RecordingStream.to_native(recording)
 
     if keypoint_id is not None and class_id is None:
         class_id = 0
@@ -117,16 +123,19 @@ def log_point(
         class_ids = _normalize_ids([class_id])
         instanced["rerun.class_id"] = ClassIdArray.from_numpy(class_ids)
 
+    if draw_order is not None:
+        instanced["rerun.draw_order"] = DrawOrderArray.splat(draw_order)
+
     if ext:
         _add_extension_components(instanced, splats, ext, None)
 
     if splats:
         splats["rerun.instance_key"] = InstanceArray.splat()
-        bindings.log_arrow_msg(entity_path, components=splats, timeless=timeless)
+        bindings.log_arrow_msg(entity_path, components=splats, timeless=timeless, recording=recording)
 
     # Always the primary component last so range-based queries will include the other data. See(#1215)
     if instanced:
-        bindings.log_arrow_msg(entity_path, components=instanced, timeless=timeless)
+        bindings.log_arrow_msg(entity_path, components=instanced, timeless=timeless, recording=recording)
 
 
 @log_decorator
@@ -140,8 +149,10 @@ def log_points(
     labels: Optional[Sequence[str]] = None,
     class_ids: OptionalClassIds = None,
     keypoint_ids: OptionalKeyPointIds = None,
+    draw_order: Optional[float] = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
+    recording: Optional[RecordingStream] = None,
 ) -> None:
     """
     Log 2D or 3D points, with positions and optional colors, radii, labels, etc.
@@ -185,12 +196,21 @@ def log_points(
         This is useful to identify points within a single classification (which is identified with class_id).
         E.g. the classification might be 'Person' and the keypoints refer to joints on a detected skeleton.
         See [rerun.log_annotation_context][]
+    draw_order:
+        An optional floating point value that specifies the 2D drawing order.
+        Objects with higher values are drawn on top of those with lower values.
+        The default for 2D points is 30.0.
     ext:
         Optional dictionary of extension components. See [rerun.log_extension_components][]
     timeless:
         If true, the points will be timeless (default: False).
+    recording:
+        Specifies the [`rerun.RecordingStream`][] to use.
+        If left unspecified, defaults to the current active data recording, if there is one.
+        See also: [`rerun.init`][], [`rerun.set_global_data_recording`][].
 
     """
+    recording = RecordingStream.to_native(recording)
 
     if keypoint_ids is not None and class_ids is None:
         class_ids = 0
@@ -248,12 +268,15 @@ def log_points(
         is_splat = len(keypoint_ids) == 1
         comps[is_splat]["rerun.keypoint_id"] = ClassIdArray.from_numpy(keypoint_ids)
 
+    if draw_order is not None:
+        comps[True]["rerun.draw_order"] = DrawOrderArray.splat(draw_order)
+
     if ext:
         _add_extension_components(comps[0], comps[1], ext, identifiers_np)
 
     if comps[1]:
         comps[1]["rerun.instance_key"] = InstanceArray.splat()
-        bindings.log_arrow_msg(entity_path, components=comps[1], timeless=timeless)
+        bindings.log_arrow_msg(entity_path, components=comps[1], timeless=timeless, recording=recording)
 
     # Always the primary component last so range-based queries will include the other data. See(#1215)
-    bindings.log_arrow_msg(entity_path, components=comps[0], timeless=timeless)
+    bindings.log_arrow_msg(entity_path, components=comps[0], timeless=timeless, recording=recording)

@@ -13,14 +13,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         re_viewer::env_vars::RERUN_TRACK_ALLOCATIONS,
     );
 
-    let recording_info = depthai_viewer::new_recording_info("test_image_memory_rs");
-    depthai_viewer::native_viewer::spawn(recording_info, |session| {
-        log_images(&session).unwrap();
+    let recording_info = rerun::new_recording_info("test_image_memory_rs");
+    rerun::native_viewer::spawn(recording_info, Default::default(), |rec_stream| {
+        log_images(&rec_stream).unwrap();
     })?;
     Ok(())
 }
 
-fn log_images(session: &depthai_viewer::Session) -> Result<(), Box<dyn std::error::Error>> {
+fn log_images(rec_stream: &rerun::RecordingStream) -> Result<(), Box<dyn std::error::Error>> {
     let (w, h) = (2048, 1024);
     let n = 100;
 
@@ -36,8 +36,10 @@ fn log_images(session: &depthai_viewer::Session) -> Result<(), Box<dyn std::erro
     for _ in 0..n {
         depthai_viewer::MsgSender::new("image")
             .with_component(&[tensor.clone()])?
-            .send(session)?;
+            .send(rec_stream)?;
     }
+
+    rec_stream.flush_blocking();
 
     eprintln!(
         "Logged {n} {w}x{h} RGBA images = {}",

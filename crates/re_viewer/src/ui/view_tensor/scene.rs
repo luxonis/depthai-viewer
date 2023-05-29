@@ -4,11 +4,7 @@ use re_log_types::{
     component_types::{InstanceKey, Tensor},
     DecodedTensor,
 };
-use re_query::{query_entity_with_primary, EntityView, QueryError};
-
-use crate::{misc::ViewerContext, ui::SceneQuery};
-
-// ---
+use re_viewer_context::{SceneQuery, TensorDecodeCache, ViewerContext};
 
 /// A tensor scene, with everything needed to render it.
 #[derive(Default)]
@@ -21,21 +17,13 @@ impl SceneTensor {
     pub(crate) fn load(&mut self, ctx: &mut ViewerContext<'_>, query: &SceneQuery<'_>) {
         crate::profile_function!();
 
+        let store = &ctx.log_db.entity_db.data_store;
         for (ent_path, props) in query.iter_entities() {
             let timeline_query = LatestAtQuery::new(query.timeline, query.latest_at);
 
-            match query_entity_with_primary::<Tensor>(
-                &ctx.log_db.entity_db.data_store,
-                &timeline_query,
-                ent_path,
-                &[],
-            )
-            .and_then(|entity_view| self.load_tensor_entity(ctx, ent_path, &props, &entity_view))
+            if let Some(tensor) = store.query_latest_component::<Tensor>(ent_path, &timeline_query)
             {
-                Ok(_) | Err(QueryError::PrimaryNotFound) => {}
-                Err(err) => {
-                    re_log::error_once!("Unexpected error querying {ent_path:?}: {err}");
-                }
+                self.load_tensor_entity(ctx, ent_path, &props, tensor);
             }
         }
     }
@@ -45,22 +33,20 @@ impl SceneTensor {
         ctx: &mut ViewerContext<'_>,
         ent_path: &EntityPath,
         _props: &EntityProperties,
-        entity_view: &EntityView<Tensor>,
-    ) -> Result<(), QueryError> {
-        entity_view.visit1(|instance_key: InstanceKey, tensor: Tensor| {
-            if !tensor.is_shaped_like_an_image() {
-                match ctx.cache.decode.try_decode_tensor_if_necessary(tensor) {
-                    Ok(tensor) => {
-                        let instance_path = InstancePath::instance(ent_path.clone(), instance_key);
-                        self.tensors.insert(instance_path, tensor);
-                    }
-                    Err(err) => {
-                        re_log::warn_once!(
-                            "Failed to decode decoding tensor at path {ent_path}: {err}"
-                        );
-                    }
+        tensor: Tensor,
+    ) {
+        if !tensor.is_shaped_like_an_image() {
+            match ctx.cache.entry::<TensorDecodeCache>().entry(tensor) {
+                Ok(tensor) => {
+                    let instance_path = InstancePath::instance(ent_path.clone(), InstanceKey(0));
+                    self.tensors.insert(instance_path, tensor);
+                }
+                Err(err) => {
+                    re_log::warn_once!(
+                        "Failed to decode decoding tensor at path {ent_path}: {err}"
+                    );
                 }
             }
-        })
+        }
     }
 }

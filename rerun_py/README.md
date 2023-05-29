@@ -20,10 +20,10 @@ python3 -m depthai_viewer
 
 Setup:
 
-- Install the Rust toolchain: <https://rustup.rs/>
-- `git clone git@github.com:rerun-io/rerun.git && cd rerun`
-- Run `./scripts/setup_dev.sh`.
-- Make sure `cargo --version` prints `1.67.1` once you are done
+* Install the Rust toolchain: <https://rustup.rs/>
+* `git clone git@github.com:rerun-io/rerun.git && cd rerun`
+* Run `./scripts/setup_dev.sh`.
+* Make sure `cargo --version` prints `1.69.0` once you are done
 
 ## Building
 
@@ -96,12 +96,11 @@ You can run with `RUST_LOG=debug` to get more output out of the depthai-viewer.
 
 If you are using an Apple-silicon Mac, make sure `rustc -vV` outputs `host: aarch64-apple-darwin`. If not, this should fix it:
 
-```sh
-rustup set default-host aarch64-apple-darwin && rustup install 1.67
+``` sh
+rustup set default-host aarch64-apple-darwin && rustup install 1.69
 ```
 
 If you want to switch back, this is how:
-
-```sh
-rustup set default-host x86_64-apple-darwin && rustup install 1.67
+``` sh
+rustup set default-host x86_64-apple-darwin && rustup install 1.69
 ```

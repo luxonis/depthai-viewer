@@ -5,10 +5,11 @@ import numpy.typing as npt
 import pyarrow as pa
 
 # Fully qualified to avoid circular import
-import depthai_viewer.log.error_utils
-from depthai_viewer import bindings
-from depthai_viewer.components.instance import InstanceArray
-from depthai_viewer.log.log_decorator import log_decorator
+import rerun.log.error_utils
+from rerun import bindings
+from rerun.components.instance import InstanceArray
+from rerun.log.log_decorator import log_decorator
+from rerun.recording_stream import RecordingStream
 
 __all__ = [
     "_add_extension_components",
@@ -46,7 +47,7 @@ def _add_extension_components(
                 pa_value = pa.array(np_value)
                 EXT_COMPONENT_TYPES[name] = (np_value.dtype, pa_value.type)
         except Exception as ex:
-            depthai_viewer.log.error_utils._send_warning(
+            rerun.log.error_utils._send_warning(
                 "Error converting extension data to arrow for component {}. Dropping.\n{}: {}".format(
                     name, type(ex).__name__, ex
                 ),
@@ -69,6 +70,7 @@ def log_extension_components(
     *,
     identifiers: Optional[Sequence[int]] = None,
     timeless: bool = False,
+    recording: Optional[RecordingStream] = None,
 ) -> None:
     """
     Log an arbitrary collection of extension components.
@@ -108,8 +110,13 @@ def log_extension_components(
         Optional identifiers for each component. If provided, must be the same length as the components.
     timeless:
         If true, the components will be timeless (default: False).
+    recording:
+        Specifies the [`rerun.RecordingStream`][] to use.
+        If left unspecified, defaults to the current active data recording, if there is one.
+        See also: [`rerun.init`][], [`rerun.set_global_data_recording`][].
 
     """
+    recording = RecordingStream.to_native(recording)
 
     identifiers_np = np.array((), dtype="uint64")
     if identifiers:
@@ -117,7 +124,7 @@ def log_extension_components(
             identifiers = [int(id) for id in identifiers]
             identifiers_np = np.array(identifiers, dtype="uint64")
         except ValueError:
-            depthai_viewer.log.error_utils._send_warning("Only integer identifiers supported", 1)
+            rerun.log.error_utils._send_warning("Only integer identifiers supported", 1)
 
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
@@ -129,8 +136,8 @@ def log_extension_components(
 
     if splats:
         splats["rerun.instance_key"] = InstanceArray.splat()
-        bindings.log_arrow_msg(entity_path, components=splats, timeless=timeless)
+        bindings.log_arrow_msg(entity_path, components=splats, timeless=timeless, recording=recording)
 
     # Always the primary component last so range-based queries will include the other data. See(#1215)
     if instanced:
-        bindings.log_arrow_msg(entity_path, components=instanced, timeless=timeless)
+        bindings.log_arrow_msg(entity_path, components=instanced, timeless=timeless, recording=recording)

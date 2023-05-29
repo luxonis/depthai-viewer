@@ -11,7 +11,8 @@ use re_log_types::{
 };
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::{depthai::depthai, misc::ViewerContext};
+use crate::{depthai::depthai};
+use re_viewer_context::ViewerContext;
 
 use super::Viewport;
 

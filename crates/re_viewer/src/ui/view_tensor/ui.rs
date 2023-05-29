@@ -4,21 +4,21 @@ use eframe::emath::Align2;
 use egui::{epaint::TextShape, NumExt as _, Vec2};
 use ndarray::Axis;
 
+use re_data_ui::tensor_summary_ui_grid_contents;
 use re_log_types::{
     component_types::{self, Tensor},
     DecodedTensor,
 };
 use re_renderer::Colormap;
 use re_tensor_ops::dimension_mapping::{DimensionMapping, DimensionSelector};
-
-use crate::ui::data_ui::image::tensor_summary_ui_grid_contents;
+use re_viewer_context::{gpu_bridge, TensorStatsCache, ViewerContext};
 
 use super::dimension_mapping_ui;
 
 // ---
 
 /// How we slice a given tensor
-#[derive(Clone, Debug, Hash, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct SliceSelection {
     /// How we select which dimensions to project the tensor onto.
     pub dim_mapping: DimensionMapping,
@@ -44,6 +44,22 @@ pub struct ViewTensorState {
     tensor: Option<DecodedTensor>,
 }
 
+// TODO(#2089): TManually implement PartialEq so we aren't comparing the serde-skipped tensor
+impl PartialEq for ViewTensorState {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            slice,
+            color_mapping,
+            texture_settings,
+            tensor: _, // serde-skip
+        } = self;
+
+        *slice == other.slice
+            && *color_mapping == other.color_mapping
+            && *texture_settings == other.texture_settings
+    }
+}
+
 impl ViewTensorState {
     pub fn create(tensor: &DecodedTensor) -> ViewTensorState {
         Self {
@@ -65,7 +81,7 @@ impl ViewTensorState {
         &self.color_mapping
     }
 
-    pub(crate) fn ui(&mut self, ctx: &mut crate::misc::ViewerContext<'_>, ui: &mut egui::Ui) {
+    pub(crate) fn ui(&mut self, ctx: &mut ViewerContext<'_>, ui: &mut egui::Ui) {
         let Some(tensor) = &self.tensor else {
             ui.label("No Tensor shown in this Space View.");
             return;
@@ -78,7 +94,7 @@ impl ViewTensorState {
                     ctx.re_ui,
                     ui,
                     tensor,
-                    ctx.cache.tensor_stats(tensor),
+                    ctx.cache.entry::<TensorStatsCache>().entry(tensor),
                 );
                 self.texture_settings.ui(ctx.re_ui, ui);
                 self.color_mapping.ui(ctx.render_ctx, ctx.re_ui, ui);
@@ -103,7 +119,7 @@ impl ViewTensorState {
 }
 
 pub(crate) fn view_tensor(
-    ctx: &mut crate::misc::ViewerContext<'_>,
+    ctx: &mut ViewerContext<'_>,
     ui: &mut egui::Ui,
     state: &mut ViewTensorState,
     tensor: &DecodedTensor,
@@ -158,7 +174,7 @@ pub(crate) fn view_tensor(
 }
 
 fn tensor_slice_ui(
-    ctx: &mut crate::misc::ViewerContext<'_>,
+    ctx: &mut ViewerContext<'_>,
     ui: &mut egui::Ui,
     state: &mut ViewTensorState,
     tensor: &DecodedTensor,
@@ -175,14 +191,14 @@ fn tensor_slice_ui(
 }
 
 fn paint_tensor_slice(
-    ctx: &mut crate::misc::ViewerContext<'_>,
+    ctx: &mut ViewerContext<'_>,
     ui: &mut egui::Ui,
     state: &mut ViewTensorState,
     tensor: &DecodedTensor,
 ) -> anyhow::Result<(egui::Response, egui::Painter, egui::Rect)> {
     crate::profile_function!();
 
-    let tensor_stats = ctx.cache.tensor_stats(tensor);
+    let tensor_stats = ctx.cache.entry::<TensorStatsCache>().entry(tensor);
     let colormapped_texture = super::tensor_slice_to_gpu::colormapped_texture(
         ctx.render_ctx,
         tensor,
@@ -211,7 +227,7 @@ fn paint_tensor_slice(
     let image_rect = egui::Rect::from_min_max(rect.min, rect.max);
 
     let debug_name = "tensor_slice";
-    crate::gpu_bridge::render_image(
+    gpu_bridge::render_image(
         ctx.render_ctx,
         &painter,
         image_rect,
@@ -226,7 +242,7 @@ fn paint_tensor_slice(
 // ----------------------------------------------------------------------------
 
 /// How we map values to colors.
-#[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct ColorMapping {
     pub map: Colormap,
     pub gamma: f32,
@@ -304,7 +320,7 @@ fn paint_colormap_gradient(
 ) -> anyhow::Result<()> {
     let horizontal_gradient_id = egui::util::hash("horizontal_gradient");
     let horizontal_gradient =
-        crate::gpu_bridge::get_or_create_texture(render_ctx, horizontal_gradient_id, || {
+        gpu_bridge::get_or_create_texture(render_ctx, horizontal_gradient_id, || {
             let width = 256;
             let height = 1;
             let data: Vec<u8> = (0..width)
@@ -326,13 +342,14 @@ fn paint_colormap_gradient(
 
     let colormapped_texture = re_renderer::renderer::ColormappedTexture {
         texture: horizontal_gradient,
+        decode_srgb: false,
         range: [0.0, 1.0],
         gamma: 1.0,
         color_mapper: Some(re_renderer::renderer::ColorMapper::Function(colormap)),
     };
 
     let debug_name = format!("colormap_{colormap}");
-    crate::gpu_bridge::render_image(
+    gpu_bridge::render_image(
         render_ctx,
         ui.painter(),
         rect,

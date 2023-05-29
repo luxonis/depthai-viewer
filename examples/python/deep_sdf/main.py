@@ -34,10 +34,10 @@ from pathlib import Path
 from timeit import default_timer as timer
 from typing import Tuple, cast
 
-import depthai_viewer as viewer
 import mesh_to_sdf
 import numpy as np
 import numpy.typing as npt
+import rerun as rr  # pip install rerun-sdk
 import trimesh
 from download_dataset import AVAILABLE_MESHES, ensure_mesh_downloaded
 from trimesh import Trimesh
@@ -53,7 +53,7 @@ def log_timing_decorator(objpath: str, level: str):  # type: ignore[no-untyped-d
             now = timer()
             result = func(*args, **kwargs)
             elapsed_ms = (timer() - now) * 1_000.0
-            viewer.log_text_entry(objpath, f"execution took {elapsed_ms:.1f}ms", level=level)
+            rr.log_text_entry(objpath, f"execution took {elapsed_ms:.1f}ms", level=level)
             return result
 
         return wrapper
@@ -62,13 +62,13 @@ def log_timing_decorator(objpath: str, level: str):  # type: ignore[no-untyped-d
 
 
 # TODO(cmc): This really should be the job of the SDK.
-def get_mesh_format(mesh: Trimesh) -> viewer.MeshFormat:
+def get_mesh_format(mesh: Trimesh) -> rr.MeshFormat:
     ext = Path(mesh.metadata["file_name"]).suffix.lower()
     try:
         return {
-            ".glb": viewer.MeshFormat.GLB,
-            # ".gltf": MeshFormat.GLTF,
-            ".obj": viewer.MeshFormat.OBJ,
+            ".glb": rr.MeshFormat.GLB,
+            # ".gltf": rr.MeshFormat.GLTF,
+            ".obj": rr.MeshFormat.OBJ,
         }[ext]
     except Exception:
         raise ValueError(f"unknown file extension: {ext}")
@@ -80,21 +80,21 @@ def read_mesh(path: Path) -> Trimesh:
     return cast(Trimesh, mesh)
 
 
-@log_timing_decorator("global/voxel_sdf", viewer.LogLevel.DEBUG)  # type: ignore[misc]
+@log_timing_decorator("global/voxel_sdf", rr.LogLevel.DEBUG)  # type: ignore[misc]
 def compute_voxel_sdf(mesh: Trimesh, resolution: int) -> npt.NDArray[np.float32]:
     print("computing voxel-based SDF")
     voxvol = np.array(mesh_to_sdf.mesh_to_voxels(mesh, voxel_resolution=resolution), dtype=np.float32)
     return voxvol
 
 
-@log_timing_decorator("global/sample_sdf", viewer.LogLevel.DEBUG)  # type: ignore[misc]
+@log_timing_decorator("global/sample_sdf", rr.LogLevel.DEBUG)  # type: ignore[misc]
 def compute_sample_sdf(mesh: Trimesh, num_points: int) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
     print("computing sample-based SDF")
     points, sdf, _ = mesh_to_sdf.sample_sdf_near_surface(mesh, number_of_points=num_points, return_gradients=True)
     return (points, sdf)
 
 
-@log_timing_decorator("global/log_mesh", viewer.LogLevel.DEBUG)  # type: ignore[misc]
+@log_timing_decorator("global/log_mesh", rr.LogLevel.DEBUG)  # type: ignore[misc]
 def log_mesh(path: Path, mesh: Trimesh) -> None:
     # Internally, `mesh_to_sdf` will normalize everything to a unit sphere centered around the
     # center of mass.
@@ -104,41 +104,38 @@ def log_mesh(path: Path, mesh: Trimesh) -> None:
     bs2 = mesh_to_sdf.scale_to_unit_sphere(mesh).bounding_sphere
     mesh_format = get_mesh_format(mesh)
 
-    with open(path, mode="rb") as file:
-        scale = bs2.scale / bs1.scale
-        center = bs2.center - bs1.center * scale
-        viewer.log_mesh_file(
-            "world/mesh",
-            mesh_format,
-            file.read(),
-            transform=np.array([[scale, 0, 0, center[0]], [0, scale, 0, center[1]], [0, 0, scale, center[2]]]),
-        )
+    scale = bs2.scale / bs1.scale
+    center = bs2.center - bs1.center * scale
+    rr.log_mesh_file(
+        "world/mesh",
+        mesh_format,
+        mesh_path=path,
+        transform=np.array([[scale, 0, 0, center[0]], [0, scale, 0, center[1]], [0, 0, scale, center[2]]]),
+    )
 
 
 def log_sampled_sdf(points: npt.NDArray[np.float32], sdf: npt.NDArray[np.float32]) -> None:
-    # viewer.log_view_coordinates("world", up="+Y", timeless=True # TODO(cmc): depends on the mesh really
-    viewer.log_annotation_context(
-        "world/sdf", [(0, "inside", (255, 0, 0)), (1, "outside", (0, 255, 0))], timeless=False
-    )
-    viewer.log_points("world/sdf/points", points, class_ids=np.array(sdf > 0, dtype=np.uint8))
+    # rr.log_view_coordinates("world", up="+Y", timeless=True # TODO(cmc): depends on the mesh really
+    rr.log_annotation_context("world/sdf", [(0, "inside", (255, 0, 0)), (1, "outside", (0, 255, 0))], timeless=False)
+    rr.log_points("world/sdf/points", points, class_ids=np.array(sdf > 0, dtype=np.uint8))
 
     outside = points[sdf > 0]
-    viewer.log_text_entry(
+    rr.log_text_entry(
         "world/sdf/inside/logs",
         f"{len(points) - len(outside)} points inside ({len(points)} total)",
-        level=viewer.LogLevel.TRACE,
+        level=rr.LogLevel.TRACE,
     )
-    viewer.log_text_entry(
-        "world/sdf/outside/logs", f"{len(outside)} points outside ({len(points)} total)", level=viewer.LogLevel.TRACE
+    rr.log_text_entry(
+        "world/sdf/outside/logs", f"{len(outside)} points outside ({len(points)} total)", level=rr.LogLevel.TRACE
     )
 
 
 def log_volumetric_sdf(voxvol: npt.NDArray[np.float32]) -> None:
     names = ["width", "height", "depth"]
-    viewer.log_tensor("tensor", voxvol, names=names)
+    rr.log_tensor("tensor", voxvol, names=names)
 
 
-@log_timing_decorator("global/log_mesh", viewer.LogLevel.DEBUG)  # type: ignore[misc]
+@log_timing_decorator("global/log_mesh", rr.LogLevel.DEBUG)  # type: ignore[misc]
 def compute_and_log_volumetric_sdf(mesh_path: Path, mesh: Trimesh, resolution: int) -> None:
     os.makedirs(CACHE_DIR, exist_ok=True)
     basename = os.path.basename(mesh_path)
@@ -146,7 +143,7 @@ def compute_and_log_volumetric_sdf(mesh_path: Path, mesh: Trimesh, resolution: i
     try:
         with open(voxvol_path, "rb") as f:
             voxvol = np.load(voxvol_path)
-            viewer.log_text_entry("global", "loading volumetric SDF from cache")
+            rr.log_text_entry("global", "loading volumetric SDF from cache")
     except Exception:
         voxvol = compute_voxel_sdf(mesh, resolution)
 
@@ -154,10 +151,10 @@ def compute_and_log_volumetric_sdf(mesh_path: Path, mesh: Trimesh, resolution: i
 
     with open(voxvol_path, "wb+") as f:
         np.save(f, voxvol)
-        viewer.log_text_entry("global", "writing volumetric SDF to cache", level=viewer.LogLevel.DEBUG)
+        rr.log_text_entry("global", "writing volumetric SDF to cache", level=rr.LogLevel.DEBUG)
 
 
-@log_timing_decorator("global/log_mesh", viewer.LogLevel.DEBUG)  # type: ignore[misc]
+@log_timing_decorator("global/log_mesh", rr.LogLevel.DEBUG)  # type: ignore[misc]
 def compute_and_log_sample_sdf(mesh_path: Path, mesh: Trimesh, num_points: int) -> None:
     basename = os.path.basename(mesh_path)
     points_path = f"{CACHE_DIR}/{basename}.points.{num_points}.npy"
@@ -167,10 +164,10 @@ def compute_and_log_sample_sdf(mesh_path: Path, mesh: Trimesh, num_points: int) 
     try:
         with open(sdf_path, "rb") as f:
             sdf = np.load(sdf_path)
-            viewer.log_text_entry("global", "loading sampled SDF from cache")
+            rr.log_text_entry("global", "loading sampled SDF from cache")
         with open(points_path, "rb") as f:
             points = np.load(points_path)
-            viewer.log_text_entry("global", "loading point cloud from cache")
+            rr.log_text_entry("global", "loading point cloud from cache")
     except Exception:
         (points, sdf) = compute_sample_sdf(mesh, num_points)
 
@@ -179,10 +176,10 @@ def compute_and_log_sample_sdf(mesh_path: Path, mesh: Trimesh, num_points: int) 
 
     with open(points_path, "wb+") as f:
         np.save(f, points)
-        viewer.log_text_entry("global", "writing sampled SDF to cache", level=viewer.LogLevel.DEBUG)
+        rr.log_text_entry("global", "writing sampled SDF to cache", level=rr.LogLevel.DEBUG)
     with open(sdf_path, "wb+") as f:
         np.save(f, sdf)
-        viewer.log_text_entry("global", "writing point cloud to cache", level=viewer.LogLevel.DEBUG)
+        rr.log_text_entry("global", "writing point cloud to cache", level=rr.LogLevel.DEBUG)
 
 
 def main() -> None:
@@ -205,11 +202,11 @@ def main() -> None:
         type=Path,
         help="Path to a mesh to analyze. If set, overrides the `--mesh` argument.",
     )
-    viewer.script_add_args(parser)
+    rr.script_add_args(parser)
     args, unknown = parser.parse_known_args()
     [__import__("logging").warning(f"unknown arg: {arg}") for arg in unknown]
 
-    viewer.script_setup(args, "deep_sdf")
+    rr.script_setup(args, "deep_sdf")
 
     mesh_path = args.mesh_path
     if mesh_path is None:
@@ -220,7 +217,7 @@ def main() -> None:
 
     compute_and_log_volumetric_sdf(mesh_path, mesh, args.resolution)
 
-    viewer.script_teardown(args)
+    rr.script_teardown(args)
 
 
 if __name__ == "__main__":

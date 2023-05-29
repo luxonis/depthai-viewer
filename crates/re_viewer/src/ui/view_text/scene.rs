@@ -5,8 +5,7 @@ use re_log_types::{
     Component, RowId,
 };
 use re_query::{range_entity_with_primary, QueryError};
-
-use crate::{ui::SceneQuery, ViewerContext};
+use re_viewer_context::{SceneQuery, ViewerContext};
 
 use super::ui::ViewTextFilters;
 

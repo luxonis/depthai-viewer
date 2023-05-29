@@ -4,23 +4,46 @@ use egui::{
 };
 
 use re_arrow_store::TimeType;
-
-use crate::{
-    misc::format_time::next_grid_tick_magnitude_ns, ui::view_time_series::scene::PlotSeriesKind,
-    ViewerContext,
-};
+use re_time_panel::next_grid_tick_magnitude_ns;
+use re_viewer_context::ViewerContext;
 
 use super::SceneTimeSeries;
+use crate::ui::{
+    spaceview_controls::{
+        HORIZONTAL_SCROLL_MODIFIER, MOVE_TIME_CURSOR_BUTTON, RESET_VIEW_BUTTON_TEXT,
+        SELECTION_RECT_ZOOM_BUTTON, ZOOM_SCROLL_MODIFIER,
+    },
+    view_time_series::scene::PlotSeriesKind,
+};
 
 // ---
 
-pub(crate) const HELP_TEXT: &str = "Pan by dragging, or scroll (+ shift = horizontal).\n\
-    Box zooming: Right click to zoom in and zoom out using a selection.\n\
-    Zoom with ctrl / ⌘ + pointer wheel, or with pinch gesture.\n\
-    Reset view with double-click.\n\
-    Right click to move the time cursor to the current position.";
+pub fn help_text(re_ui: &re_ui::ReUi) -> egui::WidgetText {
+    let mut layout = re_ui::LayoutJobBuilder::new(re_ui);
 
-#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+    layout.add("Pan by dragging, or scroll (+ ");
+    layout.add(HORIZONTAL_SCROLL_MODIFIER);
+    layout.add(" for horizontal).\n");
+
+    layout.add("Zoom with pinch gesture or scroll + ");
+    layout.add(ZOOM_SCROLL_MODIFIER);
+    layout.add(".\n");
+
+    layout.add("Drag ");
+    layout.add(SELECTION_RECT_ZOOM_BUTTON);
+    layout.add(" to zoom in/out using a selection.\n");
+
+    layout.add("Click ");
+    layout.add(MOVE_TIME_CURSOR_BUTTON);
+    layout.add(" to move the time cursor.\n\n");
+
+    layout.add_button_text(RESET_VIEW_BUTTON_TEXT);
+    layout.add(" to reset the view.");
+
+    layout.layout_job.into()
+}
+
+#[derive(Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct ViewTimeSeriesState;
 
 pub(crate) fn view_time_series(
@@ -85,7 +108,7 @@ pub(crate) fn view_time_series(
     let egui::plot::PlotResponse {
         inner: time_x,
         response,
-        transform: _,
+        transform,
     } = plot.show(ui, |plot_ui| {
         if plot_ui.plot_secondary_clicked() {
             let timeline = ctx.rec_cfg.time_ctrl.timeline();
@@ -129,14 +152,34 @@ pub(crate) fn view_time_series(
     });
 
     if let Some(time_x) = time_x {
-        // TODO(emilk): allow interacting with the timeline (may require `egui::Plot` to return the `plot_from_screen` transform)
-        let stroke = ui.visuals().widgets.inactive.fg_stroke;
-        crate::ui::time_panel::paint_time_cursor(
-            ui.painter(),
-            time_x,
-            response.rect.y_range(),
-            stroke,
-        );
+        let interact_radius = ui.style().interaction.resize_grab_radius_side;
+        let line_rect = egui::Rect::from_x_y_ranges(time_x..=time_x, response.rect.y_range())
+            .expand(interact_radius);
+
+        let time_drag_id = ui.id().with("time_drag");
+        let response = ui
+            .interact(line_rect, time_drag_id, egui::Sense::drag())
+            .on_hover_and_drag_cursor(egui::CursorIcon::ResizeHorizontal);
+
+        if response.dragged() {
+            if let Some(pointer_pos) = ui.input(|i| i.pointer.hover_pos()) {
+                let time =
+                    time_offset + transform.value_from_position(pointer_pos).x.round() as i64;
+
+                let time_ctrl = &mut ctx.rec_cfg.time_ctrl;
+                time_ctrl.set_time(time);
+                time_ctrl.pause();
+            }
+        }
+
+        let stroke = if response.dragged() {
+            ui.style().visuals.widgets.active.fg_stroke
+        } else if response.hovered() {
+            ui.style().visuals.widgets.hovered.fg_stroke
+        } else {
+            ui.visuals().widgets.inactive.fg_stroke
+        };
+        re_time_panel::paint_time_cursor(ui.painter(), time_x, response.rect.y_range(), stroke);
     }
 
     response
@@ -145,7 +188,7 @@ pub(crate) fn view_time_series(
 fn format_time(time_type: TimeType, time_int: i64) -> String {
     if time_type == TimeType::Time {
         let time = re_log_types::Time::from_ns_since_epoch(time_int);
-        crate::misc::format_time::format_time_compact(time)
+        re_time_panel::format_time_compact(time)
     } else {
         time_type.format(re_log_types::TimeInt::from(time_int))
     }

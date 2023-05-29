@@ -48,7 +48,7 @@ fn live_bytes() -> usize {
 
 // ----------------------------------------------------------------------------
 
-use re_log_types::{entity_path, DataRow, RecordingId, RowId};
+use re_log_types::{entity_path, DataRow, RecordingId, RecordingType, RowId};
 
 fn main() {
     log_messages();
@@ -65,7 +65,9 @@ fn log_messages() {
 
     fn encode_log_msg(log_msg: &LogMsg) -> Vec<u8> {
         let mut bytes = vec![];
-        re_log_encoding::encoder::encode(std::iter::once(log_msg), &mut bytes).unwrap();
+        let encoding_options = re_log_encoding::EncodingOptions::COMPRESSED;
+        re_log_encoding::encoder::encode(encoding_options, std::iter::once(log_msg), &mut bytes)
+            .unwrap();
         bytes
     }
 
@@ -91,7 +93,7 @@ fn log_messages() {
 
     const NUM_POINTS: usize = 1_000;
 
-    let recording_id = RecordingId::random();
+    let recording_id = RecordingId::random(RecordingType::Data);
     let timeline = Timeline::new_sequence("frame_nr");
     let mut time_point = TimePoint::default();
     time_point.insert(timeline, TimeInt::from(0));
@@ -118,7 +120,7 @@ fn log_messages() {
         );
         let table_bytes = live_bytes() - used_bytes_start;
         let log_msg = Box::new(LogMsg::ArrowMsg(
-            recording_id,
+            recording_id.clone(),
             table.to_arrow_msg().unwrap(),
         ));
         let log_msg_bytes = live_bytes() - used_bytes_start;

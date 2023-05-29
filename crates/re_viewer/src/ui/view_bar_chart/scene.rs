@@ -2,16 +2,13 @@ use std::collections::BTreeMap;
 
 use re_arrow_store::LatestAtQuery;
 use re_data_store::EntityPath;
-use re_log::warn_once;
-use re_log_types::component_types::{self, InstanceKey, Tensor};
-use re_query::query_entity_with_primary;
-
-use crate::{misc::ViewerContext, ui::scene::SceneQuery};
+use re_log_types::component_types::{self, Tensor};
+use re_viewer_context::{SceneQuery, ViewerContext};
 
 /// A bar chart scene, with everything needed to render it.
 #[derive(Default)]
 pub struct SceneBarChart {
-    pub charts: BTreeMap<(EntityPath, InstanceKey), Tensor>,
+    pub charts: BTreeMap<EntityPath, Tensor>,
 }
 
 impl SceneBarChart {
@@ -32,28 +29,11 @@ impl SceneBarChart {
             }
 
             let query = LatestAtQuery::new(query.timeline, query.latest_at);
-            let ent_view =
-                query_entity_with_primary::<component_types::Tensor>(store, &query, ent_path, &[]);
-            let Ok(ent_view) = ent_view else {
-                warn_once!("bar chart query failed for {ent_path:?}");
-                continue;
-            };
-            let Ok(instance_keys) = ent_view.iter_instance_keys() else {
-                warn_once!("bar chart query failed for {ent_path:?}");
-                continue;
-            };
-            let Ok(tensors) = ent_view.iter_primary() else {
-                warn_once!("bar chart query failed for {ent_path:?}");
-                continue;
-            };
+            let tensor = store.query_latest_component::<component_types::Tensor>(ent_path, &query);
 
-            for (instance_key, tensor) in instance_keys.zip(tensors) {
-                let tensor = tensor.unwrap(); // primary
+            if let Some(tensor) = tensor {
                 if tensor.is_vector() {
-                    self.charts.insert(
-                        (ent_path.clone(), instance_key),
-                        tensor.clone(), /* shallow */
-                    );
+                    self.charts.insert(ent_path.clone(), tensor.clone()); // shallow clones
                 }
             }
         }

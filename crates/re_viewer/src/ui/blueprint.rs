@@ -1,9 +1,12 @@
-use crate::misc::{space_info::SpaceInfoCollection, ViewerContext};
+use re_viewer_context::Item;
 
-use super::viewport::Viewport;
+use crate::misc::space_info::SpaceInfoCollection;
+use re_viewer_context::ViewerContext;
+
+use super::{viewport::Viewport, ViewportState};
 
 /// Defines the layout of the whole Viewer (or will, eventually).
-#[derive(Default, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Blueprint {
     pub blueprint_panel_expanded: bool,
@@ -25,7 +28,12 @@ impl Blueprint {
         }
     }
 
-    pub fn blueprint_panel_and_viewport(&mut self, ctx: &mut ViewerContext<'_>, ui: &mut egui::Ui) {
+    pub fn blueprint_panel_and_viewport(
+        &mut self,
+        viewport_state: &mut ViewportState,
+        ctx: &mut ViewerContext<'_>,
+        ui: &mut egui::Ui,
+    ) {
         crate::profile_function!();
 
         let spaces_info = SpaceInfoCollection::new(&ctx.log_db.entity_db);
@@ -42,8 +50,13 @@ impl Blueprint {
         egui::CentralPanel::default()
             .frame(viewport_frame)
             .show_inside(ui, |ui| {
-                self.viewport.viewport_ui(ui, ctx);
+                self.viewport.viewport_ui(viewport_state, ui, ctx);
             });
+
+        // If the viewport was user-edited, then disable auto space views
+        if self.viewport.has_been_user_edited {
+            self.viewport.auto_space_views = false;
+        }
     }
 
     fn blueprint_panel(
@@ -119,6 +132,27 @@ impl Blueprint {
             .clicked()
         {
             self.viewport = Viewport::new(ctx, spaces_info);
+        }
+    }
+
+    /// If `false`, the item is referring to data that is not present in this blueprint.
+    pub fn is_item_valid(&self, item: &Item) -> bool {
+        match item {
+            Item::ComponentPath(_) => true,
+            Item::InstancePath(space_view_id, _) => space_view_id
+                .map(|space_view_id| self.viewport.space_view(&space_view_id).is_some())
+                .unwrap_or(true),
+            Item::SpaceView(space_view_id) => self.viewport.space_view(space_view_id).is_some(),
+            Item::DataBlueprintGroup(space_view_id, data_blueprint_group_handle) => {
+                if let Some(space_view) = self.viewport.space_view(space_view_id) {
+                    space_view
+                        .data_blueprint
+                        .group(*data_blueprint_group_handle)
+                        .is_some()
+                } else {
+                    false
+                }
+            }
         }
     }
 }

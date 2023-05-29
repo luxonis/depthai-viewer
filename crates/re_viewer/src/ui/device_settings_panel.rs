@@ -1,7 +1,8 @@
 use crate::{
     depthai::depthai::{self, CameraBoardSocket},
-    misc::ViewerContext,
 };
+
+use re_viewer_context::ViewerContext;
 
 use strum::IntoEnumIterator; // Needed for enum::iter()
 

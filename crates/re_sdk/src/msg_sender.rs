@@ -1,16 +1,10 @@
-use std::borrow::Borrow;
-
 use re_log_types::{component_types::InstanceKey, DataRow, DataTableError, RecordingId, RowId};
 
 use crate::{
-    components::Transform,
-    log::{DataCell, LogMsg},
-    sink::LogSink,
+    log::DataCell,
     time::{Time, TimeInt, TimePoint, Timeline},
-    Component, EntityPath, SerializableComponent, Session,
+    Component, EntityPath, RecordingStream, SerializableComponent,
 };
-
-// TODO(#1619): Rust SDK batching
 
 // ---
 
@@ -21,6 +15,10 @@ pub enum MsgSenderError {
     /// Instance keys cannot be splatted
     #[error("Instance keys cannot be splatted")]
     SplattedInstanceKeys,
+
+    /// Number of instances across components don't match
+    #[error("Instance keys cannot be splatted")]
+    MismatchNumberOfInstances,
 
     /// [`InstanceKey`] with a [`u64::MAX`] was found, but is reserved for Rerun internals.
     #[error("InstanceKey(u64::MAX) is reserved for Rerun internals")]
@@ -35,7 +33,7 @@ pub enum MsgSenderError {
 ///
 /// ```ignore
 /// fn log_coordinate_space(
-///     session: &Session,
+///     rec_stream: &RecordingStream,
 ///     ent_path: impl Into<EntityPath>,
 ///     axes: &str,
 /// ) -> anyhow::Result<()> {
@@ -46,15 +44,11 @@ pub enum MsgSenderError {
 ///     MsgSender::new(ent_path)
 ///         .with_timeless(true)
 ///         .with_component(&[view_coords])?
-///         .send(session)
+///         .send(rec_stream)
 ///         .map_err(Into::into)
 /// }
 /// ```
-// TODO(#1619): this whole thing needs to be rethought to incorporate batching and datatables.
 pub struct MsgSender {
-    // TODO(cmc): At the moment, a `MsgBundle` can only contain data for a single entity, so
-    // this must be known as soon as we spawn the builder.
-    // This won't be true anymore once batch insertions land.
     entity_path: EntityPath,
 
     /// All the different timestamps for this message.
@@ -106,6 +100,52 @@ impl MsgSender {
             instanced: Vec::new(),
             splatted: Vec::new(),
         }
+    }
+
+    /// Read the file at the given path and log it.
+    ///
+    /// Supported file extensions are:
+    ///  * `glb`, `gltf`, `obj`: encoded meshes, leaving it to the viewer to decode
+    ///  * `jpg`, `jpeg`: encoded JPEG, leaving it to the viewer to decode. Requires the `image` feature.
+    ///  * `png` and other image formats: decoded here. Requires the `image` feature.
+    ///
+    /// All other extensions will return an error.
+    pub fn from_file_path(
+        file_path: &std::path::Path,
+    ) -> Result<Self, re_log_types::FromFileError> {
+        let ent_path = re_log_types::EntityPath::from_file_path_as_single_string(file_path);
+        let cell = DataCell::from_file_path(file_path)?;
+
+        let mut timepoint = TimePoint::from([(Timeline::log_time(), Time::now().into())]);
+
+        // This may sounds like a good idea, but that means `rerun *.jpg` will
+        // actually act like it is playing a bunch of files over time, perhaps over many years.
+        // Starting at the first time, this also means only one image is shown at the start.
+        // We should probably just jump to the end of the stream or something,
+        // but it is the eve of the 0.6.0 release, so TODO(emilk)
+        let add_created_and_modified_timlines = false;
+        if add_created_and_modified_timlines {
+            if let Ok(metadata) = std::fs::metadata(file_path) {
+                use re_log_types::TimeType;
+                if let Ok(time) = metadata.created() {
+                    if let Ok(time) = Time::try_from(time) {
+                        timepoint.insert(Timeline::new("created", TimeType::Time), time.into());
+                    }
+                }
+                if let Ok(time) = metadata.modified() {
+                    if let Ok(time) = Time::try_from(time) {
+                        timepoint.insert(Timeline::new("modified", TimeType::Time), time.into());
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            num_instances: Some(cell.num_instances()),
+            instanced: vec![cell],
+            timepoint,
+            ..Self::new(ent_path)
+        })
     }
 
     // --- Time ---
@@ -166,19 +206,39 @@ impl MsgSender {
     /// The SDK does not yet support batch insertions, which are semantically identical to adding
     /// the same component type multiple times in a single message.
     /// Doing so will return an error when trying to `send()` the message.
-    //
-    // TODO(#589): batch insertions
     pub fn with_component<'a, C: SerializableComponent>(
-        mut self,
+        self,
         data: impl IntoIterator<Item = &'a C>,
     ) -> Result<Self, MsgSenderError> {
         let cell = DataCell::try_from_native(data).map_err(DataTableError::from)?;
+        self.with_cell(cell)
+    }
 
+    /// Appends a component collection to the current message.
+    ///
+    /// All component collections stored in the message must have the same row-length (i.e. number
+    /// of instances)!
+    /// The row-length of the first appended collection is used as ground truth.
+    ///
+    /// ⚠ This can only be called once per type of component!
+    /// The SDK does not yet support batch insertions, which are semantically identical to adding
+    /// the same component type multiple times in a single message.
+    /// Doing so will return an error when trying to `send()` the message.
+    pub fn with_cell(mut self, cell: DataCell) -> Result<MsgSender, MsgSenderError> {
         let num_instances = cell.num_instances();
 
-        // If this is the first appended collection, it gets to decide the row-length (i.e. number
-        // of instances) of all future collections.
-        if self.num_instances.is_none() {
+        if let Some(cur_num_instances) = self.num_instances {
+            if cur_num_instances != num_instances {
+                if num_instances == 1 {
+                    self.splatted.push(cell);
+                    return Ok(self);
+                } else {
+                    return Err(MsgSenderError::MismatchNumberOfInstances);
+                }
+            }
+        } else {
+            // If this is the first appended collection, it gets to decide the row-length
+            // (i.e. number of instances) of all future collections.
             self.num_instances = Some(num_instances);
         }
 
@@ -200,8 +260,6 @@ impl MsgSender {
     /// The SDK does not yet support batch insertions, which are semantically identical to adding
     /// the same component type multiple times in a single message.
     /// Doing so will return an error when trying to `send()` the message.
-    //
-    // TODO(#589): batch insertions
     pub fn with_splat<C: SerializableComponent>(mut self, data: C) -> Result<Self, MsgSenderError> {
         if C::name() == InstanceKey::name() {
             return Err(MsgSenderError::SplattedInstanceKeys);
@@ -231,48 +289,40 @@ impl MsgSender {
 
     /// Consumes, packs, sanity checks and finally sends the message to the currently configured
     /// target of the SDK.
-    pub fn send(self, session: &Session) -> Result<(), DataTableError> {
-        self.send_to_sink(session.recording_id(), session.borrow())
-    }
-
-    /// Consumes, packs, sanity checks and finally sends the message to the currently configured
-    /// target of the SDK.
-    fn send_to_sink(
-        self,
-        recording_id: RecordingId,
-        sink: &dyn LogSink,
-    ) -> Result<(), DataTableError> {
-        if !sink.is_enabled() {
+    pub fn send(self, rec_stream: &RecordingStream) -> Result<(), DataTableError> {
+        if !rec_stream.is_enabled() {
             return Ok(()); // silently drop the message
         }
 
-        let [row_standard, row_transforms, row_splats] = self.into_rows();
+        let [row_standard, row_splats] = self.into_rows();
 
-        if let Some(row_transforms) = row_transforms {
-            sink.send(LogMsg::ArrowMsg(
-                recording_id,
-                row_transforms.into_table().to_arrow_msg()?,
-            ));
-        }
         if let Some(row_splats) = row_splats {
-            sink.send(LogMsg::ArrowMsg(
-                recording_id,
-                row_splats.into_table().to_arrow_msg()?,
-            ));
+            rec_stream.record_row(row_splats);
         }
+
         // Always the primary component last so range-based queries will include the other data.
         // Since the primary component can't be splatted it must be in msg_standard, see(#1215).
         if let Some(row_standard) = row_standard {
-            sink.send(LogMsg::ArrowMsg(
-                recording_id,
-                row_standard.into_table().to_arrow_msg()?,
-            ));
+            rec_stream.record_row(row_standard);
         }
 
         Ok(())
     }
 
-    fn into_rows(self) -> [Option<DataRow>; 3] {
+    /// Turns the current message into a single [`re_log_types::LogMsg`]
+    pub fn into_log_msg(
+        self,
+        recording_id: RecordingId,
+    ) -> Result<re_log_types::LogMsg, DataTableError> {
+        let data_table = re_log_types::DataTable::from_rows(
+            re_log_types::TableId::random(),
+            self.into_rows().into_iter().flatten(),
+        );
+        let arrow_msg = data_table.to_arrow_msg()?;
+        Ok(re_log_types::LogMsg::ArrowMsg(recording_id, arrow_msg))
+    }
+
+    fn into_rows(self) -> [Option<DataRow>; 2] {
         let Self {
             entity_path,
             timepoint,
@@ -289,59 +339,22 @@ impl MsgSender {
         // clear current timepoint if marked as timeless
         let timepoint = if timeless { [].into() } else { timepoint };
 
-        // separate transforms from the rest
-        // TODO(cmc): just use `Vec::drain_filter` once it goes stable...
-        let mut all_cells: Vec<_> = instanced.into_iter().map(Some).collect();
-        let standard_cells: Vec<_> = all_cells
-            .iter_mut()
-            .filter(|cell| cell.as_ref().unwrap().component_name() != Transform::name())
-            .map(|cell| cell.take().unwrap())
-            .collect();
-        let transform_cells: Vec<_> = all_cells
-            .iter_mut()
-            .filter(|cell| {
-                cell.as_ref()
-                    .map_or(false, |cell| cell.component_name() == Transform::name())
-            })
-            .map(|cell| cell.take().unwrap())
-            .collect();
-        debug_assert!(all_cells.into_iter().all(|cell| cell.is_none()));
-
-        // sanity check: transforms can't handle multiple instances
-        let num_transform_instances = transform_cells
-            .get(0)
-            .map_or(0, |cell| cell.num_instances());
-        if num_transform_instances > 1 {
-            re_log::warn!("detected Transform component with multiple instances");
-        }
-
-        let mut rows = [(); 3].map(|_| None);
+        let mut rows = [(); 2].map(|_| None);
 
         // Standard
-        rows[0] = (!standard_cells.is_empty()).then(|| {
+        rows[0] = (!instanced.is_empty()).then(|| {
             DataRow::from_cells(
                 RowId::random(),
                 timepoint.clone(),
                 entity_path.clone(),
                 num_instances.unwrap_or(0),
-                standard_cells,
-            )
-        });
-
-        // Transforms
-        rows[1] = (!transform_cells.is_empty()).then(|| {
-            DataRow::from_cells(
-                RowId::random(),
-                timepoint.clone(),
-                entity_path.clone(),
-                num_transform_instances,
-                transform_cells,
+                instanced,
             )
         });
 
         // Splats
         // TODO(#1629): unsplit splats once new data cells are in
-        rows[2] = (!splatted.is_empty()).then(|| {
+        rows[1] = (!splatted.is_empty()).then(|| {
             splatted.push(DataCell::from_native(&[InstanceKey::SPLAT]));
             DataRow::from_cells(RowId::random(), timepoint, entity_path, 1, splatted)
         });
@@ -358,9 +371,8 @@ mod tests {
 
     #[test]
     fn empty() {
-        let [standard, transforms, splats] = MsgSender::new("some/path").into_rows();
+        let [standard, splats] = MsgSender::new("some/path").into_rows();
         assert!(standard.is_none());
-        assert!(transforms.is_none());
         assert!(splats.is_none());
     }
 
@@ -370,10 +382,10 @@ mod tests {
             components::Label("label1".into()),
             components::Label("label2".into()),
         ];
-        let transform = vec![components::Transform::Rigid3(components::Rigid3::default())];
+        let transform = vec![components::Transform3D::IDENTITY];
         let color = components::ColorRGBA::from_rgb(255, 0, 255);
 
-        let [standard, transforms, splats] = MsgSender::new("some/path")
+        let [standard, splats] = MsgSender::new("some/path")
             .with_component(&labels)?
             .with_component(&transform)?
             .with_splat(color)?
@@ -387,16 +399,12 @@ mod tests {
         }
 
         {
-            let transforms = transforms.unwrap();
-            let idx = transforms
-                .find_cell(&components::Transform::name())
-                .unwrap();
-            let cell = &transforms.cells[idx];
-            assert!(cell.num_instances() == 1);
-        }
-
-        {
             let splats = splats.unwrap();
+
+            let idx = splats.find_cell(&components::Transform3D::name()).unwrap();
+            let cell = &splats.cells[idx];
+            assert!(cell.num_instances() == 1);
+
             let idx = splats.find_cell(&components::ColorRGBA::name()).unwrap();
             let cell = &splats.cells[idx];
             assert!(cell.num_instances() == 1);
@@ -428,7 +436,7 @@ mod tests {
             .with_time(my_timeline, 2);
         assert!(!sender.timepoint.is_empty()); // not yet
 
-        let [standard, _, _] = sender.into_rows();
+        let [standard, _] = sender.into_rows();
         assert!(standard.unwrap().timepoint.is_empty());
 
         Ok(())
@@ -453,6 +461,57 @@ mod tests {
             .with_splat(components::InstanceKey(42));
 
         assert!(matches!(res, Err(MsgSenderError::SplattedInstanceKeys)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn num_instances_mismatch() -> Result<(), MsgSenderError> {
+        // 1 for 1 -- fine
+        {
+            MsgSender::new("some/path")
+                .with_component([components::Label("label1".into())].as_slice())?
+                .with_component([components::ColorRGBA::from_rgb(1, 1, 1)].as_slice())?;
+        }
+
+        // 3 for 1 -- fine, implicit splat
+        {
+            MsgSender::new("some/path")
+                .with_component(
+                    [
+                        components::Label("label1".into()),
+                        components::Label("label2".into()),
+                        components::Label("label3".into()),
+                    ]
+                    .as_slice(),
+                )?
+                .with_component([components::ColorRGBA::from_rgb(1, 1, 1)].as_slice())?;
+        }
+
+        // 3 for 2 -- nope, makes no sense
+        {
+            let res = MsgSender::new("some/path")
+                .with_component(
+                    [
+                        components::Label("label1".into()),
+                        components::Label("label2".into()),
+                        components::Label("label3".into()),
+                    ]
+                    .as_slice(),
+                )?
+                .with_component(
+                    [
+                        components::ColorRGBA::from_rgb(1, 1, 1),
+                        components::ColorRGBA::from_rgb(1, 1, 1),
+                    ]
+                    .as_slice(),
+                );
+
+            assert!(matches!(
+                res,
+                Err(MsgSenderError::MismatchNumberOfInstances)
+            ));
+        }
 
         Ok(())
     }

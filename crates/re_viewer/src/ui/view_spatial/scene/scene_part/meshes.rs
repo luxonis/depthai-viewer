@@ -1,19 +1,14 @@
-use glam::Mat4;
-
 use re_data_store::EntityPath;
 use re_log_types::{
     component_types::{ColorRGBA, InstanceKey},
     Component, Mesh3D,
 };
 use re_query::{query_primary_with_history, EntityView, QueryError};
+use re_viewer_context::{DefaultColor, SceneQuery, ViewerContext};
 
 use crate::{
-    misc::{SpaceViewHighlights, TransformCache, ViewerContext},
-    ui::{
-        scene::SceneQuery,
-        view_spatial::{MeshSource, MeshSourceData, SceneSpatial},
-        DefaultColor,
-    },
+    misc::{MeshCache, SpaceViewHighlights, TransformCache},
+    ui::view_spatial::{scene::EntityDepthOffsets, MeshSource, SceneSpatial},
 };
 
 use super::{instance_path_hash_for_picking, ScenePart};
@@ -25,14 +20,13 @@ impl MeshPart {
         scene: &mut SceneSpatial,
         entity_view: &EntityView<Mesh3D>,
         ent_path: &EntityPath,
-        world_from_obj: Mat4,
+        world_from_obj: glam::Affine3A,
         ctx: &mut ViewerContext<'_>,
         highlights: &SpaceViewHighlights,
     ) -> Result<(), QueryError> {
         scene.num_logged_3d_objects += 1;
 
         let _default_color = DefaultColor::EntityPath(ent_path);
-        let world_from_obj_affine = glam::Affine3A::from_mat4(world_from_obj);
         let entity_highlight = highlights.entity_outline_mask(ent_path.hash());
 
         let visitor =
@@ -40,7 +34,7 @@ impl MeshPart {
                 let picking_instance_hash = instance_path_hash_for_picking(
                     ent_path,
                     instance_key,
-                    entity_view,
+                    entity_view.num_instances(),
                     entity_highlight.any_selection_highlight,
                 );
 
@@ -48,15 +42,11 @@ impl MeshPart {
 
                 if let Some(mesh) = ctx
                     .cache
-                    .mesh
-                    .load(
-                        &ent_path.to_string(),
-                        &MeshSourceData::Mesh3D(mesh),
-                        ctx.render_ctx,
-                    )
+                    .entry::<MeshCache>()
+                    .entry(&ent_path.to_string(), &mesh, ctx.render_ctx)
                     .map(|cpu_mesh| MeshSource {
                         picking_instance_hash,
-                        world_from_mesh: world_from_obj_affine,
+                        world_from_mesh: world_from_obj,
                         mesh: cpu_mesh,
                         outline_mask_ids,
                     })
@@ -79,6 +69,7 @@ impl ScenePart for MeshPart {
         query: &SceneQuery<'_>,
         transforms: &TransformCache,
         highlights: &SpaceViewHighlights,
+        _depth_offsets: &EntityDepthOffsets,
     ) {
         crate::profile_scope!("MeshPart");
 

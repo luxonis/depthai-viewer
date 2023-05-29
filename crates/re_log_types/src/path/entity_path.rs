@@ -8,7 +8,7 @@ use crate::{
 // ----------------------------------------------------------------------------
 
 /// A 64 bit hash of [`EntityPath`] with very small risk of collision.
-#[derive(Copy, Clone, Eq)]
+#[derive(Copy, Clone, Eq, PartialOrd, Ord)]
 pub struct EntityPathHash(Hash64);
 
 impl EntityPathHash {
@@ -95,6 +95,17 @@ impl EntityPath {
     #[inline]
     pub fn new(parts: Vec<EntityPathPart>) -> Self {
         Self::from(parts)
+    }
+
+    /// Treat the file path as one opaque string.
+    ///
+    /// The file path separators will NOT become splits in the new path.
+    /// The returned path will only have one part.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn from_file_path_as_single_string(file_path: &std::path::Path) -> Self {
+        Self::new(vec![EntityPathPart::Index(crate::Index::String(
+            file_path.to_string_lossy().to_string(),
+        ))])
     }
 
     #[inline]

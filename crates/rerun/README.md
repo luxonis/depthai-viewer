@@ -49,8 +49,7 @@ You can add the `rerun` crate to your project with `cargo add rerun`.
 To get started, see [the examples](https://github.com/rerun-io/rerun/tree/latest/examples/rust).
 
 ## Binary
-
-You can install the binary with `cargo install rerun`
+You can install the binary with `cargo install rerun-cli`
 
 This can act either as a server, a viewer, or both, depending on which options you use when you start it.
 
@@ -63,6 +62,5 @@ Run `rerun --help` for more.
 The web viewer is an experimental feature, but you can try it out with:
 
 ```sh
-cargo install --features web rerun
 rerun --web-viewer ../nyud.rrd
 ```

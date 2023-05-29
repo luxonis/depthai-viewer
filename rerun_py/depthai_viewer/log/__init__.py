@@ -3,30 +3,6 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import numpy.typing as npt
 
-from depthai_viewer import bindings
-
-__all__ = [
-    "annotation",
-    "arrow",
-    "bounding_box",
-    "camera",
-    "error_utils",
-    "file",
-    "image",
-    "lines",
-    "mesh",
-    "points",
-    "rects",
-    "scalar",
-    "tensor",
-    "text",
-    "text_internal",
-    "transform",
-    "ext",
-    "imu",
-]
-
-
 ColorDtype = Union[np.uint8, np.float32, np.float64]
 Color = Union[npt.NDArray[ColorDtype], Sequence[Union[int, float]]]
 Colors = Union[Sequence[Color], npt.NDArray[ColorDtype]]
@@ -86,24 +62,10 @@ def _normalize_labels(labels: Optional[Union[str, Sequence[str]]]) -> Sequence[s
         return labels
 
 
-def log_cleared(entity_path: str, *, recursive: bool = False) -> None:
-    """
-    Indicate that an entity at a given path should no longer be displayed.
-
-    If `recursive` is True this will also clear all sub-paths
-    """
-    bindings.log_cleared(entity_path, recursive)
-
-
-def set_visible(entity_path: str, visible: bool) -> None:
-    """
-    set_visible has been deprecated.
-
-    The replacement is `log_cleared()`.
-    See: https://github.com/rerun-io/rerun/pull/285 for details
-    """
-    # This is a slight abose of DeprecationWarning compared to using
-    # warning.warn, but there is no function to call here anymore.
-    # this is (slightly) better than just failing on an undefined function
-    # TODO(jleibs) Remove after 11/25
-    raise DeprecationWarning("set_visible has been deprecated. please use log_cleared")
+def _normalize_matrix3(matrix: Union[npt.ArrayLike, None]) -> npt.ArrayLike:
+    matrix = np.eye(3) if matrix is None else matrix
+    matrix = np.array(matrix, dtype=np.float32, order="F")
+    if matrix.shape != (3, 3):
+        raise ValueError(f"Expected 3x3 matrix, shape was instead {matrix.shape}")
+    # Rerun is column major internally, tell numpy to use Fortran order which is just that.
+    return matrix.flatten(order="F")

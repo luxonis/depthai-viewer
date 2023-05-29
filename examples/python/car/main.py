@@ -9,6 +9,7 @@ import cv2
 import depthai_viewer as viewer
 import numpy as np
 import numpy.typing as npt
+import depthai_viewer as viewer  # pip install rerun-sdk
 
 
 def log_car_data() -> None:
@@ -24,11 +25,12 @@ def log_car_data() -> None:
         viewer.set_time_sequence("frame_nr", sample.frame_idx)
 
         # Log the camera pose:
-        viewer.log_rigid3(
+
+        viewer.log_transform3d(
             "world/camera",
-            parent_from_child=(sample.camera.position, sample.camera.rotation_q),
-            xyz="RDF",  # X=Right, Y=Down, Z=Forward
+            viewer.TranslationRotationScale3D(sample.camera.position, viewer.Quaternion(xyzw=sample.camera.rotation_q)),
         )
+        viewer.log_view_coordinates("world/camera", xyz="RDF")  # X=Right, Y=Down, Z=Forward
 
         # Log the camera projection matrix:
         viewer.log_pinhole(

@@ -1,16 +1,16 @@
 //! Demonstrates the most barebone usage of the Rerun SDK.
 
-use depthai_viewer::{
-    components::{ColorRGBA, Point3D},
+use rerun::{
+    components::{ColorRGBA, Point3D, Radius},
     demo_util::grid,
     external::glam,
-    MsgSender, SessionBuilder,
+    MsgSender, RecordingStreamBuilder,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let session = SessionBuilder::new("minimal_rs").buffered();
+    let (rec_stream, storage) = RecordingStreamBuilder::new("minimal_rs").memory()?;
 
-    let points = grid(glam::Vec3::splat(-5.0), glam::Vec3::splat(5.0), 10)
+    let points = grid(glam::Vec3::splat(-10.0), glam::Vec3::splat(10.0), 10)
         .map(Point3D::from)
         .collect::<Vec<_>>();
     let colors = grid(glam::Vec3::ZERO, glam::Vec3::splat(255.0), 10)
@@ -20,9 +20,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     MsgSender::new("my_points")
         .with_component(&points)?
         .with_component(&colors)?
-        .send(&session)?;
+        .with_splat(Radius(0.5))?
+        .send(&rec_stream)?;
 
-    depthai_viewer::native_viewer::show(&session)?;
+    rec_stream.flush_blocking();
+
+    rerun::native_viewer::show(storage.take())?;
 
     Ok(())
 }

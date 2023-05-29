@@ -3,9 +3,22 @@
 //! ## Feature flags
 #![doc = document_features::document_features!()]
 //!
-
-#[cfg(feature = "arrow_datagen")]
-pub mod datagen;
+//!
+//!
+//!
+//! ## Mono-components
+//!
+//! Some components, mostly transform related ones, are "mono-components".
+//! This means that Rerun makes assumptions that depend on this component
+//! only taking on a singular value for all instances of an Entity. Where possible,
+//! exposed APIs will force these components to be logged as a singular instance
+//! or a splat. However, it is an error with undefined behavior to manually use lower-level
+//! APIs to log a batched mono-component.
+//!
+//! This requirement is especially apparent with transforms:
+//! Each entity must have a unique transform chain,
+//! e.g. the entity `foo/bar/baz` is has the transform that is the product of
+//! `foo.transform * foo/bar.transform * foo/bar/baz.transform`.
 
 pub mod arrow_msg;
 mod component;
@@ -23,17 +36,16 @@ pub mod time_point;
 mod time_range;
 mod time_real;
 
-pub mod external {
-    pub use arrow2;
-    pub use arrow2_convert;
-    pub use re_tuid;
+#[cfg(feature = "arrow_datagen")]
+pub mod datagen;
 
-    #[cfg(feature = "glam")]
-    pub use glam;
+#[cfg(not(target_arch = "wasm32"))]
+mod data_table_batcher;
 
-    #[cfg(feature = "image")]
-    pub use image;
-}
+#[cfg(feature = "serde")]
+pub mod serde_field;
+
+use std::sync::Arc;
 
 pub use self::arrow_msg::ArrowMsg;
 pub use self::component::{Component, DeserializableComponent, SerializableComponent};
@@ -42,9 +54,8 @@ pub use self::component_types::coordinates;
 pub use self::component_types::AnnotationContext;
 pub use self::component_types::Arrow3D;
 pub use self::component_types::DecodedTensor;
-pub use self::component_types::{
-    EncodedMesh3D, ImuData, Mesh3D, MeshFormat, MeshId, RawMesh3D, XlinkStats,
-};
+pub use self::component_types::DrawOrder;
+pub use self::component_types::{EncodedMesh3D, Mesh3D, MeshFormat, MeshId, RawMesh3D};
 pub use self::component_types::{Tensor, ViewCoordinates};
 pub use self::data::*;
 pub use self::data_cell::{DataCell, DataCellError, DataCellInner, DataCellResult};
@@ -63,6 +74,26 @@ pub use self::time_point::{TimeInt, TimePoint, TimeType, Timeline, TimelineName}
 pub use self::time_range::{TimeRange, TimeRangeF};
 pub use self::time_real::TimeReal;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use self::data_cell::FromFileError;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use self::data_table_batcher::{
+    DataTableBatcher, DataTableBatcherConfig, DataTableBatcherError,
+};
+
+pub mod external {
+    pub use arrow2;
+    pub use arrow2_convert;
+    pub use re_tuid;
+
+    #[cfg(feature = "glam")]
+    pub use glam;
+
+    #[cfg(feature = "image")]
+    pub use image;
+}
+
 #[macro_export]
 macro_rules! impl_into_enum {
     ($from_ty: ty, $enum_name: ident, $to_enum_variant: ident) => {
@@ -77,54 +108,80 @@ macro_rules! impl_into_enum {
 
 // ----------------------------------------------------------------------------
 
-/// A unique id per recording (a stream of [`LogMsg`]es).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// What type of `Recording` this is.
+///
+/// `Data` recordings contain user-data logged via `log_` API calls.
+///
+/// In the future, `Blueprint` recordings describe how that data is laid out
+/// in the viewer, though this is not currently supported.
+///
+/// Both of these types can go over the same stream and be stored in the
+/// same datastore, but the viewer wants to treat them very differently.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct RecordingId(uuid::Uuid);
+pub enum RecordingType {
+    /// A recording of user-data.
+    Data,
 
-impl nohash_hasher::IsEnabled for RecordingId {}
+    /// Not currently used: recording data associated with the blueprint state.
+    Blueprint,
+}
 
-// required for [`nohash_hasher`].
-#[allow(clippy::derive_hash_xor_eq)]
-impl std::hash::Hash for RecordingId {
+impl std::fmt::Display for RecordingType {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(self.0.as_u128() as u64);
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Data => "Data".fmt(f),
+            Self::Blueprint => "Blueprint".fmt(f),
+        }
     }
 }
 
-impl Default for RecordingId {
-    fn default() -> Self {
-        Self::ZERO
-    }
+/// A unique id per recording (a stream of [`LogMsg`]es).
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct RecordingId {
+    pub variant: RecordingType,
+    pub id: Arc<String>,
 }
 
 impl RecordingId {
-    /// The recording id:s given to recordings that don't have an ID.
-    pub const ZERO: RecordingId = RecordingId(uuid::Uuid::nil());
-
     #[inline]
-    pub fn random() -> Self {
-        Self(uuid::Uuid::new_v4())
+    pub fn random(variant: RecordingType) -> Self {
+        Self {
+            variant,
+            id: Arc::new(uuid::Uuid::new_v4().to_string()),
+        }
     }
 
     #[inline]
-    pub fn from_uuid(uuid: uuid::Uuid) -> Self {
-        Self(uuid)
+    pub fn from_uuid(variant: RecordingType, uuid: uuid::Uuid) -> Self {
+        Self {
+            variant,
+            id: Arc::new(uuid.to_string()),
+        }
+    }
+
+    #[inline]
+    pub fn from_string(variant: RecordingType, str: String) -> Self {
+        Self {
+            variant,
+            id: Arc::new(str),
+        }
+    }
+
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        self.id.as_str()
     }
 }
 
 impl std::fmt::Display for RecordingId {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::str::FromStr for RecordingId {
-    type Err = <uuid::Uuid as std::str::FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse().map(Self)
+        let Self { variant, id } = self;
+        f.write_fmt(format_args!("{variant}:{id}"))?;
+        Ok(())
     }
 }
 
@@ -156,6 +213,10 @@ impl ApplicationId {
     pub fn unknown() -> Self {
         Self("unknown_app_id".to_owned())
     }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
 }
 
 impl std::fmt::Display for ApplicationId {
@@ -176,50 +237,34 @@ pub enum LogMsg {
     /// A new recording has begun.
     ///
     /// Should usually be the first message sent.
-    BeginRecordingMsg(BeginRecordingMsg),
+    SetRecordingInfo(SetRecordingInfo),
 
     /// Server-backed operation on an [`EntityPath`].
     EntityPathOpMsg(RecordingId, EntityPathOpMsg),
 
     /// Log an entity using an [`ArrowMsg`].
     ArrowMsg(RecordingId, ArrowMsg),
-
-    /// Sent when the client shuts down the connection.
-    Goodbye(RowId),
 }
 
 impl LogMsg {
-    pub fn id(&self) -> RowId {
+    pub fn recording_id(&self) -> &RecordingId {
         match self {
-            Self::BeginRecordingMsg(msg) => msg.row_id,
-            Self::EntityPathOpMsg(_, msg) => msg.row_id,
-            Self::Goodbye(row_id) => *row_id,
-            // TODO(#1619): the following only makes sense because, while we support sending and
-            // receiving batches, we don't actually do so yet.
-            // We need to stop storing raw `LogMsg`s before we can benefit from our batching.
-            Self::ArrowMsg(_, msg) => msg.table_id.into_row_id(),
-        }
-    }
-
-    pub fn recording_id(&self) -> Option<&RecordingId> {
-        match self {
-            Self::BeginRecordingMsg(msg) => Some(&msg.info.recording_id),
+            Self::SetRecordingInfo(msg) => &msg.info.recording_id,
             Self::EntityPathOpMsg(recording_id, _) | Self::ArrowMsg(recording_id, _) => {
-                Some(recording_id)
+                recording_id
             }
-            Self::Goodbye(_) => None,
         }
     }
 }
 
-impl_into_enum!(BeginRecordingMsg, LogMsg, BeginRecordingMsg);
+impl_into_enum!(SetRecordingInfo, LogMsg, SetRecordingInfo);
 
 // ----------------------------------------------------------------------------
 
 #[must_use]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct BeginRecordingMsg {
+pub struct SetRecordingInfo {
     pub row_id: RowId,
     pub info: RecordingInfo,
 }
@@ -242,6 +287,16 @@ pub struct RecordingInfo {
     pub started: Time,
 
     pub recording_source: RecordingSource,
+
+    pub recording_type: RecordingType,
+}
+
+impl RecordingInfo {
+    /// Whether this `RecordingInfo` is the default used when a user is not explicitly
+    /// creating their own blueprint.
+    pub fn is_app_default_blueprint(&self) -> bool {
+        self.application_id.as_str() == self.recording_id.as_str()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

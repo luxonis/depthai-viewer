@@ -1,5 +1,3 @@
-use glam::Mat4;
-
 use re_data_store::EntityPath;
 use re_log_types::{
     component_types::{Box3D, ClassId, ColorRGBA, InstanceKey, Label, Quaternion, Radius, Vec3D},
@@ -7,14 +5,11 @@ use re_log_types::{
 };
 use re_query::{query_primary_with_history, EntityView, QueryError};
 use re_renderer::Size;
+use re_viewer_context::{DefaultColor, SceneQuery, ViewerContext};
 
 use crate::{
-    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache, ViewerContext},
-    ui::{
-        scene::SceneQuery,
-        view_spatial::{SceneSpatial, UiLabel, UiLabelTarget},
-        DefaultColor,
-    },
+    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache},
+    ui::view_spatial::{scene::EntityDepthOffsets, SceneSpatial, UiLabel, UiLabelTarget},
 };
 
 use super::{instance_key_to_picking_id, instance_path_hash_for_picking, ScenePart};
@@ -26,7 +21,7 @@ impl Boxes3DPart {
         scene: &mut SceneSpatial,
         entity_view: &EntityView<Box3D>,
         ent_path: &EntityPath,
-        world_from_obj: Mat4,
+        world_from_obj: glam::Affine3A,
         entity_highlight: &SpaceViewOutlineMasks,
     ) -> Result<(), QueryError> {
         scene.num_logged_3d_objects += 1;
@@ -67,7 +62,7 @@ impl Boxes3DPart {
                 .color(color)
                 .picking_instance_id(instance_key_to_picking_id(
                     instance_key,
-                    entity_view,
+                    entity_view.num_instances(),
                     entity_highlight.any_selection_highlight,
                 ));
 
@@ -83,7 +78,7 @@ impl Boxes3DPart {
                     labeled_instance: instance_path_hash_for_picking(
                         ent_path,
                         instance_key,
-                        entity_view,
+                        entity_view.num_instances(),
                         entity_highlight.any_selection_highlight,
                     ),
                 });
@@ -102,6 +97,7 @@ impl ScenePart for Boxes3DPart {
         query: &SceneQuery<'_>,
         transforms: &TransformCache,
         highlights: &SpaceViewHighlights,
+        _depth_offsets: &EntityDepthOffsets,
     ) {
         crate::profile_scope!("Boxes3DPart");
 

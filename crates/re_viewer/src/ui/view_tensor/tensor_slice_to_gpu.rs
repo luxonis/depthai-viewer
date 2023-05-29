@@ -3,10 +3,9 @@ use re_renderer::{
     renderer::ColormappedTexture,
     resource_managers::{GpuTexture2D, Texture2DCreationDesc, TextureManager2DError},
 };
-
-use crate::{
-    gpu_bridge::{range, RangeError},
-    misc::caches::TensorStats,
+use re_viewer_context::{
+    gpu_bridge::{self, range, RangeError},
+    TensorStats,
 };
 
 use super::{
@@ -42,6 +41,7 @@ pub fn colormapped_texture(
 
     Ok(ColormappedTexture {
         texture,
+        decode_srgb: false,
         range,
         gamma: color_mapping.gamma,
         color_mapper: Some(re_renderer::renderer::ColorMapper::Function(
@@ -57,7 +57,7 @@ fn upload_texture_slice_to_gpu(
 ) -> Result<GpuTexture2D, TextureManager2DError<TensorUploadError>> {
     let id = egui::util::hash((tensor.id(), slice_selection));
 
-    crate::gpu_bridge::try_get_or_create_texture(render_ctx, id, || {
+    gpu_bridge::try_get_or_create_texture(render_ctx, id, || {
         texture_desc_from_tensor(tensor, slice_selection)
     })
 }

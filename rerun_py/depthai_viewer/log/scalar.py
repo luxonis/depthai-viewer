@@ -2,15 +2,16 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from depthai_viewer import bindings
-from depthai_viewer.components.color import ColorRGBAArray
-from depthai_viewer.components.instance import InstanceArray
-from depthai_viewer.components.label import LabelArray
-from depthai_viewer.components.radius import RadiusArray
-from depthai_viewer.components.scalar import ScalarArray, ScalarPlotPropsArray
-from depthai_viewer.log import Color, _normalize_colors
-from depthai_viewer.log.extension_components import _add_extension_components
-from depthai_viewer.log.log_decorator import log_decorator
+from rerun import bindings
+from rerun.components.color import ColorRGBAArray
+from rerun.components.instance import InstanceArray
+from rerun.components.label import LabelArray
+from rerun.components.radius import RadiusArray
+from rerun.components.scalar import ScalarArray, ScalarPlotPropsArray
+from rerun.log import Color, _normalize_colors
+from rerun.log.extension_components import _add_extension_components
+from rerun.log.log_decorator import log_decorator
+from rerun.recording_stream import RecordingStream
 
 __all__ = [
     "log_scalar",
@@ -27,6 +28,7 @@ def log_scalar(
     radius: Optional[float] = None,
     scattered: Optional[bool] = None,
     ext: Optional[Dict[str, Any]] = None,
+    recording: Optional[RecordingStream] = None,
 ) -> None:
     """
     Log a double-precision scalar that will be visualized as a timeseries plot.
@@ -92,7 +94,7 @@ def log_scalar(
         will have differently colored segments as appropriate.
         If all points within a single entity path (i.e. a line) share the same
         color, then this color will be used as the line color in the plot legend.
-        Otherwise, the line will appear grey in the legend.
+        Otherwise, the line will appear gray in the legend.
     radius:
         An optional radius for the point.
 
@@ -110,8 +112,13 @@ def log_scalar(
         required.
     ext:
         Optional dictionary of extension components. See [rerun.log_extension_components][]
+    recording:
+        Specifies the [`rerun.RecordingStream`][] to use.
+        If left unspecified, defaults to the current active data recording, if there is one.
+        See also: [`rerun.init`][], [`rerun.set_global_data_recording`][].
 
     """
+    recording = RecordingStream.to_native(recording)
 
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
@@ -137,8 +144,8 @@ def log_scalar(
 
     if splats:
         splats["rerun.instance_key"] = InstanceArray.splat()
-        bindings.log_arrow_msg(entity_path, components=splats, timeless=False)
+        bindings.log_arrow_msg(entity_path, components=splats, timeless=False, recording=recording)
 
     # Always the primary component last so range-based queries will include the other data. See(#1215)
     if instanced:
-        bindings.log_arrow_msg(entity_path, components=instanced, timeless=False)
+        bindings.log_arrow_msg(entity_path, components=instanced, timeless=False, recording=recording)

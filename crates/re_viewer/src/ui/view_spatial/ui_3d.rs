@@ -9,19 +9,22 @@ use re_renderer::{
     view_builder::{Projection, TargetConfiguration, ViewBuilder},
     Size,
 };
+use re_viewer_context::{gpu_bridge, HoveredSpace, Item, SpaceViewId, ViewerContext};
 
 use crate::{
-    gpu_bridge,
-    misc::{HoveredSpace, Item, SpaceViewHighlights},
+    misc::SpaceViewHighlights,
     ui::{
+        spaceview_controls::{
+            DRAG_PAN3D_BUTTON, RESET_VIEW_BUTTON_TEXT, ROLL_MOUSE, ROLL_MOUSE_ALT,
+            ROLL_MOUSE_MODIFIER, ROTATE3D_BUTTON, SLOW_DOWN_3D_MODIFIER, SPEED_UP_3D_MODIFIER,
+            TRACKED_CAMERA_RESTORE_KEY,
+        },
         view_spatial::{
             ui::{create_labels, outline_config, picking, screenshot_context_menu},
             ui_renderer_bridge::{fill_view_builder, ScreenBackground},
             SceneSpatial, SpaceCamera3D, SpatialNavigationMode,
         },
-        SpaceViewId,
     },
-    ViewerContext,
 };
 
 use super::{
@@ -63,6 +66,35 @@ pub struct View3DState {
     pub(crate) space_specs: SpaceSpecs,
     #[serde(skip)]
     space_camera: Vec<SpaceCamera3D>, // TODO(andreas): remove this once camera meshes are gone
+}
+
+// TODO(#2089): This state probably doesn't belong in the blueprint in the
+// first place. But since serde skips it we also have to ignore it. or else we
+// re-store state on every frame. Either way the fact that we don't get it back
+// out of the store is going to cause problems.
+impl PartialEq for View3DState {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            orbit_eye,
+            tracked_camera,
+            camera_before_tracked_camera,
+            eye_interpolation: _, // serde-skip
+            hovered_point: _,     // serde-skip
+            spin,
+            show_axes,
+            show_bbox,
+            last_eye_interact_time: _, // serde-skip
+            space_specs: _,            // serde-skip
+            space_camera: _,           // serde-skip
+        } = self;
+
+        *orbit_eye == other.orbit_eye
+            && *tracked_camera == other.tracked_camera
+            && *camera_before_tracked_camera == other.camera_before_tracked_camera
+            && *spin == other.spin
+            && *show_axes == other.show_axes
+            && *show_bbox == other.show_bbox
+    }
 }
 
 impl Default for View3DState {
@@ -188,7 +220,7 @@ impl View3DState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct EyeInterpolation {
     elapsed_time: f32,
     target_time: f32,
@@ -209,7 +241,7 @@ impl EyeInterpolation {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub struct SpaceSpecs {
     pub up: Option<glam::Vec3>,
     pub right: Option<glam::Vec3>,
@@ -242,18 +274,49 @@ fn find_camera(space_cameras: &[SpaceCamera3D], needle: &EntityPath) -> Option<E
 
 // ----------------------------------------------------------------------------
 
-pub const HELP_TEXT_3D: &str = "Drag to rotate.\n\
-    Drag with secondary mouse button to pan.\n\
-    Drag with middle mouse button (or primary mouse button + holding SHIFT) to roll the view.\n\
-    Scroll to zoom.\n\
-    \n\
-    While hovering the 3D view, navigate with WSAD and QE.\n\
-    CTRL slows down, SHIFT speeds up.\n\
-    \n\
-    Double-click an object to focus the view on it.\n\
-    For cameras, you can restore the view again with Escape.\n\
-    \n\
-    Double-click on empty space to reset the view.";
+pub fn help_text(re_ui: &re_ui::ReUi) -> egui::WidgetText {
+    let mut layout = re_ui::LayoutJobBuilder::new(re_ui);
+
+    layout.add("Click and drag ");
+    layout.add(ROTATE3D_BUTTON);
+    layout.add(" to rotate.\n");
+
+    layout.add("Click and drag with ");
+    layout.add(DRAG_PAN3D_BUTTON);
+    layout.add(" to pan.\n");
+
+    layout.add("Drag with ");
+    layout.add(ROLL_MOUSE);
+    layout.add(" ( ");
+    layout.add(ROLL_MOUSE_ALT);
+    layout.add(" + holding ");
+    layout.add(ROLL_MOUSE_MODIFIER);
+    layout.add(" ) to roll the view.\n");
+
+    layout.add("Scroll or pinch to zoom.\n\n");
+
+    layout.add("While hovering the 3D view, navigate with ");
+    layout.add_button_text("WASD");
+    layout.add(" and ");
+    layout.add_button_text("QE");
+    layout.add("\n");
+
+    layout.add(SPEED_UP_3D_MODIFIER);
+    layout.add(" slows down, ");
+    layout.add(SLOW_DOWN_3D_MODIFIER);
+    layout.add(" speeds up\n\n");
+
+    layout.add_button_text("double-click");
+    layout.add(" an object to focus the view on it.\n");
+    layout.add("For cameras, you can restore the view again with ");
+    layout.add(TRACKED_CAMERA_RESTORE_KEY);
+    layout.add(" .\n\n");
+
+    layout.add_button_text(RESET_VIEW_BUTTON_TEXT);
+    layout.add(" on empty space to reset the view.");
+
+    layout.layout_job.into()
+}
 
 /// TODO(andreas): Split into smaller parts, more re-use with `ui_2d`
 #[allow(clippy::too_many_arguments)]
@@ -327,9 +390,11 @@ pub fn view_3d(
 
         view_from_world: eye.world_from_view.inverse(),
         projection_from_view: Projection::Perspective {
-            vertical_fov: eye.fov_y.unwrap(),
+            vertical_fov: eye.fov_y.unwrap_or(Eye::DEFAULT_FOV_Y),
             near_plane_distance: eye.near(),
+            aspect_ratio: resolution_in_pixel[0] as f32 / resolution_in_pixel[1] as f32,
         },
+        viewport_transformation: re_renderer::RectTransform::IDENTITY,
 
         pixels_from_point: ui.ctx().pixels_per_point(),
         auto_size_config: state.auto_size_config(),
@@ -345,7 +410,6 @@ pub fn view_3d(
     // Create labels now since their shapes participate are added to scene.ui for picking.
     let label_shapes = create_labels(
         &mut scene.ui,
-        RectTransform::from_to(rect, rect),
         RectTransform::from_to(rect, rect),
         &eye,
         ui,
@@ -400,7 +464,7 @@ pub fn view_3d(
     }
 
     // Allow to restore the camera state with escape if a camera was tracked before.
-    if response.hovered() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+    if response.hovered() && ui.input(|i| i.key_pressed(TRACKED_CAMERA_RESTORE_KEY)) {
         if let Some(camera_before_changing_tracked_state) =
             state.state_3d.camera_before_tracked_camera
         {
@@ -415,8 +479,9 @@ pub fn view_3d(
     // Screenshot context menu.
     let (_, screenshot_mode) = screenshot_context_menu(ctx, response);
     if let Some(mode) = screenshot_mode {
-        let _ =
-            view_builder.schedule_screenshot(ctx.render_ctx, space_view_id.gpu_readback_id(), mode);
+        view_builder
+            .schedule_screenshot(ctx.render_ctx, space_view_id.gpu_readback_id(), mode)
+            .ok();
     }
 
     show_projections_from_2d_space(
@@ -495,7 +560,6 @@ pub fn view_3d(
                     )
                 }))
                 .radius(Size::new_points(0.75))
-                .flags(re_renderer::renderer::LineStripFlags::NO_COLOR_GRADIENT)
                 // TODO(andreas): Fade this out.
                 .color(re_renderer::Color32::WHITE);
 
@@ -517,7 +581,7 @@ pub fn view_3d(
     ) {
         Ok(command_buffer) => command_buffer,
         Err(err) => {
-            re_log::error!("Failed to fill view builder: {}", err);
+            re_log::error_once!("Failed to fill view builder: {err}");
             return;
         }
     };
@@ -551,7 +615,7 @@ fn show_projections_from_2d_space(
                     // Render a thick line to the actual z value if any and a weaker one as an extension
                     // If we don't have a z value, we only render the thick one.
                     let thick_ray_length = if pos.z.is_finite() && pos.z > 0.0 {
-                        Some(pos.z)
+                        pos.z
                     } else {
                         cam.picture_plane_distance
                     };
@@ -582,7 +646,7 @@ fn show_projections_from_2d_space(
                     let cam_to_pos = *pos - cam.position();
                     let distance = cam_to_pos.length();
                     let ray = macaw::Ray3::from_origin_dir(cam.position(), cam_to_pos / distance);
-                    add_picking_ray(&mut scene.primitives, ray, scene_bbox_accum, Some(distance));
+                    add_picking_ray(&mut scene.primitives, ray, scene_bbox_accum, distance);
                 }
             }
         }
@@ -594,34 +658,24 @@ fn add_picking_ray(
     primitives: &mut SceneSpatialPrimitives,
     ray: macaw::Ray3,
     scene_bbox_accum: &BoundingBox,
-    thick_ray_length: Option<f32>,
+    thick_ray_length: f32,
 ) {
     let mut line_batch = primitives.line_strips.batch("picking ray");
 
     let origin = ray.point_along(0.0);
     // No harm in making this ray _very_ long. (Infinite messes with things though!)
     let fallback_ray_end = ray.point_along(scene_bbox_accum.size().length() * 10.0);
+    let main_ray_end = ray.point_along(thick_ray_length);
 
-    if let Some(line_length) = thick_ray_length {
-        let main_ray_end = ray.point_along(line_length);
-        line_batch
-            .add_segment(origin, main_ray_end)
-            .color(egui::Color32::WHITE)
-            .flags(re_renderer::renderer::LineStripFlags::NO_COLOR_GRADIENT)
-            .radius(Size::new_points(1.0));
-        line_batch
-            .add_segment(main_ray_end, fallback_ray_end)
-            .color(egui::Color32::DARK_GRAY)
-            // TODO(andreas): Make this dashed.
-            .flags(re_renderer::renderer::LineStripFlags::NO_COLOR_GRADIENT)
-            .radius(Size::new_points(0.5));
-    } else {
-        line_batch
-            .add_segment(origin, fallback_ray_end)
-            .color(egui::Color32::WHITE)
-            .flags(re_renderer::renderer::LineStripFlags::NO_COLOR_GRADIENT)
-            .radius(Size::new_points(1.0));
-    }
+    line_batch
+        .add_segment(origin, main_ray_end)
+        .color(egui::Color32::WHITE)
+        .radius(Size::new_points(1.0));
+    line_batch
+        .add_segment(main_ray_end, fallback_ray_end)
+        .color(egui::Color32::DARK_GRAY)
+        // TODO(andreas): Make this dashed.
+        .radius(Size::new_points(0.5));
 }
 
 fn default_eye(scene_bbox: &macaw::BoundingBox, space_specs: &SpaceSpecs) -> OrbitEye {

@@ -7,20 +7,21 @@ import multiprocessing
 import os
 import threading
 
-import depthai_viewer as viewer
+import rerun as rr  # pip install rerun-sdk
 
 
 def task(title: str) -> None:
     # All processes spawned with `multiprocessing` will automatically
     # be assigned the same default recording_id.
     # We just need to connect each process to the the rerun viewer:
-    viewer.connect()
+    rr.init("multiprocessing")
+    rr.connect()
 
-    viewer.log_text_entry(
+    rr.log_text_entry(
         "log",
-        text=f"Logging from pid={os.getpid()}, thread={threading.get_ident()} using the rerun recording id {viewer.get_recording_id()}",  # noqa: E501 line too long
+        text=f"Logging from pid={os.getpid()}, thread={threading.get_ident()} using the rerun recording id {rr.get_recording_id()}",  # noqa: E501 line too long
     )
-    viewer.log_rect(title, [10, 20, 30, 40], label=title)
+    rr.log_rect(title, [10, 20, 30, 40], label=title)
 
 
 def main() -> None:
@@ -28,8 +29,8 @@ def main() -> None:
     args, unknown = parser.parse_known_args()
     [__import__("logging").warning(f"unknown arg: {arg}") for arg in unknown]
 
-    viewer.init("multiprocessing")
-    viewer.spawn(connect=False)  # this is the viewer that each process will connect to
+    rr.init("multiprocessing")
+    rr.spawn(connect=False)  # this is the viewer that each process will connect to
 
     task("main_task")
 

@@ -9,14 +9,13 @@
 /// do bundle feature *support* checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HardwareTier {
-    /// Limited feature support as provided by WebGL and native GLES2/OpenGL3(ish).
-    Gles,
+    Gles = 0,
 
     /// Full support of WebGPU spec without additional feature requirements.
     ///
     /// Expecting to run either in a stable WebGPU implementation.
     /// I.e. either natively with Vulkan/Metal or in a browser with WebGPU support.
-    FullWebGpuSupport,
+    FullWebGpuSupport = 1,
     // Run natively with Vulkan/Metal and require additional features.
     //HighEnd
 }

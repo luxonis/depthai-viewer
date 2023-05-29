@@ -78,6 +78,9 @@ pub fn get_component_with_instances(
 /// available, they are implicitly treated as an integer sequence of the correct
 /// length.
 ///
+/// If you expect only one instance (e.g. for mono-components like `Transform` `Tensor`]
+/// and have no additional components you can use [`DataStore::query_latest_component`] instead.
+///
 /// ```
 /// # use re_arrow_store::LatestAtQuery;
 /// # use re_log_types::{Timeline, component_types::{Point2D, ColorRGBA}, Component};
@@ -167,7 +170,7 @@ pub fn __populate_example_store() -> DataStore {
     let instances = vec![InstanceKey(42), InstanceKey(96)];
     let points = vec![Point2D { x: 1.0, y: 2.0 }, Point2D { x: 3.0, y: 4.0 }];
 
-    let row = DataRow::from_cells2(
+    let row = DataRow::from_cells2_sized(
         RowId::random(),
         ent_path,
         timepoint,
@@ -179,7 +182,7 @@ pub fn __populate_example_store() -> DataStore {
     let instances = vec![InstanceKey(96)];
     let colors = vec![ColorRGBA(0xff000000)];
 
-    let row = DataRow::from_cells2(
+    let row = DataRow::from_cells2_sized(
         RowId::random(),
         ent_path,
         timepoint,

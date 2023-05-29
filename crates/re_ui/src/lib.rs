@@ -5,6 +5,7 @@ mod command_palette;
 mod design_tokens;
 pub mod egui_helpers;
 pub mod icons;
+mod layout_job_builder;
 mod static_image_cache;
 pub mod toasts;
 mod toggle_switch;
@@ -13,6 +14,7 @@ pub use command::Command;
 pub use command_palette::CommandPalette;
 pub use design_tokens::DesignTokens;
 pub use icons::Icon;
+pub use layout_job_builder::LayoutJobBuilder;
 pub use static_image_cache::StaticImageCache;
 use std::ops::RangeInclusive;
 pub use toggle_switch::toggle_switch;
@@ -750,41 +752,24 @@ impl ReUi {
 
         response
     }
-}
 
-// ----------------------------------------------------------------------------
+    /// Text format used for regular body.
+    pub fn text_format_body(&self) -> egui::TextFormat {
+        egui::TextFormat::simple(
+            egui::TextStyle::Body.resolve(&self.egui_ctx.style()),
+            self.egui_ctx.style().visuals.text_color(),
+        )
+    }
 
-#[cfg(feature = "egui_dock")]
-pub fn egui_dock_style(style: &egui::Style) -> egui_dock::Style {
-    let mut dock_style = egui_dock::Style::from_egui(style);
-    dock_style.separator_width = 2.0;
-    dock_style.tab_bar_height = ReUi::title_bar_height();
-    dock_style.default_inner_margin = 0.0.into();
-    dock_style.show_close_buttons = false;
-    dock_style.tab_include_scrollarea = false;
-    dock_style.show_context_menu = false;
-    dock_style.expand_tabs = false; // expand_tabs looks good, but decreases readability
-
-    // Tabs can be "focused", meaning it was the last clicked (of any tab). We don't care about that.
-    // Tabs can also be "active", meaning it is the selected tab within its sibling tabs. We want to highlight that.
-    let inactive_text_color = style.visuals.widgets.noninteractive.text_color();
-    let active_text_color = style.visuals.widgets.active.text_color();
-
-    dock_style.tab_text_color_unfocused = inactive_text_color;
-    dock_style.tab_text_color_focused = inactive_text_color;
-    dock_style.tab_text_color_active_unfocused = active_text_color;
-    dock_style.tab_text_color_active_focused = active_text_color;
-
-    // Don't show tabs
-    dock_style.tab_bar_background_color = style.visuals.panel_fill;
-    dock_style.tab_background_color = style.visuals.panel_fill;
-
-    dock_style.hline_color = style.visuals.widgets.noninteractive.bg_stroke.color;
-
-    // The active tab has no special outline:
-    dock_style.tab_outline_color = Color32::TRANSPARENT;
-
-    dock_style
+    /// Text format used for labels referring to keys and buttons.
+    pub fn text_format_key(&self) -> egui::TextFormat {
+        let mut style = egui::TextFormat::simple(
+            egui::TextStyle::Monospace.resolve(&self.egui_ctx.style()),
+            self.egui_ctx.style().visuals.text_color(),
+        );
+        style.background = self.egui_ctx.style().visuals.widgets.noninteractive.bg_fill;
+        style
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -830,4 +815,10 @@ pub fn native_window_buttons_ui(frame: &mut eframe::Frame, ui: &mut egui::Ui) {
     if minimized_response.clicked() {
         frame.set_minimized(true);
     }
+}
+
+pub fn help_hover_button(ui: &mut egui::Ui) -> egui::Response {
+    ui.add(
+        egui::Label::new("❓").sense(egui::Sense::click()), // sensing clicks also gives hover effect
+    )
 }

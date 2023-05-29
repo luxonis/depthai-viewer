@@ -1,45 +1,112 @@
 """The Rerun Python SDK, which is a wrapper around the re_sdk crate."""
 
 import atexit
+import logging
+import sys
+from inspect import getmembers, isfunction
 from typing import Optional
 
 import depthai_viewer_bindings as bindings  # type: ignore[attr-defined]
 
-from depthai_viewer import _backend
-from depthai_viewer.log import log_cleared
+
+from depthai_viewer import experimental
+from depthai_viewer.components.transform3d import (
+    Quaternion,
+    Rigid3D,
+    RotationAxisAngle,
+    Scale3D,
+    Translation3D,
+    TranslationAndMat3,
+    TranslationRotationScale3D,
+)
 from depthai_viewer.log.annotation import AnnotationInfo, ClassDescription, log_annotation_context
 from depthai_viewer.log.arrow import log_arrow
 from depthai_viewer.log.bounding_box import log_obb
 from depthai_viewer.log.camera import log_pinhole
+from depthai_viewer.log.clear import log_cleared
 from depthai_viewer.log.extension_components import log_extension_components
 from depthai_viewer.log.file import ImageFormat, MeshFormat, log_image_file, log_mesh_file
 from depthai_viewer.log.image import log_depth_image, log_image, log_segmentation_image
-from depthai_viewer.log.imu import log_imu
 from depthai_viewer.log.lines import log_line_segments, log_line_strip, log_path
 from depthai_viewer.log.mesh import log_mesh, log_meshes
-from depthai_viewer.log.pipeline_graph import log_pipeline_graph
 from depthai_viewer.log.points import log_point, log_points
 from depthai_viewer.log.rects import RectFormat, log_rect, log_rects
 from depthai_viewer.log.scalar import log_scalar
 from depthai_viewer.log.tensor import log_tensor
 from depthai_viewer.log.text import LoggingHandler, LogLevel, log_text_entry
-from depthai_viewer.log.transform import log_rigid3, log_unknown_transform, log_view_coordinates
+from depthai_viewer.log.transform import (
+    log_disconnected_space,
+    log_rigid3,
+    log_transform3d,
+    log_unknown_transform,
+    log_view_coordinates,
+)
+from depthai_viewer.recording_stream import (
+    RecordingStream,
+    get_application_id,
+    get_data_recording,
+    get_global_data_recording,
+    get_recording_id,
+    get_thread_local_data_recording,
+    is_enabled,
+    set_global_data_recording,
+    set_thread_local_data_recording,
+)
+from depthai_viewer import _backend
+from depthai_viewer.log.pipeline_graph import log_pipeline_graph
 from depthai_viewer.log.xlink_stats import log_xlink_stats
-from depthai_viewer.recording import MemoryRecording
+from depthai_viewer.log.imu import log_imu
+
+# --- Init RecordingStream class ---
+from depthai_viewer.recording_stream import _patch as recording_stream_patch
 from depthai_viewer.script_helpers import script_add_args, script_setup, script_teardown
+from depthai_viewer.sinks import connect, disconnect, memory_recording, save, serve, spawn
+from depthai_viewer.time import reset_time, set_time_nanos, set_time_seconds, set_time_sequence
+
+# Inject all relevant methods into the `RecordingStream` class.
+# We need to do this from here to avoid circular import issues.
+recording_stream_patch(
+    [connect, save, disconnect, memory_recording, serve, spawn]
+    + [set_time_sequence, set_time_seconds, set_time_nanos, reset_time]
+    + [fn for name, fn in getmembers(sys.modules[__name__], isfunction) if name.startswith("log_")]
+)  # type: ignore[no-untyped-call]
+
+# ---
+
 
 __all__ = [
-    "AnnotationInfo",
-    "ClassDescription",
-    "LoggingHandler",
-    "bindings",
-    "components",
-    "inline_show",
-    "ImageFormat",
+    # init
+    "init",
+    "new_recording",
+    "rerun_shutdown",
+    # recordings
+    "RecordingStream",
+    "is_enabled",
+    "get_application_id",
+    "get_recording_id",
+    "get_data_recording",
+    "get_global_data_recording",
+    "set_global_data_recording",
+    "get_thread_local_data_recording",
+    "set_thread_local_data_recording",
+    # time
+    "reset_time",
+    "set_time_nanos",
+    "set_time_seconds",
+    "set_time_sequence",
+    # sinks
+    "connect",
+    "disconnect",
+    "memory_recording",
+    "save",
+    "serve",
+    "spawn",
+    # log functions
     "log_annotation_context",
     "log_arrow",
     "log_cleared",
     "log_depth_image",
+    "log_disconnected_space",
     "log_extension_components",
     "log_image_file",
     "log_image",
@@ -61,88 +128,64 @@ __all__ = [
     "log_segmentation_image",
     "log_tensor",
     "log_text_entry",
+    "log_transform3d",
     "log_unknown_transform",
     "log_view_coordinates",
-    "notebook",
+    # classes
+    "AnnotationInfo",
+    "ClassDescription",
+    "ImageFormat",
     "LogLevel",
+    "LoggingHandler",
     "MeshFormat",
     "RectFormat",
+    # special
+    "bindings",
+    "experimental",
+    # script helpers
     "script_add_args",
     "script_setup",
     "script_teardown",
     "log_imu",
     "log_xlink_stats",
     "_backend",
-    "rerun_shutdown",
+    # Transform helpers
+    "Quaternion",
+    "Rigid3D",
+    "RotationAxisAngle",
+    "Scale3D",
+    "Transform3D",
+    "Transform3DArray",
+    "Transform3DType",
+    "Translation3D",
+    "TranslationAndMat3",
+    "TranslationRotationScale3D",
 ]
-
 
 # If `True`, we raise exceptions on use error (wrong parameter types etc).
 # If `False` we catch all errors and log a warning instead.
 _strict_mode = False
 
-
-def rerun_shutdown() -> None:
-    bindings.shutdown()
+# --- Init ---
 
 
-atexit.register(rerun_shutdown)
-
-
-def unregister_shutdown() -> None:
-    atexit.unregister(rerun_shutdown)
-
-
-# -----------------------------------------------------------------------------
-
-
-def get_recording_id() -> str:
-    """
-    Get the recording ID that this process is logging to, as a UUIDv4.
-
-    The default recording_id is based on `multiprocessing.current_process().authkey`
-    which means that all processes spawned with `multiprocessing`
-    will have the same default recording_id.
-
-    If you are not using `multiprocessing` and still want several different Python
-    processes to log to the same Rerun instance (and be part of the same recording),
-    you will need to manually assign them all the same recording_id.
-    Any random UUIDv4 will work, or copy the recording id for the parent process.
-
-    Returns
-    -------
-    str
-        The recording ID that this process is logging to.
-
-    """
-    return str(bindings.get_recording_id())
-
-
-def set_recording_id(value: str) -> None:
-    """
-    Set the recording ID that this process is logging to, as a UUIDv4.
-
-    The default recording_id is based on `multiprocessing.current_process().authkey`
-    which means that all processes spawned with `multiprocessing`
-    will have the same default recording_id.
-
-    If you are not using `multiprocessing` and still want several different Python
-    processes to log to the same Rerun instance (and be part of the same recording),
-    you will need to manually assign them all the same recording_id.
-    Any random UUIDv4 will work, or copy the recording id for the parent process.
-
-    Parameters
-    ----------
-    value : str
-        The recording ID to use for this process.
-
-    """
-    bindings.set_recording_id(value)
-
-
-def init(application_id: str, spawn: bool = False, default_enabled: bool = True, strict: bool = False) -> None:
+def init(
+    application_id: str,
+    recording_id: Optional[str] = None,
+    spawn: bool = False,
+    init_logging: bool = True,
+    default_enabled: bool = True,
+    strict: bool = False,
+    exp_init_blueprint: bool = False,
+    exp_add_to_app_default_blueprint: bool = True,
+) -> None:
     """
     Initialize the Rerun SDK with a user-chosen application id (name).
+
+    You must call this function first in order to initialize a global recording.
+    Without an active recording, all methods of the SDK will turn into no-ops.
+
+    For more advanced use cases, e.g. multiple recordings setups, see [`rerun.new_recording`][].
 
     Parameters
     ----------
@@ -153,6 +196,17 @@ def init(application_id: str, spawn: bool = False, default_enabled: bool = True,
         For example, if you have one application doing object detection
         and another doing camera calibration, you could have
         `rerun.init("object_detector")` and `rerun.init("calibrator")`.
+    recording_id : Optional[str]
+        Set the recording ID that this process is logging to, as a UUIDv4.
+
+        The default recording_id is based on `multiprocessing.current_process().authkey`
+        which means that all processes spawned with `multiprocessing`
+        will have the same default recording_id.
+
+        If you are not using `multiprocessing` and still want several different Python
+        processes to log to the same Rerun instance (and be part of the same recording),
+        you will need to manually assign them all the same recording_id.
+        Any random UUIDv4 will work, or copy the recording id for the parent process.
     spawn : bool
         Spawn a Depthai Viewer and stream logging data to it.
         Short for calling `spawn` separately.
@@ -161,13 +215,101 @@ def init(application_id: str, spawn: bool = False, default_enabled: bool = True,
     default_enabled
         Should Rerun logging be on by default?
         Can overridden with the RERUN env-var, e.g. `RERUN=on` or `RERUN=off`.
+    init_logging
+        Should we initialize the logging for this application?
     strict
         If `True`, an exceptions is raised on use error (wrong parameter types etc).
         If `False`, errors are logged as warnings instead.
+    exp_init_blueprint
+        (Experimental) Should we initialize the blueprint for this application?
+    exp_add_to_app_default_blueprint
+        (Experimental) Should the blueprint append to the existing app-default blueprint instead of creating a new one.
 
     """
 
     _strict_mode = strict
+
+    if init_logging:
+        new_recording(
+            application_id,
+            recording_id,
+            make_default=True,
+            make_thread_default=False,
+            spawn=False,
+            default_enabled=default_enabled,
+        )
+    if exp_init_blueprint:
+        experimental.new_blueprint(
+            application_id=application_id,
+            blueprint_id=recording_id,
+            make_default=True,
+            make_thread_default=False,
+            spawn=False,
+            add_to_app_default_blueprint=exp_add_to_app_default_blueprint,
+            default_enabled=default_enabled,
+        )
+
+    if spawn:
+        from depthai_viewer.sinks import spawn as _spawn
+
+        _spawn()
+
+
+def new_recording(
+    application_id: str,
+    recording_id: Optional[str] = None,
+    make_default: bool = False,
+    make_thread_default: bool = False,
+    spawn: bool = False,
+    default_enabled: bool = True,
+) -> RecordingStream:
+    """
+    Creates a new recording with a user-chosen application id (name) that can be used to log data.
+
+    If you only need a single global recording, [`rerun.init`][] might be simpler.
+
+    Parameters
+    ----------
+    application_id : str
+        Your Rerun recordings will be categorized by this application id, so
+        try to pick a unique one for each application that uses the Rerun SDK.
+
+        For example, if you have one application doing object detection
+        and another doing camera calibration, you could have
+        `rerun.init("object_detector")` and `rerun.init("calibrator")`.
+    recording_id : Optional[str]
+        Set the recording ID that this process is logging to, as a UUIDv4.
+
+        The default recording_id is based on `multiprocessing.current_process().authkey`
+        which means that all processes spawned with `multiprocessing`
+        will have the same default recording_id.
+
+        If you are not using `multiprocessing` and still want several different Python
+        processes to log to the same Rerun instance (and be part of the same recording),
+        you will need to manually assign them all the same recording_id.
+        Any random UUIDv4 will work, or copy the recording id for the parent process.
+    make_default : bool
+        If true (_not_ the default), the newly initialized recording will replace the current
+        active one (if any) in the global scope.
+    make_thread_default : bool
+        If true (_not_ the default), the newly initialized recording will replace the current
+        active one (if any) in the thread-local scope.
+    spawn : bool
+        Spawn a Rerun Viewer and stream logging data to it.
+        Short for calling `spawn` separately.
+        If you don't call this, log events will be buffered indefinitely until
+        you call either `connect`, `show`, or `save`
+    default_enabled
+        Should Rerun logging be on by default?
+        Can overridden with the RERUN env-var, e.g. `RERUN=on` or `RERUN=off`.
+
+    Returns
+    -------
+    RecordingStream
+        A handle to the [`rerun.RecordingStream`][]. Use it to log data to Rerun.
+
+    """
+
     application_path = None
 
     # NOTE: It'd be even nicer to do such thing on the Rust-side so that this little trick would
@@ -197,51 +339,46 @@ def init(application_id: str, spawn: bool = False, default_enabled: bool = True,
     except Exception:
         pass
 
-    bindings.init(
-        application_id=application_id,
-        application_path=application_path,
-        default_enabled=default_enabled,
+    recording = RecordingStream(
+        bindings.new_recording(
+            application_id=application_id,
+            recording_id=recording_id,
+            make_default=make_default,
+            make_thread_default=make_thread_default,
+            application_path=application_path,
+            default_enabled=default_enabled,
+        )
     )
 
     if spawn:
-        _spawn()
+        from depthai_viewer.sinks import spawn as _spawn
+
+        _spawn(recording=recording)
+
+    return recording
 
 
-def is_enabled() -> bool:
+def version() -> str:
     """
-    Is the Rerun SDK enabled.
+    Returns a verbose version string of the Rerun SDK.
 
-    If false, all calls to the rerun library are ignored.
-
-    The default can be set in [`rerun.init`][], but is otherwise `True`.
-
-    This can be controlled with the environment variable `RERUN`,
-    (e.g. `RERUN=on` or `RERUN=off`) and with [`set_enabled`].
-
-    """
-    return bindings.is_enabled()  # type: ignore[no-any-return]
+    Example: `rerun_py 0.6.0-alpha.0 [rustc 1.69.0 (84c898d65 2023-04-16), LLVM 15.0.7] aarch64-apple-darwin main bd8a072, built 2023-05-11T08:25:17Z`
+    """  # noqa: E501 line too long
+    return bindings.version()  # type: ignore[no-any-return]
 
 
-def set_enabled(enabled: bool) -> None:
-    """
-    Enable or disable logging.
+def rerun_shutdown() -> None:
+    bindings.shutdown()
 
-    If false, all calls to the rerun library are ignored. The default is `True`.
 
-    This is a global setting that affects all threads.
+atexit.register(rerun_shutdown)
 
-    By default logging is enabled, but can be controlled with the environment variable `RERUN`,
-    (e.g. `RERUN=on` or `RERUN=off`).
 
-    The default can be set in [`rerun.init`][].
+def unregister_shutdown() -> None:
+    atexit.unregister(rerun_shutdown)
 
-    Parameters
-    ----------
-    enabled : bool
-        Whether to enable or disable logging.
 
-    """
-    bindings.set_enabled(enabled)
+# ---
 
 
 def strict_mode() -> bool:
@@ -272,123 +409,6 @@ def set_strict_mode(strict_mode: bool) -> None:
     _strict_mode = strict_mode
 
 
-def connect(addr: Optional[str] = None) -> None:
-    """
-    Connect to a remote Depthai Viewer on the given ip:port.
-
-    Requires that you first start a Depthai Viewer, e.g. with 'python -m rerun'
-
-    This function returns immediately.
-
-    Parameters
-    ----------
-    addr
-        The ip:port to connect to
-
-    """
-
-    if not bindings.is_enabled():
-        print("Rerun is disabled - connect() call ignored")
-        return
-
-    bindings.connect(addr)
-
-
-_connect = connect  # we need this because Python scoping is horrible
-
-
-def spawn(port: int = 9876, connect: bool = True) -> None:
-    """
-    Spawn a Depthai Viewer, listening on the given port.
-
-    This is often the easiest and best way to use Rerun.
-    Just call this once at the start of your program.
-
-    You can also call [rerun.init][] with a `spawn=True` argument.
-
-    Parameters
-    ----------
-    port : int
-        The port to listen on.
-    connect
-        also connect to the viewer and stream logging data to it.
-
-    """
-
-    if not bindings.is_enabled():
-        print("Rerun is disabled - spawn() call ignored")
-        return
-
-    import os
-    import subprocess
-    import sys
-    from time import sleep
-
-    # Let the spawned rerun process know it's just an app
-    new_env = os.environ.copy()
-    new_env["RERUN_APP_ONLY"] = "true"
-
-    # sys.executable: the absolute path of the executable binary for the Python interpreter
-    python_executable = sys.executable
-    if python_executable is None:
-        python_executable = "python3"
-
-    # start_new_session=True ensures the spawned process does NOT die when
-    # we hit ctrl-c in the terminal running the parent Python process.
-    subprocess.Popen(
-        [python_executable, "-m", "depthai_viewer", "--port", str(port)], env=new_env, start_new_session=True
-    )
-
-    # TODO(emilk): figure out a way to postpone connecting until the rerun viewer is listening.
-    # For example, wait until it prints "Hosting a SDK server over TCP at …"
-    sleep(0.5)  # almost as good as waiting the correct amount of time
-
-    if connect:
-        _connect(f"127.0.0.1:{port}")
-
-
-_spawn = spawn  # we need this because Python scoping is horrible
-
-
-def serve(open_browser: bool = True, web_port: Optional[int] = None, ws_port: Optional[int] = None) -> None:
-    """
-    Serve log-data over WebSockets and serve a Rerun web viewer over HTTP.
-
-    You can connect to this server using `python -m rerun`.
-
-    WARNING: This is an experimental feature.
-
-    This function returns immediately.
-
-    Parameters
-    ----------
-    open_browser
-        Open the default browser to the viewer.
-    web_port:
-        The port to serve the web viewer on (defaults to 9090).
-    ws_port:
-        The port to serve the WebSocket server on (defaults to 9877)
-    """
-
-    if not bindings.is_enabled():
-        print("Rerun is disabled - serve() call ignored")
-        return
-
-    bindings.serve(open_browser, web_port, ws_port)
-
-
-def version() -> str:
-    """
-    Get the version of the Rerun SDK.
-
-    Returns
-    -------
-    str
-        The version of the Rerun SDK.
-    """
-    return str(bindings.version())
-
-
 def start_web_viewer_server(port: int = 0) -> None:
     """
     Start an HTTP server that hosts the rerun web viewer.
@@ -408,166 +428,10 @@ def start_web_viewer_server(port: int = 0) -> None:
     """
 
     if not bindings.is_enabled():
-        print("Rerun is disabled - self_host_assets() call ignored")
+        logging.warning(
+            "Rerun is disabled - start_web_viewer_server() call ignored. You must call rerun.init before starting the"
+            + " web viewer server."
+        )
         return
 
     bindings.start_web_viewer_server(port)
-
-
-def disconnect() -> None:
-    """
-    Closes all TCP connections, servers, and files.
-
-    Closes all TCP connections, servers, and files that have been opened with
-    [`rerun.connect`], [`rerun.serve`], [`rerun.save`] or [`rerun.spawn`].
-    """
-
-    bindings.disconnect()
-
-
-def save(path: str) -> None:
-    """
-    Stream all log-data to a file.
-
-    Parameters
-    ----------
-    path : str
-        The path to save the data to.
-
-    """
-
-    if not bindings.is_enabled():
-        print("Rerun is disabled - save() call ignored")
-        return
-
-    bindings.save(path)
-
-
-def memory_recording() -> MemoryRecording:
-    """
-    Streams all log-data to a memory buffer.
-
-    This can be used to display the RRD to alternative formats such as html.
-    See: [rerun.MemoryRecording.as_html][].
-
-    Returns
-    -------
-    MemoryRecording
-        A memory recording object that can be used to read the data.
-    """
-
-    return MemoryRecording(bindings.memory_recording())
-
-
-def set_time_sequence(timeline: str, sequence: Optional[int]) -> None:
-    """
-    Set the current time for this thread as an integer sequence.
-
-    Used for all subsequent logging on the same thread,
-    until the next call to `set_time_sequence`.
-
-    For example: `set_time_sequence("frame_nr", frame_nr)`.
-
-    You can remove a timeline again using `set_time_sequence("frame_nr", None)`.
-
-    There is no requirement of monotonicity. You can move the time backwards if you like.
-
-    Parameters
-    ----------
-    timeline : str
-        The name of the timeline to set the time for.
-    sequence : int
-        The current time on the timeline in integer units.
-
-    """
-
-    if not bindings.is_enabled():
-        return
-
-    bindings.set_time_sequence(timeline, sequence)
-
-
-def set_time_seconds(timeline: str, seconds: Optional[float]) -> None:
-    """
-    Set the current time for this thread in seconds.
-
-    Used for all subsequent logging on the same thread,
-    until the next call to [`rerun.set_time_seconds`][] or [`rerun.set_time_nanos`][].
-
-    For example: `set_time_seconds("capture_time", seconds_since_unix_epoch)`.
-
-    You can remove a timeline again using `set_time_seconds("capture_time", None)`.
-
-    Very large values will automatically be interpreted as seconds since unix epoch (1970-01-01).
-    Small values (less than a few years) will be interpreted as relative
-    some unknown point in time, and will be shown as e.g. `+3.132s`.
-
-    The bindings has a built-in time which is `log_time`, and is logged as seconds
-    since unix epoch.
-
-    There is no requirement of monotonicity. You can move the time backwards if you like.
-
-    Parameters
-    ----------
-    timeline : str
-        The name of the timeline to set the time for.
-    seconds : float
-        The current time on the timeline in seconds.
-
-    """
-
-    if not bindings.is_enabled():
-        return
-
-    bindings.set_time_seconds(timeline, seconds)
-
-
-def set_time_nanos(timeline: str, nanos: Optional[int]) -> None:
-    """
-    Set the current time for this thread.
-
-    Used for all subsequent logging on the same thread,
-    until the next call to [`rerun.set_time_nanos`][] or [`rerun.set_time_seconds`][].
-
-    For example: `set_time_nanos("capture_time", nanos_since_unix_epoch)`.
-
-    You can remove a timeline again using `set_time_nanos("capture_time", None)`.
-
-    Very large values will automatically be interpreted as nanoseconds since unix epoch (1970-01-01).
-    Small values (less than a few years) will be interpreted as relative
-    some unknown point in time, and will be shown as e.g. `+3.132s`.
-
-    The bindings has a built-in time which is `log_time`, and is logged as nanos since
-    unix epoch.
-
-    There is no requirement of monotonicity. You can move the time backwards if you like.
-
-    Parameters
-    ----------
-    timeline : str
-        The name of the timeline to set the time for.
-    nanos : int
-        The current time on the timeline in nanoseconds.
-
-    """
-
-    if not bindings.is_enabled():
-        return
-
-    bindings.set_time_nanos(timeline, nanos)
-
-
-def reset_time() -> None:
-    """
-    Clear all timeline information on this thread.
-
-    This is the same as calling `set_time_*` with `None` for all of the active timelines.
-
-    Used for all subsequent logging on the same thread,
-    until the next call to [`rerun.set_time_nanos`][] or [`rerun.set_time_seconds`][].
-    """
-
-    if not bindings.is_enabled():
-        return
-
-    bindings.reset_time()

@@ -23,12 +23,12 @@ def u8_array_to_rgba(arr: npt.NDArray[np.uint8]) -> npt.NDArray[np.uint32]:
     r = arr[:, 0]
     g = arr[:, 1]
     b = arr[:, 2]
-    a = arr[:, 3] if arr.shape[1] == 4 else np.repeat(0xFF, len(arr))
+    a = arr[:, 3] if aviewer.shape[1] == 4 else np.repeat(0xFF, len(arr))
     # Reverse the byte order because this is how we encode into uint32
     arr = np.vstack([a, b, g, r]).T
     # Make contiguous and then reinterpret
     arr = np.ascontiguousarray(arr, dtype=np.uint8)
-    arr = arr.view(np.uint32)
+    arr = aviewer.view(np.uint32)
     arr = np.squeeze(arr, axis=1)
     return arr  # type: ignore[return-value]
 

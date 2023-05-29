@@ -121,8 +121,8 @@ use crate::{
         BindGroupDesc, BindGroupEntry, BindGroupLayoutDesc, GpuBindGroup, GpuBindGroupLayoutHandle,
         GpuRenderPipelineHandle, PipelineLayoutDesc, PoolError, RenderPipelineDesc, TextureDesc,
     },
-    Color32, DebugLabel, LineStripSeriesBuilder, OutlineMaskPreference, PickingLayerObjectId,
-    PickingLayerProcessor,
+    Color32, DebugLabel, DepthOffset, LineStripSeriesBuilder, OutlineMaskPreference,
+    PickingLayerObjectId, PickingLayerProcessor,
 };
 
 use super::{
@@ -174,7 +174,9 @@ pub mod gpu_data {
         pub outline_mask_ids: wgpu_buffer_types::UVec2,
         pub picking_object_id: PickingLayerObjectId,
 
-        pub end_padding: [wgpu_buffer_types::PaddingRow; 16 - 5],
+        pub depth_offset: wgpu_buffer_types::F32RowPadded,
+
+        pub end_padding: [wgpu_buffer_types::PaddingRow; 16 - 6],
     }
 }
 
@@ -207,27 +209,38 @@ bitflags! {
     #[derive(Default, bytemuck::Pod, bytemuck::Zeroable)]
     pub struct LineStripFlags : u8 {
         /// Puts a equilateral triangle at the end of the line strip (excludes other end caps).
-        const CAP_END_TRIANGLE = 0b0000_0001;
+        const FLAG_CAP_END_TRIANGLE = 0b0000_0001;
 
         /// Adds a round cap at the end of a line strip (excludes other end caps).
-        const CAP_END_ROUND = 0b0000_0010;
+        const FLAG_CAP_END_ROUND = 0b0000_0010;
 
         /// By default, line caps end at the last/first position of the the line strip.
         /// This flag makes end caps extend outwards.
-        const CAP_END_EXTEND_OUTWARDS = 0b0000_0100;
+        const FLAG_CAP_END_EXTEND_OUTWARDS = 0b0000_0100;
 
         /// Puts a equilateral triangle at the start of the line strip (excludes other start caps).
-        const CAP_START_TRIANGLE = 0b0000_1000;
+        const FLAG_CAP_START_TRIANGLE = 0b0000_1000;
 
         /// Adds a round cap at the start of a line strip (excludes other start caps).
-        const CAP_START_ROUND = 0b0001_0000;
+        const FLAG_CAP_START_ROUND = 0b0001_0000;
 
         /// By default, line caps end at the last/first position of the the line strip.
         /// This flag makes end caps extend outwards.
-        const CAP_START_EXTEND_OUTWARDS = 0b0010_0000;
+        const FLAG_CAP_START_EXTEND_OUTWARDS = 0b0010_0000;
 
-        /// Disable color gradient which is on by default
-        const NO_COLOR_GRADIENT = 0b0100_0000;
+        /// Enable color gradient across the line.
+        ///
+        /// TODO(andreas): Could be moved to per batch flags.
+        const FLAG_COLOR_GRADIENT = 0b0100_0000;
+
+        /// Forces spanning the line's quads as-if the camera was orthographic.
+        ///
+        /// This is useful for lines that are on a plane that is parallel to the camera:
+        /// Without this flag, the lines will poke through the camera plane as they orient themselves towards the camera.
+        /// Note that since distances to the camera are computed differently in orthographic mode, this changes how screen space sizes are computed.
+        ///
+        /// TODO(andreas): Could be moved to per batch flags.
+        const FLAG_FORCE_ORTHO_SPANNING = 0b1000_0000;
     }
 }
 
@@ -239,7 +252,7 @@ pub struct LineBatchInfo {
     ///
     /// TODO(andreas): We don't apply scaling to the radius yet. Need to pass a scaling factor like this in
     /// `let scale = Mat3::from(world_from_obj).determinant().abs().cbrt()`
-    pub world_from_obj: glam::Mat4,
+    pub world_from_obj: glam::Affine3A,
 
     /// Number of vertices covered by this batch.
     ///
@@ -261,6 +274,9 @@ pub struct LineBatchInfo {
 
     /// Picking object id that applies for the entire batch.
     pub picking_object_id: PickingLayerObjectId,
+
+    /// Depth offset applied after projection.
+    pub depth_offset: DepthOffset,
 }
 
 /// Style information for a line strip.
@@ -351,12 +367,13 @@ impl LineDrawData {
 
         let batches = if batches.is_empty() {
             vec![LineBatchInfo {
-                world_from_obj: glam::Mat4::IDENTITY,
+                world_from_obj: glam::Affine3A::IDENTITY,
                 label: "LineDrawData::fallback_batch".into(),
                 line_vertex_count: vertices.len() as _,
                 overall_outline_mask_ids: OutlineMaskPreference::NONE,
                 picking_object_id: PickingLayerObjectId::default(),
                 additional_outline_mask_ids_vertex_ranges: Vec::new(),
+                depth_offset: 0,
             }]
         } else {
             batches
@@ -609,6 +626,7 @@ impl LineDrawData {
                             .unwrap_or_default()
                             .into(),
                         picking_object_id: batch_info.picking_object_id,
+                        depth_offset: (batch_info.depth_offset as f32).into(),
                         end_padding: Default::default(),
                     }),
             );
@@ -629,6 +647,7 @@ impl LineDrawData {
                                     world_from_obj: batch_info.world_from_obj.into(),
                                     outline_mask_ids: mask.0.unwrap_or_default().into(),
                                     picking_object_id: batch_info.picking_object_id,
+                                    depth_offset: (batch_info.depth_offset as f32).into(),
                                     end_padding: Default::default(),
                                 })
                         })

@@ -5,17 +5,20 @@
 
 mod app;
 pub mod depthai;
+pub mod blueprint_components;
 pub mod env_vars;
-pub(crate) mod gpu_bridge;
 pub mod math;
 mod misc;
 mod remote_viewer_app;
 mod ui;
 mod viewer_analytics;
 
-pub(crate) use misc::{mesh_loader, Item, TimeControl, TimeView, ViewerContext};
+pub(crate) use misc::mesh_loader;
 use re_log_types::PythonVersion;
-pub(crate) use ui::{bottom_panel, memory_panel, selection_panel, time_panel, UiVerbosity};
+pub(crate) use ui::{memory_panel, selection_panel};
+
+// TODO(jleibs): Do we want to expose this
+pub use ui::{ViewCategory};
 
 pub use app::{App, StartupOptions};
 pub use remote_viewer_app::RemoteViewerApp;
@@ -34,8 +37,6 @@ mod native;
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::{run_native_app, run_native_viewer_with_messages};
 
-mod app_icon;
-
 #[cfg(not(target_arch = "wasm32"))]
 pub use misc::profiler::Profiler;
 
@@ -44,8 +45,6 @@ pub use misc::profiler::Profiler;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
-#[cfg(target_arch = "wasm32")]
-pub use web::start;
 
 // ---------------------------------------------------------------------------
 
