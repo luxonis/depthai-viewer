@@ -1,5 +1,10 @@
 # Depthai Viewer changelog
 
+## 0.0.5
+
+- App startup bugfixes
+- Better default focusing in 3d views
+
 ## 0.0.4
 
 - Disable depth settings if intrinsics aren't available.
