@@ -1,5 +1,7 @@
 use eframe::epaint::text::TextWrapping;
-use re_data_store::{query_latest_single, EditableAutoValue, EntityPath, EntityPropertyMap};
+use re_data_store::{
+    query_latest_single, EditableAutoValue, EntityPath, EntityPathPart, EntityPropertyMap,
+};
 use re_format::format_f32;
 
 use egui::{NumExt, WidgetText};
@@ -247,14 +249,19 @@ impl ViewSpatialState {
             };
             // Set albedo texture if it is not set yet
             if colormap == Colormap::AlbedoTexture && properties.albedo_texture.is_none() {
-                let mut tex_ep = None;
+                let mut tex_ep: Option<EntityPath> = None;
                 if let Some(tree) = entity_path
                     .parent()
                     .and_then(|path| ctx.log_db.entity_db.tree.subtree(&path))
                 {
                     tree.visit_children_recursively(&mut |ent_path| {
-                    if tex_ep.is_some() {
-                        return;
+                    // Prioritize color image over depth images
+                    if let Some(current_tex) = tex_ep.clone() {
+                        if let Some(trailing) = current_tex.iter().last() {
+                            if trailing == &EntityPathPart::from("Image") {
+                                return;
+                            }
+                        }
                     }
                     let Some(tensor) =
                         query_latest_single::<Tensor>(&ctx.log_db.entity_db, ent_path, &ctx.current_query()) else {
