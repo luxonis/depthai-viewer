@@ -5,7 +5,7 @@
 ## Install
 
 ```sh
-python3 -m pip install depthai-viewer
+python3 -m pip install depthai-viewer --extra-index-url https://test.pypi.org/simple -U
 ```
 
 ## Run
