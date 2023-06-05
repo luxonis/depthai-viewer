@@ -34,6 +34,9 @@ from depthai_viewer._backend.sdk_callbacks import (
     SdkCallbacks,
 )
 from depthai_viewer._backend.store import Store
+import cProfile
+
+profiler = cProfile.Profile()
 
 viewer.init("Depthai Viewer")
 viewer.connect()
@@ -371,8 +374,9 @@ class DepthaiViewerBack:
 
     # Sdk callbacks for handling data from the device and sending it to the frontend
     sdk_callbacks: SdkCallbacks
+    timer = None
 
-    def __init__(self, compression: bool = False) -> None:
+    def __init__(self) -> None:
         self.action_queue = Queue()
         self.result_queue = Queue()
         self.send_message_queue = Queue()
@@ -445,6 +449,8 @@ class DepthaiViewerBack:
             started, message = self._device.update_pipeline(
                 self.store.pipeline_config, runtime_only, callbacks=self.sdk_callbacks
             )
+        profiler.enable()
+        self.timer = time.time()
         return started, message
 
     def run(self) -> None:
@@ -465,6 +471,10 @@ class DepthaiViewerBack:
                     self.send_message_queue.put(
                         json.dumps({"type": "Error", "data": {"action": "FullReset", "message": "Device disconnected"}})
                     )
+            if self.timer and self.timer + 10 < time.time():
+                print("Writing profile")
+                profiler.dump_stats("profile.prof")
+                self.timer = time.time()
 
 
 if __name__ == "__main__":

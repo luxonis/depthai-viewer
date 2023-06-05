@@ -85,6 +85,7 @@ def _log_tensor(
     meaning: bindings.TensorDataMeaning = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
+    encoding: Optional[str] = None,
 ) -> None:
     """Log a general tensor, perhaps with named dimensions."""
 
@@ -127,7 +128,18 @@ def _log_tensor(
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
 
-    instanced["rerun.tensor"] = TensorArray.from_numpy(tensor, names, meaning, meter)
+    if encoding is None:
+        if len(tensor.shape) == 2:
+            encoding = "MONO8"
+        elif len(tensor.shape) == 3:
+            if tensor.shape[2] == 3:
+                encoding = "RGB8"
+            elif tensor.shape[2] == 4:
+                encoding = "RGBA8"
+        else:
+            encoding = "UNKNOWN"
+
+    instanced["rerun.tensor"] = TensorArray.from_numpy(tensor, encoding, names, meaning, meter)
 
     if ext:
         _add_extension_components(instanced, splats, ext, None)

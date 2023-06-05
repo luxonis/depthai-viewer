@@ -22,6 +22,7 @@ def log_image(
     *,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
+    encoding: Optional[str] = None,
 ) -> None:
     """
     Log a gray or color image.
@@ -73,7 +74,7 @@ def log_image(
     if interpretable_as_image and num_non_empty_dims != len(shape):
         image = np.squeeze(image)
 
-    _log_tensor(entity_path, image, ext=ext, timeless=timeless)
+    _log_tensor(entity_path, image, ext=ext, timeless=timeless, encoding=encoding)
 
 
 @log_decorator

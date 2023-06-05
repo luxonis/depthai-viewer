@@ -388,7 +388,12 @@ pub struct Tensor {
 
     /// Reciprocal scale of meter unit for depth images
     pub meter: Option<f32>,
+
+    /// Encoding of the data: MONO, RGB8, RGBA8, NV12
+    pub encoding: String,
 }
+
+pub type TensorEncoding = String;
 
 impl Tensor {
     #[inline]
@@ -544,6 +549,7 @@ macro_rules! tensor_type {
                         data: TensorData::$variant(Vec::from(slice).into()),
                         meaning: TensorDataMeaning::Unknown,
                         meter: None,
+                        encoding: TensorEncoding::default(),
                     }),
                     None => Ok(Tensor {
                         tensor_id: TensorId::random(),
@@ -551,6 +557,7 @@ macro_rules! tensor_type {
                         data: TensorData::$variant(view.iter().cloned().collect::<Vec<_>>().into()),
                         meaning: TensorDataMeaning::Unknown,
                         meter: None,
+                        encoding: TensorEncoding::default(),
                     }),
                 }
             }
@@ -576,6 +583,7 @@ macro_rules! tensor_type {
                         data: TensorData::$variant(value.into_raw_vec().into()),
                         meaning: TensorDataMeaning::Unknown,
                         meter: None,
+                        encoding: TensorEncoding::default(),
                     })
                     .ok_or(TensorCastError::NotContiguousStdOrder)
             }
@@ -667,6 +675,7 @@ impl Tensor {
         data: TensorData,
         meaning: TensorDataMeaning,
         meter: Option<f32>,
+        encoding: TensorEncoding,
     ) -> Self {
         Self {
             tensor_id,
@@ -674,6 +683,7 @@ impl Tensor {
             data,
             meaning,
             meter,
+            encoding,
         }
     }
 }
@@ -715,6 +725,7 @@ impl Tensor {
             data: TensorData::JPEG(jpeg_bytes.into()),
             meaning: TensorDataMeaning::Unknown,
             meter: None,
+            encoding: TensorEncoding::default(),
         })
     }
 
@@ -958,6 +969,7 @@ impl DecodedTensor {
             data,
             meaning: TensorDataMeaning::Unknown,
             meter: None,
+            encoding: TensorEncoding::default(),
         };
         Ok(DecodedTensor(tensor))
     }
@@ -1042,6 +1054,7 @@ fn test_ndarray() {
         data: TensorData::U16(vec![1, 2, 3, 4].into()),
         meaning: TensorDataMeaning::Unknown,
         meter: None,
+        encoding: TensorEncoding::default()
     };
     let a0: ndarray::ArrayViewD<'_, u16> = (&t0).try_into().unwrap();
     dbg!(a0); // NOLINT
@@ -1065,6 +1078,7 @@ fn test_arrow() {
             data: TensorData::U16(vec![1, 2, 3, 4].into()),
             meaning: TensorDataMeaning::Unknown,
             meter: Some(1000.0),
+            encoding: TensorEncoding::default()
         },
         Tensor {
             tensor_id: TensorId(std::default::Default::default()),
@@ -1075,6 +1089,7 @@ fn test_arrow() {
             data: TensorData::F32(vec![1.23, 2.45].into()),
             meaning: TensorDataMeaning::Unknown,
             meter: None,
+            encoding: TensorEncoding::default()
         },
     ];
 

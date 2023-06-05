@@ -111,7 +111,7 @@ class SdkCallbacks:
         img_frame = (
             packet.frame
             if args.image_kind == dai.CameraSensorType.MONO
-            else cv2.cvtColor(packet.frame, cv2.COLOR_BGR2RGB)
+            else cv2.cvtColor(packet.frame, cv2.COLOR_BGR2RGBA)
         )
         viewer.log_image(f"{args.board_socket.name}/transform/camera/Image", img_frame)
 

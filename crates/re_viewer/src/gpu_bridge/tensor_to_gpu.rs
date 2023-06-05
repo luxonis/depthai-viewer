@@ -55,6 +55,66 @@ pub fn tensor_to_gpu(
     }
 }
 
+/// Pad and cast a slice of RGB values to RGBA with only one copy.
+fn pad_and_cast_rgb(data: &[u8], alpha: u8) -> Cow<'static, [u8]> {
+    crate::profile_function!();
+    if cfg!(debug_assertions) {
+        // fastest version in debug builds.
+        // 5x faster in debug builds, but 2x slower in release
+        let mut padded = vec![alpha; data.len() / 3 * 4];
+        for i in 0..(data.len() / 3) {
+            padded[4 * i] = data[3 * i];
+            padded[4 * i + 1] = data[3 * i + 1];
+            padded[4 * i + 2] = data[3 * i + 2];
+        }
+        padded
+    } else {
+        // fastest version in optimized builds
+        data.chunks_exact(3)
+            .flat_map(|chunk| [chunk[0], chunk[1], chunk[2], alpha])
+            .collect::<Vec<u8>>()
+            .into()
+    }
+    .into()
+}
+
+use dcp::{convert_image, ColorSpace, ImageFormat, PixelFormat};
+use dcv_color_primitives as dcp;
+fn convert_nv12_to_rgba8(tensor: &Tensor) -> Cow<'static, [u8]> {
+    dcp::initialize();
+    let src_format = ImageFormat {
+        pixel_format: PixelFormat::Nv12,
+        color_space: ColorSpace::Bt601,
+        num_planes: 1,
+    };
+    let dst_format = ImageFormat {
+        pixel_format: PixelFormat::Rgba,
+        color_space: ColorSpace::Rgb,
+        num_planes: 1,
+    };
+
+    let data = match &tensor.data {
+        TensorData::U8(buf) => buf,
+        _ => panic!("Not U8"),
+    };
+
+    let width: u32 = tensor.shape[0].size.try_into().unwrap();
+    let height: u32 = tensor.shape[1].size.try_into().unwrap();
+
+    let mut dst = vec![0u8; (width * height * 4).try_into().unwrap()];
+    convert_image(
+        tensor.shape[0].size.try_into().unwrap(),
+        tensor.shape[1].size.try_into().unwrap(),
+        &src_format,
+        None,
+        &[data.as_slice()],
+        &dst_format,
+        None,
+        &mut [&mut dst],
+    );
+    dst.into()
+}
+
 // ----------------------------------------------------------------------------
 // Color textures:
 
@@ -66,25 +126,37 @@ fn color_tensor_to_gpu(
 ) -> anyhow::Result<ColormappedTexture> {
     let texture_handle = try_get_or_create_texture(render_ctx, hash(tensor.id()), || {
         let [height, width, depth] = height_width_depth(tensor)?;
-        let (data, format) = match (depth, &tensor.data) {
-            // Use R8Unorm and R8Snorm to get filtering on the GPU:
-            (1, TensorData::U8(buf)) => (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm),
-            (1, TensorData::I8(buf)) => (cast_slice_to_cow(buf), TextureFormat::R8Snorm),
 
-            // Special handling for sRGB(A) textures:
-            (3, TensorData::U8(buf)) => (
-                pad_and_cast(buf.as_slice(), 255),
-                TextureFormat::Rgba8UnormSrgb,
-            ),
-            (4, TensorData::U8(buf)) => (
-                // TODO(emilk): premultiply alpha
-                cast_slice_to_cow(buf.as_slice()),
-                TextureFormat::Rgba8UnormSrgb,
-            ),
+        let (data, format) = {
+            if tensor.encoding == String::from("NV12") {
+                (
+                    convert_nv12_to_rgba8(&tensor),
+                    TextureFormat::Rgba8UnormSrgb,
+                )
+            } else {
+                match (depth, &tensor.data) {
+                    // Use R8Unorm and R8Snorm to get filtering on the GPU:
+                    (1, TensorData::U8(buf)) => {
+                        (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
+                    }
+                    (1, TensorData::I8(buf)) => (cast_slice_to_cow(buf), TextureFormat::R8Snorm),
 
-            _ => {
-                // Fallback to general case:
-                return general_texture_creation_desc_from_tensor(debug_name, tensor);
+                    // Special handling for sRGB(A) textures:
+                    (3, TensorData::U8(buf)) => (
+                        pad_and_cast_rgb(buf.as_slice(), 255),
+                        TextureFormat::Rgba8UnormSrgb,
+                    ),
+                    (4, TensorData::U8(buf)) => (
+                        // TODO(emilk): premultiply alpha
+                        cast_slice_to_cow(buf.as_slice()),
+                        TextureFormat::Rgba8UnormSrgb,
+                    ),
+
+                    _ => {
+                        // Fallback to general case:
+                        return general_texture_creation_desc_from_tensor(debug_name, tensor);
+                    }
+                }
             }
         };
 

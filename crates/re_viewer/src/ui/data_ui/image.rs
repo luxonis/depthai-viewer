@@ -232,6 +232,7 @@ pub fn tensor_summary_ui_grid_contents(
         data,
         meaning,
         meter,
+        encoding
     } = tensor;
 
     re_ui

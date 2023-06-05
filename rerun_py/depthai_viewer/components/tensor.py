@@ -53,6 +53,7 @@ DTYPE_MAP: Final[dict[npt.DTypeLike, str]] = {
 class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
     def from_numpy(
         array: npt.NDArray[TensorDType],
+        encoding: str,
         names: Iterable[str | None] | None = None,
         meaning: bindings.TensorDataMeaning = None,
         meter: float | None = None,
@@ -99,13 +100,7 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
             meter = pa.array([meter], mask=[False], type=pa.float32())
 
         storage = pa.StructArray.from_arrays(
-            [
-                tensor_id,
-                shape,
-                data,
-                meaning,
-                meter,
-            ],
+            [tensor_id, shape, data, meaning, meter, encoding],
             fields=list(TensorType.storage_type),
         ).cast(TensorType.storage_type)
         storage.validate(full=True)
