@@ -109,18 +109,10 @@ impl SpaceView {
                 {
                     if is_3d {
                         is_depthai_spaceview = true;
-                        format!(
-                            "{} ({})",
-                            camera.board_socket.display_name(camera_features),
-                            "3D"
-                        )
+                        format!("{} ({})", camera.board_socket.display_name(ctx), "3D")
                     } else if is_2d {
                         is_depthai_spaceview = true;
-                        format!(
-                            "{} ({})",
-                            camera.board_socket.display_name(camera_features),
-                            "2D"
-                        )
+                        format!("{} ({})", camera.board_socket.display_name(ctx), "2D")
                     } else {
                         space_path.iter().last().unwrap().to_string()
                     }

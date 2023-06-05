@@ -3,9 +3,9 @@ use re_log_types::EntityPath;
 
 use super::api::BackendCommChannel;
 use super::ws::WsMessageData;
+use crate::ViewerContext;
 use instant::Instant;
 use std::fmt;
-
 use strum::EnumIter;
 use strum::IntoEnumIterator;
 
@@ -92,7 +92,8 @@ impl Default for CameraBoardSocket {
 }
 
 impl CameraBoardSocket {
-    pub fn display_name(&self, camera_features: &[CameraFeatures]) -> String {
+    pub fn display_name(&self, ctx: &ViewerContext<'_>) -> String {
+        let camera_features = ctx.depthai_state.get_connected_cameras();
         if let Some(cam) = camera_features.iter().find(|cam| cam.board_socket == *self) {
             if !cam.name.is_empty() {
                 return format!("{} ({self:?})", cam.name);
@@ -170,7 +171,7 @@ pub struct CameraFeatures {
     pub supported_types: Vec<CameraSensorKind>,
     pub stereo_pairs: Vec<CameraBoardSocket>, // Which cameras can be paired with this one
     pub name: String,
-    pub intrinsics: Option<[[f32; 3]; 3]>
+    pub intrinsics: Option<[[f32; 3]; 3]>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug, Default)]
@@ -179,6 +180,7 @@ pub struct DeviceProperties {
     pub cameras: Vec<CameraFeatures>,
     pub imu: Option<ImuKind>,
     pub stereo_pairs: Vec<(CameraBoardSocket, CameraBoardSocket)>,
+    pub default_stereo_pair: Option<(CameraBoardSocket, CameraBoardSocket)>,
 }
 
 impl DeviceProperties {
@@ -254,17 +256,6 @@ impl Default for DepthConfig {
 }
 
 impl DepthConfig {
-    pub fn from_camera_features(camera_features: &[CameraFeatures]) -> Option<Self> {
-        let mut config = Self::default();
-        let Some(cam_with_stereo_pair) = camera_features.iter().find(|feat| !feat.stereo_pairs.is_empty()) else {
-            return None
-        };
-        let stereo_pair = cam_with_stereo_pair.stereo_pairs[0];
-        config.stereo_pair = (cam_with_stereo_pair.board_socket, stereo_pair);
-        config.align = cam_with_stereo_pair.board_socket;
-        Some(config)
-    }
-
     pub fn default_as_option() -> Option<Self> {
         Some(Self::default())
     }
@@ -275,6 +266,28 @@ impl DepthConfig {
             && self.extended_disparity == other.extended_disparity
             && self.subpixel_disparity == other.subpixel_disparity
             && self != other
+    }
+}
+
+impl From<&DeviceProperties> for Option<DepthConfig> {
+    fn from(props: &DeviceProperties) -> Self {
+        let mut config = DepthConfig::default();
+        let Some(cam_with_stereo_pair) = props.cameras.iter().find(|feat| !feat.stereo_pairs.is_empty()) else {
+            return None
+        };
+        if let Some((cam_a, cam_b)) = props.default_stereo_pair {
+            config.stereo_pair = (cam_a, cam_b);
+        } else {
+            let stereo_pair = cam_with_stereo_pair.stereo_pairs[0];
+            config.stereo_pair = (cam_with_stereo_pair.board_socket, stereo_pair);
+        }
+        config.align = if let Some(color_cam) = props.cameras.iter().find(|cam| cam.name == "Color")
+        {
+            color_cam.board_socket
+        } else {
+            config.stereo_pair.0
+        };
+        Some(config)
     }
 }
 
@@ -299,14 +312,16 @@ impl Default for DeviceConfig {
     }
 }
 
-impl DeviceConfig {
-    pub fn from_camera_features(camera_features: &Vec<CameraFeatures>) -> DeviceConfig {
-        let mut config = DeviceConfig::default();
-        for features in camera_features {
-            config.cameras.push(CameraConfig {
-                name: features.name.clone(),
+impl From<&DeviceProperties> for DeviceConfig {
+    fn from(props: &DeviceProperties) -> Self {
+        let mut config = Self::default();
+        config.cameras = props
+            .cameras
+            .iter()
+            .map(|cam| CameraConfig {
+                name: cam.name.clone(),
                 fps: 30, // TODO(filip): Do performance improvements to allow higher fps
-                resolution: *features
+                resolution: *cam
                     .resolutions
                     .iter()
                     .filter(|res| {
@@ -315,17 +330,13 @@ impl DeviceConfig {
                     })
                     .last()
                     .unwrap_or(&CameraSensorResolution::THE_800_P),
-                board_socket: features.board_socket,
+                board_socket: cam.board_socket,
                 stream_enabled: true,
-                kind: if features.supported_types.contains(&CameraSensorKind::COLOR) {
-                    CameraSensorKind::COLOR
-                } else {
-                    CameraSensorKind::MONO
-                },
-            });
-        }
-        config.depth = DepthConfig::from_camera_features(camera_features);
-        config.ai_model = AiModel::from_camera_features(camera_features);
+                kind: *cam.supported_types.first().unwrap(),
+            })
+            .collect();
+        config.depth = Option::<DepthConfig>::from(props);
+        config.ai_model = AiModel::from(props);
         config
     }
 }
@@ -452,12 +463,14 @@ impl AiModel {
             camera: CameraBoardSocket::CAM_A,
         }
     }
+}
 
-    pub fn from_camera_features(camera_features: &[CameraFeatures]) -> Self {
+impl From<&DeviceProperties> for AiModel {
+    fn from(props: &DeviceProperties) -> Self {
         let mut model = Self::default();
-        if let Some(cam) = camera_features.iter().find(|cam| cam.name == "Color") {
+        if let Some(cam) = props.cameras.iter().find(|cam| cam.name == "Color") {
             model.camera = cam.board_socket;
-        } else if let Some(cam) = camera_features.first() {
+        } else if let Some(cam) = props.cameras.first() {
             model.camera = cam.board_socket;
         }
         model
@@ -670,8 +683,7 @@ impl State {
                     re_log::debug!("Setting device: {device:?}");
                     self.selected_device = device;
                     self.backend_comms.set_subscriptions(&self.subscriptions);
-                    self.modified_device_config =
-                        DeviceConfig::from_camera_features(&self.selected_device.cameras);
+                    self.modified_device_config = DeviceConfig::from(&self.selected_device);
                     // self.backend_comms
                     //     .set_pipeline(&self.applied_device_config.config, false);
                     self.set_update_in_progress(false);

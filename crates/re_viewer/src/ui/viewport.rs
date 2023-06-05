@@ -5,8 +5,11 @@
 use ahash::HashMap;
 use itertools::Itertools as _;
 
-use re_data_store::EntityPath;
-use re_log_types::{EntityPathPart, Time};
+use re_arrow_store::LatestAtQuery;
+use re_data_store::{query_latest_single, EntityPath};
+use re_log_types::{
+    component_types::TensorDataMeaning, EntityPathPart, Tensor, Time, TimeInt, Timeline,
+};
 
 use crate::{
     depthai::depthai,
@@ -18,7 +21,8 @@ use super::{
     device_settings_panel::DeviceSettingsPanel, selection_panel::SelectionPanel,
     space_view_entity_picker::SpaceViewEntityPicker,
     space_view_heuristics::all_possible_space_views, stats_panel::StatsPanelState,
-    view_category::ViewCategory, SpaceView, SpaceViewId, SpaceViewKind,
+    view_category::ViewCategory, view_spatial::SpatialNavigationMode, SpaceView, SpaceViewId,
+    SpaceViewKind,
 };
 
 // ----------------------------------------------------------------------------
@@ -412,6 +416,42 @@ impl Viewport {
         {
             match space_view_kind {
                 SpaceViewKind::Data | SpaceViewKind::Stats => {
+                    let mut entities_to_skip = Vec::new();
+                    if let Some(space_view) = self.space_views.get_mut(&space_view_id) {
+                        let mut is3d = false;
+                        let mut has_depth = false;
+                        let mut image_to_hide = None;
+                        space_view.data_blueprint.visit_group_entities_recursively(
+                            space_view.data_blueprint.root_handle(),
+                            &mut |entity_path| {
+                                if is3d && has_depth {
+                                    if let Some(last_part) = entity_path.iter().last() {
+                                        if last_part == &EntityPathPart::from("Image") {
+                                            image_to_hide = Some(entity_path.clone());
+                                        }
+                                    }
+                                }
+                                is3d |= entity_path.len() == 2
+                                    && entity_path.iter().last().unwrap()
+                                        == &EntityPathPart::from("transform");
+                                if let Some(last_part) = entity_path.iter().last() {
+                                    has_depth |= last_part == &EntityPathPart::from("Depth");
+                                }
+                            },
+                        );
+                        if let Some(image_to_hide) = image_to_hide {
+                            entities_to_skip.push(image_to_hide.clone());
+                            let mut props = space_view
+                                .data_blueprint
+                                .data_blueprints_individual()
+                                .get(&image_to_hide);
+                            props.visible = false;
+                            space_view
+                                .data_blueprint
+                                .data_blueprints_individual()
+                                .set(image_to_hide.clone(), props);
+                        }
+                    }
                     space_view_options_ui(
                         ctx,
                         ui,
@@ -419,6 +459,7 @@ impl Viewport {
                         tab_bar_rect,
                         space_view_id,
                         num_space_views,
+                        entities_to_skip.as_slice(),
                     );
                 }
                 SpaceViewKind::Selection => {
@@ -675,6 +716,7 @@ fn space_view_options_ui(
     tab_bar_rect: egui::Rect,
     space_view_id: SpaceViewId,
     num_space_views: usize,
+    entities_to_skip: &[EntityPath],
 ) {
     let tab_bar_rect = tab_bar_rect.shrink2(egui::vec2(4.0, 0.0)); // Add some side margin outside the frame
 
@@ -724,7 +766,9 @@ fn space_view_options_ui(
                     }
                 });
                 for entity_path in entities {
-                    // if matches!(entity_path, EntityPath::from("color"))
+                    if entities_to_skip.contains(entity_path) {
+                        continue;
+                    }
                     ui.horizontal(|ui| {
                         let mut properties = space_view
                             .data_blueprint

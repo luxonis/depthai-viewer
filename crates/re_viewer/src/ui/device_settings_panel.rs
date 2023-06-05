@@ -161,12 +161,7 @@ impl DeviceSettingsPanel {
     ) {
         let primary_700 = ctx.re_ui.design_tokens.primary_700;
         egui::CollapsingHeader::new(
-            egui::RichText::new(
-                camera_features
-                    .board_socket
-                    .display_name(ctx.depthai_state.get_connected_cameras()),
-            )
-            .color(primary_700),
+            egui::RichText::new(camera_features.board_socket.display_name(ctx)).color(primary_700),
         )
         .default_open(true)
         .show(ui, |ui| {
@@ -250,9 +245,9 @@ impl DeviceSettingsPanel {
                                                 }
                                             },
                                         );
-                                        ctx.re_ui.labeled_combo_box(ui, "Run on", device_config.ai_model.camera.display_name(&connected_cameras), false, |ui| {
+                                        ctx.re_ui.labeled_combo_box(ui, "Run on", device_config.ai_model.camera.display_name(ctx), false, |ui| {
                                             for cam in &connected_cameras {
-                                                ui.selectable_value(&mut device_config.ai_model.camera, cam.board_socket, cam.board_socket.display_name(&connected_cameras));
+                                                ui.selectable_value(&mut device_config.ai_model.camera, cam.board_socket, cam.board_socket.display_name(ctx));
                                             }
                                         });
                                     });
@@ -273,9 +268,9 @@ impl DeviceSettingsPanel {
                                     ui.vertical(|ui| {
                                         ui.set_width(CONFIG_UI_WIDTH);
                                         let (cam1, cam2) = depth.stereo_pair;
-                                        ctx.re_ui.labeled_combo_box(ui, "Camera Pair", format!("{}, {}", cam1.display_name(&connected_cameras), cam2.display_name(&connected_cameras)), false, |ui| {
+                                        ctx.re_ui.labeled_combo_box(ui, "Camera Pair", format!("{}, {}", cam1.display_name(ctx), cam2.display_name(ctx)), false, |ui| {
                                             for pair in &ctx.depthai_state.selected_device.stereo_pairs {
-                                                ui.selectable_value(&mut depth.stereo_pair, *pair, format!("{} {}", pair.0.display_name(&connected_cameras), pair.1.display_name(&connected_cameras)));
+                                                ui.selectable_value(&mut depth.stereo_pair, *pair, format!("{} {}", pair.0.display_name(ctx), pair.1.display_name(ctx)));
                                             }
                                         });
                                         ctx.re_ui.labeled_checkbox(
@@ -286,7 +281,7 @@ impl DeviceSettingsPanel {
                                         ctx.re_ui.labeled_combo_box(
                                             ui,
                                             "Align to",
-                                            depth.align.display_name(ctx.depthai_state.get_connected_cameras()),
+                                            depth.align.display_name(ctx),
                                             false,
                                             |ui| {
                                                 for align in &connected_cameras
@@ -294,7 +289,7 @@ impl DeviceSettingsPanel {
                                                     ui.selectable_value(
                                                         &mut depth.align,
                                                         align.board_socket,
-                                                        align.board_socket.display_name(&connected_cameras),
+                                                        align.board_socket.display_name(ctx),
                                                     );
                                                 }
                                             },

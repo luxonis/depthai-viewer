@@ -146,6 +146,13 @@ class SelectedDevice:
         imu = self._oak_cam.device.getConnectedIMU()
         imu = ImuKind.NINE_AXIS if "BNO" in imu else None if imu == "NONE" else ImuKind.SIX_AXIS
         device_properties = DeviceProperties(id=self.id, imu=imu)
+        try:
+            calib = self._oak_cam.device.readCalibration2()
+            left_cam = calib.getStereoLeftCameraId()
+            right_cam = calib.getStereoRightCameraId()
+            device_properties.default_stereo_pair = (left_cam, right_cam)
+        except RuntimeError:
+            pass
         for cam in connected_cam_features:
             prioritized_type = cam.supportedTypes[0]
             device_properties.cameras.append(
@@ -371,8 +378,8 @@ class DepthaiViewerBack:
         self.send_message_queue = Queue()
 
         self.store = Store()
-        self.store.on_update_pipeline = self.update_pipeline
-        self.store.on_select_device = self.select_device
+        self.store.on_update_pipeline = self.on_update_pipeline
+        self.store.on_select_device = self.on_select_device
         self.store.on_reset = self.on_reset
 
         self.api_process = threading.Thread(
@@ -397,7 +404,7 @@ class DepthaiViewerBack:
         print("Done")
         return True, {"message": "Reset successful"}
 
-    def select_device(self, device_id: str) -> Tuple[bool, Dict[str, Union[str, Any]]]:
+    def on_select_device(self, device_id: str) -> Tuple[bool, Dict[str, Union[str, Any]]]:
         print("Selecting device: ", device_id)
         if self._device:
             self.on_reset()
@@ -415,7 +422,7 @@ class DepthaiViewerBack:
             if self._device is not None:
                 device_properties = self._device.get_device_properties()
                 return True, {"message:": "Device selected successfully", "device_properties": device_properties}
-            return False, {"message": "CCouldn't select device", "device_properties": {}}
+            return False, {"message": "Couldn't select device", "device_properties": {}}
         except RuntimeError as e:
             print("Failed to get device properties:", e)
             self.on_reset()
@@ -428,7 +435,7 @@ class DepthaiViewerBack:
             exit(-1)
             # return False, {"message": "Failed to get device properties", "device_properties": {}}
 
-    def update_pipeline(self, runtime_only: bool) -> Tuple[bool, Dict[str, str]]:
+    def on_update_pipeline(self, runtime_only: bool) -> Tuple[bool, Dict[str, str]]:
         if not self._device:
             print("No device selected, can't update pipeline!")
             return False, {"message": "No device selected, can't update pipeline!"}

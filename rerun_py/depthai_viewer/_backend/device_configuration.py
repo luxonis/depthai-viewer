@@ -198,7 +198,8 @@ class CameraFeatures(BaseModel):  # type: ignore[misc]
     max_fps: int = 60
     board_socket: dai.CameraBoardSocket
     supported_types: List[dai.CameraSensorType]
-    stereo_pairs: List[dai.CameraBoardSocket] = []  # Which cameras can be paired with this one
+    stereo_pairs: List[dai.CameraBoardSocket] = []
+    """Which cameras can be paired with this one"""
     name: str
 
     class Config:
@@ -230,6 +231,7 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     stereo_pairs: List[
         Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
     ] = []  # Which cameras can be paired for stereo
+    default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
 
     class Config:
         arbitrary_types_allowed = True
