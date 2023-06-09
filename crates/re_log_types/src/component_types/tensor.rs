@@ -420,8 +420,7 @@ impl Tensor {
             &TensorData::NV12(_) => {
                 let shape = self.shape.as_slice();
                 match shape {
-                    [y, x, c] => {
-                        assert_eq!(c.size, 1);
+                    [y, x] => {
                         vec![
                             TensorDimension::height((((y.size as f64) * 2.0) / 3.0) as u64),
                             TensorDimension::width(x.size)
@@ -430,7 +429,7 @@ impl Tensor {
                     _ => panic!("Invalid shape for NV12 encoding: {:?}", shape),
                 }
             }
-            _ => self.shape.clone(),
+            _ => self.shape().into(),
         }
     }
 
@@ -440,6 +439,7 @@ impl Tensor {
     }
 
     /// If this tensor is shaped as an image, return the height, width, and channels/depth of it.
+    /// Takes into account the encoding
     pub fn image_height_width_channels(&self) -> Option<[u64; 3]> {
         match &self.data {
             &TensorData::NV12(_) => {
@@ -513,8 +513,36 @@ impl Tensor {
             TensorData::I64(buf) => Some(TensorElement::I64(buf[offset])),
             TensorData::F32(buf) => Some(TensorElement::F32(buf[offset])),
             TensorData::F64(buf) => Some(TensorElement::F64(buf[offset])),
-            TensorData::NV12(_) => None, // Too expensive to unpack here.
+            // Doesn't make sense to get a single value for NV12, use get_nv12_pixel instead.
+            // You would need to call get once for each channel.
+            // That would meant that you have to manually supply the channel, so using get_nv12_pixel is easier.
+            TensorData::NV12(_) => None,
             TensorData::JPEG(_) => None, // Too expensive to unpack here.
+        }
+    }
+
+    pub fn get_nv12_pixel(&self, index: &[u64; 2]) -> Option<[TensorElement; 3]> {
+        let [row, col] = index;
+        match self.real_shape().as_slice() {
+            [h, w] => {
+                match &self.data {
+                    TensorData::NV12(buf) => {
+                        let y = buf[(*row * w.size + *col) as usize];
+                        let u = buf[((*row / 2) * w.size + *col) as usize];
+                        let v = buf[((*row / 2) * w.size + *col) as usize + 1];
+                        let r = (y as f64 + 1.402 * (v as f64 - 128.0)) as u64;
+                        let g = (y as f64 - 0.34414 * (u as f64 - 128.0) - 0.71414 * (v as f64 - 128.0)) as u64;
+                        let b = (y as f64 + 1.772 * (u as f64 - 128.0)) as u64;
+                        Some([
+                            TensorElement::U8(r as u8),
+                            TensorElement::U8(g as u8),
+                            TensorElement::U8(b as u8),
+                        ])
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 

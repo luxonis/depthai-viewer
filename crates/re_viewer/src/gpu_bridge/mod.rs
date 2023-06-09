@@ -190,7 +190,7 @@ pub fn render_image(
         clip_rect,
         pixels_from_points
     );
-    crate::gpu_bridge::viewport_resolution_in_pixels(clip_rect, pixels_from_points);
+
     anyhow::ensure!(resolution_in_pixel[0] > 0 && resolution_in_pixel[1] > 0);
 
     let camera_position_space = space_from_ui.transform_pos(clip_rect.min);

@@ -68,7 +68,6 @@ fn to_textured_rect(
             } else {
                 re_renderer::renderer::TextureFilterMin::Linear
             };
-
             Some(re_renderer::renderer::TexturedRect {
                 top_left_corner_position: world_from_obj.transform_point3(glam::Vec3::ZERO),
                 extent_u: world_from_obj.transform_vector3(glam::Vec3::X * (width as f32)),

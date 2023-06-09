@@ -238,4 +238,4 @@ def log_encoded_image(
         if tmp_height % 2 != 0:
             _send_warning(f"Invalid height {height} for NV12 encoded image: height * 1.5 must be divisible by 2.", 1)
         tensor_height = int(tmp_height)
-    _log_tensor(entity_path, image.reshape(tensor_height, width, 1), ext=ext, timeless=timeless, encoding=encoding)
+    _log_tensor(entity_path, image.reshape(tensor_height, width), ext=ext, timeless=timeless, encoding=encoding)
