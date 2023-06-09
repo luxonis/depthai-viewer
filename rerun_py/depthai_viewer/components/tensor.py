@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from enum import Enum
 from typing import Final, Iterable, Union, cast
 
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
-
 from depthai_viewer import bindings
 from depthai_viewer.components import (
     REGISTERED_COMPONENT_NAMES,
@@ -18,7 +18,13 @@ __all__ = [
     "TensorArray",
     "TensorType",
     "TensorDType",
+    "ImageEncoding",
 ]
+
+
+class ImageEncoding(Enum):
+    NV12 = "NV12"
+
 
 TensorDType = Union[
     np.uint8,
@@ -53,7 +59,7 @@ DTYPE_MAP: Final[dict[npt.DTypeLike, str]] = {
 class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
     def from_numpy(
         array: npt.NDArray[TensorDType],
-        encoding: str,
+        encoding: ImageEncoding | None = None,
         names: Iterable[str | None] | None = None,
         meaning: bindings.TensorDataMeaning = None,
         meter: float | None = None,
@@ -75,7 +81,7 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
 
         data = build_dense_union(
             TensorType.storage_type["data"].type,
-            discriminant=DTYPE_MAP[cast(TensorDType, array.dtype.type)],
+            discriminant=DTYPE_MAP[cast(TensorDType, array.dtype.type)] if encoding is None else encoding.name,
             child=data_inner,
         )
 
@@ -92,15 +98,18 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
             child=pa.array([True], type=pa.bool_()),
         )
 
+        mask_encoding = True if encoding is None else False
+
         # Note: the pa.array mask is backwards from expectations
         # Mask is True for elements which are not valid.
+        mask_meter = True if meter is None else False
         if meter is None:
             meter = pa.array([0.0], mask=[True], type=pa.float32())
         else:
             meter = pa.array([meter], mask=[False], type=pa.float32())
 
         storage = pa.StructArray.from_arrays(
-            [tensor_id, shape, data, meaning, meter, encoding],
+            [tensor_id, shape, data, meaning, meter],
             fields=list(TensorType.storage_type),
         ).cast(TensorType.storage_type)
         storage.validate(full=True)

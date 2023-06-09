@@ -5,7 +5,7 @@ import numpy.typing as npt
 
 from depthai_viewer import bindings
 from depthai_viewer.components.instance import InstanceArray
-from depthai_viewer.components.tensor import TensorArray
+from depthai_viewer.components.tensor import TensorArray, ImageEncoding
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.extension_components import _add_extension_components
 from depthai_viewer.log.log_decorator import log_decorator
@@ -85,7 +85,7 @@ def _log_tensor(
     meaning: bindings.TensorDataMeaning = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
-    encoding: Optional[str] = None,
+    encoding: ImageEncoding = None,
 ) -> None:
     """Log a general tensor, perhaps with named dimensions."""
 
@@ -127,17 +127,6 @@ def _log_tensor(
 
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
-
-    if encoding is None:
-        if len(tensor.shape) == 2:
-            encoding = "MONO8"
-        elif len(tensor.shape) == 3:
-            if tensor.shape[2] == 3:
-                encoding = "RGB8"
-            elif tensor.shape[2] == 4:
-                encoding = "RGBA8"
-        else:
-            encoding = "UNKNOWN"
 
     instanced["rerun.tensor"] = TensorArray.from_numpy(tensor, encoding, names, meaning, meter)
 

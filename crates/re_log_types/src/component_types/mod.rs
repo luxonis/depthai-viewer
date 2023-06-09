@@ -65,7 +65,7 @@ pub use scalar::{Scalar, ScalarPlotProps};
 pub use size::Size3D;
 pub use tensor::{
     DecodedTensor, Tensor, TensorCastError, TensorData, TensorDataMeaning, TensorDimension,
-    TensorEncoding, TensorId,
+    TensorId,
 };
 #[cfg(feature = "image")]
 pub use tensor::{TensorImageLoadError, TensorImageSaveError};

@@ -1,17 +1,18 @@
+from enum import Enum
 from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
-
 from depthai_viewer import bindings
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.log_decorator import log_decorator
-from depthai_viewer.log.tensor import Tensor, _log_tensor, _to_numpy
+from depthai_viewer.log.tensor import Tensor, _log_tensor, _to_numpy, ImageEncoding
 
 __all__ = [
     "log_image",
     "log_depth_image",
     "log_segmentation_image",
+    "log_encoded_image",
 ]
 
 
@@ -22,7 +23,6 @@ def log_image(
     *,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
-    encoding: Optional[str] = None,
 ) -> None:
     """
     Log a gray or color image.
@@ -74,7 +74,7 @@ def log_image(
     if interpretable_as_image and num_non_empty_dims != len(shape):
         image = np.squeeze(image)
 
-    _log_tensor(entity_path, image, ext=ext, timeless=timeless, encoding=encoding)
+    _log_tensor(entity_path, image, ext=ext, timeless=timeless)
 
 
 @log_decorator
@@ -202,3 +202,40 @@ def log_segmentation_image(
             ext=ext,
             timeless=timeless,
         )
+
+
+@log_decorator
+def log_encoded_image(
+    entity_path: str,
+    image: npt.ArrayLike,
+    width: int,
+    height: int,
+    encoding: ImageEncoding,
+    *,
+    ext: Optional[Dict[str, Any]] = None,
+    timeless: bool = False,
+) -> None:
+    """
+    Log an image encoded as a string.
+
+    The image should be encoded as a string, e.g. using base64.
+
+    Parameters
+    ----------
+    entity_path:
+        Path to the image in the space hierarchy.
+    image:
+        A [Tensor][rerun.log.tensor.Tensor] representing the image to log.
+    ext:
+        Optional dictionary of extension components. See [rerun.log_extension_components][]
+    timeless:
+        If true, the image will be timeless (default: False).
+    """
+    image = np.array(image, copy=False)
+    tensor_height = height
+    if encoding == ImageEncoding.NV12:
+        tmp_height = height * 1.5
+        if tmp_height % 2 != 0:
+            _send_warning(f"Invalid height {height} for NV12 encoded image: height * 1.5 must be divisible by 2.", 1)
+        tensor_height = int(tmp_height)
+    _log_tensor(entity_path, image.reshape(tensor_height, width, 1), ext=ext, timeless=timeless, encoding=encoding)

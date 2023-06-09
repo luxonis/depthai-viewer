@@ -101,7 +101,7 @@ fn tensor_ui(
                 ui.label(format!(
                     "{} x {}",
                     tensor.dtype(),
-                    format_tensor_shape_single_line(tensor.shape())
+                    format_tensor_shape_single_line(tensor.real_shape().as_slice())
                 ))
                 .on_hover_ui(|ui| tensor_summary_ui(ctx.re_ui, ui, tensor, &tensor_stats));
             });
@@ -185,7 +185,7 @@ fn annotations(
 }
 
 fn texture_size(colormapped_texture: &ColormappedTexture) -> Vec2 {
-    let [w, h] = colormapped_texture.texture.width_height();
+    let [w, h] = colormapped_texture.width_height();
     egui::vec2(w as f32, h as f32)
 }
 
@@ -232,7 +232,6 @@ pub fn tensor_summary_ui_grid_contents(
         data,
         meaning,
         meter,
-        encoding
     } = tensor;
 
     re_ui
@@ -286,7 +285,7 @@ pub fn tensor_summary_ui_grid_contents(
         | re_log_types::component_types::TensorData::I32(_)
         | re_log_types::component_types::TensorData::I64(_)
         | re_log_types::component_types::TensorData::F32(_)
-        | re_log_types::component_types::TensorData::F64(_) => {}
+        | re_log_types::component_types::TensorData::F64(_) | re_log_types::component_types::TensorData::NV12(_) => {}
         re_log_types::component_types::TensorData::JPEG(jpeg_bytes) => {
             re_ui.grid_left_hand_label(ui, "Encoding");
             ui.label(format!(

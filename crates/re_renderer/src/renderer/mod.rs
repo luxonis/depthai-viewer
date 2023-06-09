@@ -15,7 +15,7 @@ pub use point_cloud::{
 
 mod depth_cloud;
 pub use self::depth_cloud::{
-    DepthCloud, DepthCloudAlbedoData, DepthCloudDrawData, DepthCloudRenderer, DepthClouds,
+    DepthCloud, DepthCloudDrawData, DepthCloudRenderer, DepthClouds,
 };
 
 mod test_triangle;
@@ -24,7 +24,7 @@ pub use test_triangle::TestTriangleDrawData;
 mod rectangles;
 pub use rectangles::{
     ColorMapper, ColormappedTexture, RectangleDrawData, RectangleOptions, TextureFilterMag,
-    TextureFilterMin, TexturedRect,
+    TextureFilterMin, TexturedRect, TextureEncoding
 };
 
 mod mesh_renderer;

@@ -2,19 +2,20 @@
 
 use anyhow::Context;
 use std::borrow::Cow;
+use std::mem;
 
-use bytemuck::{allocation::pod_collect_to_vec, cast_slice, Pod};
+use bytemuck::{ allocation::pod_collect_to_vec, cast_slice, Pod };
 use egui::util::hash;
 use wgpu::TextureFormat;
 
-use re_log_types::component_types::{DecodedTensor, Tensor, TensorData};
+use re_log_types::component_types::{ DecodedTensor, Tensor, TensorData };
 use re_renderer::{
-    renderer::{ColorMapper, ColormappedTexture},
+    renderer::{ ColorMapper, ColormappedTexture, TextureEncoding },
     resource_managers::Texture2DCreationDesc,
     RenderContext,
 };
 
-use crate::{gpu_bridge::get_or_create_texture, misc::caches::TensorStats};
+use crate::{ gpu_bridge::get_or_create_texture, misc::caches::TensorStats };
 
 use super::try_get_or_create_texture;
 
@@ -31,14 +32,16 @@ pub fn tensor_to_gpu(
     debug_name: &str,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
-    annotations: &crate::ui::Annotations,
+    annotations: &crate::ui::Annotations
 ) -> anyhow::Result<ColormappedTexture> {
-    crate::profile_function!(format!(
-        "meaning: {:?}, dtype: {}, shape: {:?}",
-        tensor.meaning,
-        tensor.dtype(),
-        tensor.shape()
-    ));
+    crate::profile_function!(
+        format!(
+            "meaning: {:?}, dtype: {}, shape: {:?}",
+            tensor.meaning,
+            tensor.dtype(),
+            tensor.shape()
+        )
+    );
 
     use re_log_types::component_types::TensorDataMeaning;
 
@@ -58,61 +61,25 @@ pub fn tensor_to_gpu(
 /// Pad and cast a slice of RGB values to RGBA with only one copy.
 fn pad_and_cast_rgb(data: &[u8], alpha: u8) -> Cow<'static, [u8]> {
     crate::profile_function!();
-    if cfg!(debug_assertions) {
-        // fastest version in debug builds.
-        // 5x faster in debug builds, but 2x slower in release
-        let mut padded = vec![alpha; data.len() / 3 * 4];
-        for i in 0..(data.len() / 3) {
-            padded[4 * i] = data[3 * i];
-            padded[4 * i + 1] = data[3 * i + 1];
-            padded[4 * i + 2] = data[3 * i + 2];
+    (
+        if cfg!(debug_assertions) {
+            // fastest version in debug builds.
+            // 5x faster in debug builds, but 2x slower in release
+            let mut padded = vec![alpha; data.len() / 3 * 4];
+            for i in 0..data.len() / 3 {
+                padded[4 * i] = data[3 * i];
+                padded[4 * i + 1] = data[3 * i + 1];
+                padded[4 * i + 2] = data[3 * i + 2];
+            }
+            padded
+        } else {
+            // fastest version in optimized builds
+            data.chunks_exact(3)
+                .flat_map(|chunk| [chunk[0], chunk[1], chunk[2], alpha])
+                .collect::<Vec<u8>>()
+                .into()
         }
-        padded
-    } else {
-        // fastest version in optimized builds
-        data.chunks_exact(3)
-            .flat_map(|chunk| [chunk[0], chunk[1], chunk[2], alpha])
-            .collect::<Vec<u8>>()
-            .into()
-    }
-    .into()
-}
-
-use dcp::{convert_image, ColorSpace, ImageFormat, PixelFormat};
-use dcv_color_primitives as dcp;
-fn convert_nv12_to_rgba8(tensor: &Tensor) -> Cow<'static, [u8]> {
-    dcp::initialize();
-    let src_format = ImageFormat {
-        pixel_format: PixelFormat::Nv12,
-        color_space: ColorSpace::Bt601,
-        num_planes: 1,
-    };
-    let dst_format = ImageFormat {
-        pixel_format: PixelFormat::Rgba,
-        color_space: ColorSpace::Rgb,
-        num_planes: 1,
-    };
-
-    let data = match &tensor.data {
-        TensorData::U8(buf) => buf,
-        _ => panic!("Not U8"),
-    };
-
-    let width: u32 = tensor.shape[0].size.try_into().unwrap();
-    let height: u32 = tensor.shape[1].size.try_into().unwrap();
-
-    let mut dst = vec![0u8; (width * height * 4).try_into().unwrap()];
-    convert_image(
-        tensor.shape[0].size.try_into().unwrap(),
-        tensor.shape[1].size.try_into().unwrap(),
-        &src_format,
-        None,
-        &[data.as_slice()],
-        &dst_format,
-        None,
-        &mut [&mut dst],
-    );
-    dst.into()
+    ).into()
 }
 
 // ----------------------------------------------------------------------------
@@ -122,40 +89,34 @@ fn color_tensor_to_gpu(
     render_ctx: &mut RenderContext,
     debug_name: &str,
     tensor: &DecodedTensor,
-    tensor_stats: &TensorStats,
+    tensor_stats: &TensorStats
 ) -> anyhow::Result<ColormappedTexture> {
+    let [height, width, depth] = height_width_depth(tensor)?;
     let texture_handle = try_get_or_create_texture(render_ctx, hash(tensor.id()), || {
-        let [height, width, depth] = height_width_depth(tensor)?;
-
         let (data, format) = {
-            if tensor.encoding == String::from("NV12") {
-                (
-                    convert_nv12_to_rgba8(&tensor),
-                    TextureFormat::Rgba8UnormSrgb,
-                )
-            } else {
-                match (depth, &tensor.data) {
-                    // Use R8Unorm and R8Snorm to get filtering on the GPU:
-                    (1, TensorData::U8(buf)) => {
-                        (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
-                    }
-                    (1, TensorData::I8(buf)) => (cast_slice_to_cow(buf), TextureFormat::R8Snorm),
+            match (depth, &tensor.data) {
+                // Use R8Unorm and R8Snorm to get filtering on the GPU:
+                (1, TensorData::U8(buf)) => {
+                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
+                }
+                (1, TensorData::NV12(buf)) => {
+                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
+                }
+                (1, TensorData::I8(buf)) => (cast_slice_to_cow(buf), TextureFormat::R8Snorm),
 
-                    // Special handling for sRGB(A) textures:
-                    (3, TensorData::U8(buf)) => (
-                        pad_and_cast_rgb(buf.as_slice(), 255),
-                        TextureFormat::Rgba8UnormSrgb,
-                    ),
-                    (4, TensorData::U8(buf)) => (
+                // Special handling for sRGB(A) textures:
+                (3, TensorData::U8(buf)) =>
+                    (pad_and_cast_rgb(buf.as_slice(), 255), TextureFormat::Rgba8UnormSrgb),
+                (4, TensorData::U8(buf)) =>
+                    (
                         // TODO(emilk): premultiply alpha
                         cast_slice_to_cow(buf.as_slice()),
                         TextureFormat::Rgba8UnormSrgb,
                     ),
 
-                    _ => {
-                        // Fallback to general case:
-                        return general_texture_creation_desc_from_tensor(debug_name, tensor);
-                    }
+                _ => {
+                    // Fallback to general case:
+                    return general_texture_creation_desc_from_tensor(debug_name, tensor);
                 }
             }
         };
@@ -167,16 +128,12 @@ fn color_tensor_to_gpu(
             width,
             height,
         })
-    })
-    .map_err(|err| anyhow::anyhow!("Failed to create texture for color tensor: {err}"))?;
+    }).map_err(|err| anyhow::anyhow!("Failed to create texture for color tensor: {err}"))?;
 
     let texture_format = texture_handle.format();
 
     // Special casing for normalized textures used above:
-    let range = if matches!(
-        texture_format,
-        TextureFormat::R8Unorm | TextureFormat::Rgba8UnormSrgb
-    ) {
+    let range = if matches!(texture_format, TextureFormat::R8Unorm | TextureFormat::Rgba8UnormSrgb) {
         [0.0, 1.0]
     } else if texture_format == TextureFormat::R8Snorm {
         [-1.0, 1.0]
@@ -184,7 +141,11 @@ fn color_tensor_to_gpu(
         crate::gpu_bridge::range(tensor_stats)?
     };
 
-    let color_mapper = if re_renderer::texture_info::num_texture_components(texture_format) == 1 {
+    let encoding: Option<TextureEncoding> = (&tensor.data).into();
+    let color_mapper = if
+        encoding != Some(TextureEncoding::Nv12) &&
+        re_renderer::texture_info::num_texture_components(texture_format) == 1
+    {
         // Single-channel images = luminance = grayscale
         Some(ColorMapper::Function(re_renderer::Colormap::Grayscale))
     } else {
@@ -196,6 +157,7 @@ fn color_tensor_to_gpu(
         range,
         gamma: 1.0,
         color_mapper,
+        encoding,
     })
 }
 
@@ -207,22 +169,13 @@ fn class_id_tensor_to_gpu(
     debug_name: &str,
     tensor: &DecodedTensor,
     tensor_stats: &TensorStats,
-    annotations: &crate::ui::Annotations,
+    annotations: &crate::ui::Annotations
 ) -> anyhow::Result<ColormappedTexture> {
     let [_height, _width, depth] = height_width_depth(tensor)?;
-    anyhow::ensure!(
-        depth == 1,
-        "Cannot apply annotations to tensor of shape {:?}",
-        tensor.shape
-    );
-    anyhow::ensure!(
-        tensor.dtype().is_integer(),
-        "Only integer tensors can be annotated"
-    );
+    anyhow::ensure!(depth == 1, "Cannot apply annotations to tensor of shape {:?}", tensor.shape);
+    anyhow::ensure!(tensor.dtype().is_integer(), "Only integer tensors can be annotated");
 
-    let (min, max) = tensor_stats
-        .range
-        .ok_or_else(|| anyhow::anyhow!("compressed_tensor!?"))?;
+    let (min, max) = tensor_stats.range.ok_or_else(|| anyhow::anyhow!("compressed_tensor!?"))?;
     anyhow::ensure!(0.0 <= min, "Negative class id");
 
     anyhow::ensure!(max <= 65535.0, "Too many class ids"); // we only support u8 and u16 tensors
@@ -233,95 +186,83 @@ fn class_id_tensor_to_gpu(
     let colormap_width = 256;
     let colormap_height = (num_colors + colormap_width - 1) / colormap_width;
 
-    let colormap_texture_handle =
-        get_or_create_texture(render_ctx, hash(annotations.row_id), || {
-            let data: Vec<u8> = (0..(colormap_width * colormap_height))
-                .flat_map(|id| {
-                    let color = annotations
-                        .class_description(Some(re_log_types::component_types::ClassId(id as u16)))
-                        .annotation_info()
-                        .color(None, crate::ui::DefaultColor::TransparentBlack);
-                    color.to_array() // premultiplied!
-                })
-                .collect();
+    let colormap_texture_handle = get_or_create_texture(render_ctx, hash(annotations.row_id), || {
+        let data: Vec<u8> = (0..colormap_width * colormap_height)
+            .flat_map(|id| {
+                let color = annotations
+                    .class_description(Some(re_log_types::component_types::ClassId(id as u16)))
+                    .annotation_info()
+                    .color(None, crate::ui::DefaultColor::TransparentBlack);
+                color.to_array() // premultiplied!
+            })
+            .collect();
 
-            Texture2DCreationDesc {
-                label: "class_id_colormap".into(),
-                data: data.into(),
-                format: TextureFormat::Rgba8UnormSrgb,
-                width: colormap_width as u32,
-                height: colormap_height as u32,
-            }
-        })
-        .context("Failed to create class_id_colormap.")?;
+        Texture2DCreationDesc {
+            label: "class_id_colormap".into(),
+            data: data.into(),
+            format: TextureFormat::Rgba8UnormSrgb,
+            width: colormap_width as u32,
+            height: colormap_height as u32,
+        }
+    }).context("Failed to create class_id_colormap.")?;
 
     let main_texture_handle = try_get_or_create_texture(render_ctx, hash(tensor.id()), || {
         general_texture_creation_desc_from_tensor(debug_name, tensor)
-    })
-    .map_err(|err| anyhow::anyhow!("Failed to create texture for class id tensor: {err}"))?;
+    }).map_err(|err| anyhow::anyhow!("Failed to create texture for class id tensor: {err}"))?;
 
     Ok(ColormappedTexture {
         texture: main_texture_handle,
         range: [0.0, (colormap_width * colormap_height) as f32],
         gamma: 1.0,
         color_mapper: Some(ColorMapper::Texture(colormap_texture_handle)),
+        encoding: None,
     })
 }
 
 // ----------------------------------------------------------------------------
-// Depth textures:
+// Depth textures
+// ----------------------------------------------------------------------------
 
 fn depth_tensor_to_gpu(
     render_ctx: &mut RenderContext,
     debug_name: &str,
     tensor: &DecodedTensor,
-    tensor_stats: &TensorStats,
+    tensor_stats: &TensorStats
 ) -> anyhow::Result<ColormappedTexture> {
     let [_height, _width, depth] = height_width_depth(tensor)?;
-    anyhow::ensure!(
-        depth == 1,
-        "Depth tensor of weird shape: {:?}",
-        tensor.shape
-    );
+    anyhow::ensure!(depth == 1, "Depth tensor of weird shape: {:?}", tensor.shape);
     let (min, max) = depth_tensor_range(tensor, tensor_stats)?;
 
     let texture = try_get_or_create_texture(render_ctx, hash(tensor.id()), || {
         general_texture_creation_desc_from_tensor(debug_name, tensor)
-    })
-    .map_err(|err| anyhow::anyhow!("Failed to create depth tensor texture: {err}"))?;
+    }).map_err(|err| anyhow::anyhow!("Failed to create depth tensor texture: {err}"))?;
 
     Ok(ColormappedTexture {
         texture,
         range: [min as f32, max as f32],
         gamma: 1.0,
         color_mapper: Some(ColorMapper::Function(re_renderer::Colormap::Turbo)),
+        encoding: None,
     })
 }
 
 fn depth_tensor_range(
     tensor: &DecodedTensor,
-    tensor_stats: &TensorStats,
+    tensor_stats: &TensorStats
 ) -> anyhow::Result<(f64, f64)> {
-    let range = tensor_stats.range.ok_or(anyhow::anyhow!(
-        "Tensor has no range!? Was this compressed?"
-    ))?;
+    let range = tensor_stats.range.ok_or(
+        anyhow::anyhow!("Tensor has no range!? Was this compressed?")
+    )?;
     let (mut min, mut max) = range;
 
-    anyhow::ensure!(
-        min.is_finite() && max.is_finite(),
-        "Tensor has non-finite values"
-    );
+    anyhow::ensure!(min.is_finite() && max.is_finite(), "Tensor has non-finite values");
 
     min = min.min(0.0); // Depth usually start at zero.
 
     if min == max {
         // Uniform image. We can't remap it to a 0-1 range, so do whatever:
         min = 0.0;
-        max = if tensor.dtype().is_float() {
-            1.0
-        } else {
-            tensor.dtype().max_value()
-        };
+        max = if tensor.dtype().is_float() { 1.0 } else { tensor.dtype().max_value() };
     }
 
     Ok((min, max))
@@ -333,7 +274,7 @@ fn depth_tensor_range(
 /// Uses no `Unorm/Snorm` formats.
 fn general_texture_creation_desc_from_tensor<'a>(
     debug_name: &str,
-    tensor: &'a DecodedTensor,
+    tensor: &'a DecodedTensor
 ) -> anyhow::Result<Texture2DCreationDesc<'a>> {
     let [height, width, depth] = height_width_depth(tensor)?;
 
@@ -354,8 +295,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 TensorData::F32(buf) => (cast_slice_to_cow(buf), TextureFormat::R32Float),
                 TensorData::F64(buf) => (narrow_f64_to_f32s(buf), TextureFormat::R32Float), // narrowing to f32!
 
-                TensorData::JPEG(_) => {
-                    unreachable!("DecodedTensor cannot contain a JPEG")
+                TensorData::JPEG(_) => { unreachable!("DecodedTensor cannot contain a JPEG") }
+                TensorData::NV12(buf) => {
+                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
                 }
             }
         }
@@ -376,8 +318,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 TensorData::F32(buf) => (cast_slice_to_cow(buf), TextureFormat::Rg32Float),
                 TensorData::F64(buf) => (narrow_f64_to_f32s(buf), TextureFormat::Rg32Float), // narrowing to f32!
 
-                TensorData::JPEG(_) => {
-                    unreachable!("DecodedTensor cannot contain a JPEG")
+                TensorData::JPEG(_) => { unreachable!("DecodedTensor cannot contain a JPEG") }
+                TensorData::NV12(_) => {
+                    panic!("NV12 cannot be a two channel tensor!");
                 }
             }
         }
@@ -387,34 +330,36 @@ fn general_texture_creation_desc_from_tensor<'a>(
             // To be safe, we pad with the MAX value of integers, and with 1.0 for floats.
             // TODO(emilk): tell the shader to ignore the alpha channel instead!
             match &tensor.data {
-                TensorData::U8(buf) => (
-                    pad_and_cast(buf.as_slice(), u8::MAX),
-                    TextureFormat::Rgba8Uint,
-                ),
+                TensorData::U8(buf) =>
+                    (pad_and_cast(buf.as_slice(), u8::MAX), TextureFormat::Rgba8Uint),
                 TensorData::U16(buf) => (pad_and_cast(buf, u16::MAX), TextureFormat::Rgba16Uint),
                 TensorData::U32(buf) => (pad_and_cast(buf, u32::MAX), TextureFormat::Rgba32Uint),
-                TensorData::U64(buf) => (
-                    pad_and_narrow_and_cast(buf, 1.0, |x: u64| x as f32),
-                    TextureFormat::Rgba32Float,
-                ),
+                TensorData::U64(buf) =>
+                    (
+                        pad_and_narrow_and_cast(buf, 1.0, |x: u64| x as f32),
+                        TextureFormat::Rgba32Float,
+                    ),
 
                 TensorData::I8(buf) => (pad_and_cast(buf, i8::MAX), TextureFormat::Rgba8Sint),
                 TensorData::I16(buf) => (pad_and_cast(buf, i16::MAX), TextureFormat::Rgba16Sint),
                 TensorData::I32(buf) => (pad_and_cast(buf, i32::MAX), TextureFormat::Rgba32Sint),
-                TensorData::I64(buf) => (
-                    pad_and_narrow_and_cast(buf, 1.0, |x: i64| x as f32),
-                    TextureFormat::Rgba32Float,
-                ),
+                TensorData::I64(buf) =>
+                    (
+                        pad_and_narrow_and_cast(buf, 1.0, |x: i64| x as f32),
+                        TextureFormat::Rgba32Float,
+                    ),
 
                 // TensorData::F16(buf) => (pad_and_cast(buf, 1.0), TextureFormat::Rgba16Float), TODO(#854)
                 TensorData::F32(buf) => (pad_and_cast(buf, 1.0), TextureFormat::Rgba32Float),
-                TensorData::F64(buf) => (
-                    pad_and_narrow_and_cast(buf, 1.0, |x: f64| x as f32),
-                    TextureFormat::Rgba32Float,
-                ),
+                TensorData::F64(buf) =>
+                    (
+                        pad_and_narrow_and_cast(buf, 1.0, |x: f64| x as f32),
+                        TextureFormat::Rgba32Float,
+                    ),
 
-                TensorData::JPEG(_) => {
-                    unreachable!("DecodedTensor cannot contain a JPEG")
+                TensorData::JPEG(_) => { unreachable!("DecodedTensor cannot contain a JPEG") }
+                TensorData::NV12(_) => {
+                    panic!("NV12 cannot be a three channel tensor!");
                 }
             }
         }
@@ -437,8 +382,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 TensorData::F32(buf) => (cast_slice_to_cow(buf), TextureFormat::Rgba32Float),
                 TensorData::F64(buf) => (narrow_f64_to_f32s(buf), TextureFormat::Rgba32Float), // narrowing to f32!
 
-                TensorData::JPEG(_) => {
-                    unreachable!("DecodedTensor cannot contain a JPEG")
+                TensorData::JPEG(_) => { unreachable!("DecodedTensor cannot contain a JPEG") }
+                TensorData::NV12(_) => {
+                    panic!("NV12 cannot be a four channel tensor!");
                 }
             }
         }
@@ -496,7 +442,7 @@ fn pad_to_four_elements<T: Copy>(data: &[T], pad: T) -> Vec<T> {
         // fastest version in debug builds.
         // 5x faster in debug builds, but 2x slower in release
         let mut padded = vec![pad; data.len() / 3 * 4];
-        for i in 0..(data.len() / 3) {
+        for i in 0..data.len() / 3 {
             padded[4 * i] = data[3 * i];
             padded[4 * i + 1] = data[3 * i + 1];
             padded[4 * i + 2] = data[3 * i + 2];
@@ -520,7 +466,7 @@ fn pad_and_cast<T: Copy + Pod>(data: &[T], pad: T) -> Cow<'static, [u8]> {
 fn pad_and_narrow_and_cast<T: Copy + Pod>(
     data: &[T],
     pad: f32,
-    narrow: impl Fn(T) -> f32,
+    narrow: impl Fn(T) -> f32
 ) -> Cow<'static, [u8]> {
     crate::profile_function!();
 
@@ -540,7 +486,7 @@ fn height_width_depth(tensor: &Tensor) -> anyhow::Result<[u32; 3]> {
 
     anyhow::ensure!(
         shape.len() == 2 || shape.len() == 3,
-        "Expected a 2D or 3D tensor, got {shape:?}",
+        "Expected a 2D or 3D tensor, got {shape:?}"
     );
 
     let [height, width] = [
