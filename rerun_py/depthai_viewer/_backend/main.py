@@ -33,6 +33,7 @@ from depthai_viewer._backend.sdk_callbacks import (
     DepthCallbackArgs,
     SdkCallbacks,
 )
+from depthai_viewer._backend.messages import *
 from depthai_viewer._backend.store import Store
 
 viewer.init("Depthai Viewer")
@@ -56,7 +57,7 @@ class XlinkStatistics:
                         xlink_stats.numBytesWritten, xlink_stats.numBytesRead, self._time_of_last_update
                     )
                 except Exception:
-                    print("Couldn't get device profiling data")
+                    pass
 
 
 class SelectedDevice:
@@ -182,7 +183,7 @@ class SelectedDevice:
         if self._oak_cam.running():
             self._oak_cam.device.__exit__(0, 0, 0)
 
-    def reconnect_to_oak_cam(self) -> Tuple[bool, Dict[str, str]]:
+    def reconnect_to_oak_cam(self) -> Message:
         """
 
         Try to reconnect to the device with self.id.
@@ -190,7 +191,7 @@ class SelectedDevice:
         Timeout after 10 seconds.
         """
         if self._oak_cam is None:
-            return False, {"message": "No device selected, can't reconnect!"}
+            return ErrorMessage("No device selected, can't reconnect!")
         if self._oak_cam.device.isClosed():
             timeout_start = time.time()
             while time.time() - timeout_start < 10:
@@ -201,12 +202,12 @@ class SelectedDevice:
                     break
             try:
                 self.set_oak_cam(OakCamera(self.id))
-                return True, {"message": "Successfully reconnected to device"}
+                return InfoMessage("Successfully reconnected to device")
             except RuntimeError as e:
                 print("Failed to create oak camera")
                 print(e)
                 self.set_oak_cam(None)
-        return False, {"message": "Failed to create oak camera"}
+        return ErrorMessage("Failed to create oak camera")
 
     def _get_component_by_socket(self, socket: dai.CameraBoardSocket) -> Optional[CameraComponent]:
         component = list(filter(lambda c: c.node.getBoardSocket() == socket, self._cameras))
@@ -223,21 +224,20 @@ class SelectedDevice:
             return None
         return camera[0]
 
-    def update_pipeline(
-        self, config: PipelineConfiguration, runtime_only: bool, callbacks: "SdkCallbacks"
-    ) -> Tuple[bool, Dict[str, str]]:
+    def update_pipeline(self, config: PipelineConfiguration, runtime_only: bool, callbacks: "SdkCallbacks") -> Message:
         if self._oak_cam is None:
-            return False, {"message": "No device selected, can't update pipeline!"}
+            return ErrorMessage("No device selected, can't update pipeline!")
         if self._oak_cam.running():
             if runtime_only:
                 if config.depth is not None:
-                    return True, self._stereo.control.send_controls(config.depth.to_runtime_controls())
-                return False, {"message": "Depth is not enabled, can't send runtime controls!"}
+                    self._stereo.control.send_controls(config.depth.to_runtime_controls())
+                    return InfoMessage("")
+                return ErrorMessage("Depth is disabled, can't send runtime controls!")
             print("Cam running, closing...")
             self.close_oak_cam()
-            success, message = self.reconnect_to_oak_cam()
-            if not success:
-                return success, message
+            message = self.reconnect_to_oak_cam()
+            if isinstance(message, ErrorMessage):
+                return message
 
         self._cameras = []
         self.use_encoding = self._oak_cam.device.getDeviceInfo().protocol == dai.XLinkProtocol.X_LINK_TCP_IP
@@ -266,7 +266,7 @@ class SelectedDevice:
             left_cam = self._get_component_by_socket(stereo_pair[0])
             right_cam = self._get_component_by_socket(stereo_pair[1])
             if not left_cam or not right_cam:
-                return False, {"message": f"{cam} is not configured. Couldn't create stereo pair."}
+                return ErrorMessage(f"{cam} is not configured. Couldn't create stereo pair.")
 
             if left_cam.node.getResolutionWidth() > 1280:
                 print("Left cam width > 1280, setting isp scale to get 800")
@@ -281,7 +281,7 @@ class SelectedDevice:
             if pkg_resources.parse_version(depthai_sdk.__version__) >= pkg_resources.parse_version("1.10.0"):
                 align_component = self._get_component_by_socket(align)
                 if not align_component:
-                    return False, {"message": f"{config.depth.align} is not configured. Couldn't create stereo pair."}
+                    return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
                 align = align_component
             self._stereo.config_stereo(
                 lr_check=config.depth.lr_check,
@@ -294,7 +294,7 @@ class SelectedDevice:
 
             aligned_camera = self._get_camera_config_by_socket(config, config.depth.align)
             if not aligned_camera:
-                return False, {"message": f"{config.depth.align} is not configured. Couldn't create stereo pair."}
+                return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
             self._oak_cam.callback(
                 self._stereo,
                 callbacks.build_callback(
@@ -321,19 +321,18 @@ class SelectedDevice:
         if config.ai_model and config.ai_model.path:
             cam_component = self._get_component_by_socket(config.ai_model.camera)
             if not cam_component:
-                return False, {"message": f"{config.ai_model.camera} is not configured."}
+                return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
             labels: Optional[List[str]] = None
             if config.ai_model.path == "age-gender-recognition-retail-0013":
                 face_detection = self._oak_cam.create_nn("face-detection-retail-0004", cam_component)
                 self._nnet = self._oak_cam.create_nn("age-gender-recognition-retail-0013", input=face_detection)
-
             else:
                 self._nnet = self._oak_cam.create_nn(config.ai_model.path, cam_component)
                 labels = getattr(classification_labels, config.ai_model.path.upper().replace("-", "_"), None)
 
             camera = self._get_camera_config_by_socket(config, config.ai_model.camera)
             if not camera:
-                return False, {"message": f"{config.ai_model.camera} is not configured. Couldn't create NN."}
+                return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
             self._oak_cam.callback(
                 self._nnet,
                 callbacks.build_callback(
@@ -345,13 +344,14 @@ class SelectedDevice:
             self._oak_cam.start(blocking=False)
         except RuntimeError as e:
             print("Couldn't start pipeline: ", e)
-            return False, {"message": "Couldn't start pipeline"}
+            return ErrorMessage("Couldn't start pipeline")
+
         running = self._oak_cam.running()
         if running:
             self._oak_cam.poll()
             self.calibration_data = self._oak_cam.device.readCalibration()
             self.intrinsic_matrix = {}
-        return running, {"message": "Pipeline started" if running else "Couldn't start pipeline"}
+        return InfoMessage("Pipeline started" if running else ErrorMessage("Couldn't start pipeline"))
 
     def update(self) -> None:
         if self._oak_cam is None:
@@ -395,57 +395,53 @@ class DepthaiViewerBack:
         if device:
             self.sdk_callbacks.set_camera_intrinsics_getter(device.get_intrinsic_matrix)
 
-    def on_reset(self) -> Tuple[bool, Dict[str, str]]:
+    def on_reset(self) -> Message:
         print("Resetting...")
         if self._device:
             print("Closing device...")
             self._device.close_oak_cam()
             self.set_device(None)
         print("Done")
-        return True, {"message": "Reset successful"}
+        return InfoMessage("Reset successful")
 
-    def on_select_device(self, device_id: str) -> Tuple[bool, Dict[str, Union[str, Any]]]:
+    def on_select_device(self, device_id: str) -> Message:
         print("Selecting device: ", device_id)
         if self._device:
             self.on_reset()
         if device_id == "":
-            return True, {"message": "Successfully unselected device", "device_properties": {}}
+            return DeviceMessage(DeviceProperties(id=""), "Device successfully unselected")
         try:
             self.set_device(SelectedDevice(device_id))
         except RuntimeError as e:
             print("Failed to select device:", e)
-            return False, {
-                "message": str(e) + ", Try plugging in the device on a different port.",
-                "device_properties": {},
-            }
+            return ErrorMessage(f"{str(e)}, Try to connect the device to a different port.")
         try:
             if self._device is not None:
                 device_properties = self._device.get_device_properties()
-                return True, {"message:": "Device selected successfully", "device_properties": device_properties}
-            return False, {"message": "Couldn't select device", "device_properties": {}}
+                return DeviceMessage(device_properties, "Device selected successfully")
+            return ErrorMessage("Couldn't select device")
         except RuntimeError as e:
             print("Failed to get device properties:", e)
             self.on_reset()
-            self.send_message_queue.put(
-                json.dumps({"type": "Error", "data": {"action": "FullReset", "message": "Device disconnected"}})
-            )
+            self.send_message_queue.put(ErrorMessage("Device disconnected!"))
             print("Restarting backend...")
             # For now exit the backend, the frontend will restart it
             # (TODO(filip): Why does "Device already closed or disconnected: Input/output error happen")
             exit(-1)
-            # return False, {"message": "Failed to get device properties", "device_properties": {}}
 
-    def on_update_pipeline(self, runtime_only: bool) -> Tuple[bool, Dict[str, str]]:
+    def on_update_pipeline(self, runtime_only: bool) -> Message:
         if not self._device:
             print("No device selected, can't update pipeline!")
-            return False, {"message": "No device selected, can't update pipeline!"}
+            return ErrorMessage("No device selected, can't update pipeline!")
         print("Updating pipeline...")
-        started, message = False, {"message": "Couldn't start pipeline"}
+        message = ErrorMessage("Couldn't update pipeline")
         if self.store.pipeline_config is not None:
-            started, message = self._device.update_pipeline(
+            message = self._device.update_pipeline(
                 self.store.pipeline_config, runtime_only, callbacks=self.sdk_callbacks
             )
-        return started, message
+        if isinstance(message, InfoMessage):
+            return PipelineMessage(self.store.pipeline_config)
+        return message
 
     def run(self) -> None:
         """Handles ws messages and polls OakCam."""
@@ -460,12 +456,8 @@ class DepthaiViewerBack:
             if self._device:
                 self._device.update()
                 if self._device.is_closed():
-                    # TODO(filip): Typehint the messages properly
                     self.on_reset()
-                    self.send_message_queue.put(
-                        json.dumps({"type": "Error", "data": {"action": "FullReset", "message": "Device disconnected"}})
-                    )
-
+                    self.send_message_queue.put(ErrorMessage("Device disconnected"))
 
 
 if __name__ == "__main__":

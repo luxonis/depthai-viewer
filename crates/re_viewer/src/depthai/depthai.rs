@@ -261,19 +261,21 @@ impl DepthConfig {
     }
 
     pub fn only_runtime_configs_differ(&self, other: &DepthConfig) -> bool {
-        self.lr_check == other.lr_check
-            && self.align == other.align
-            && self.extended_disparity == other.extended_disparity
-            && self.subpixel_disparity == other.subpixel_disparity
-            && self != other
+        self.lr_check == other.lr_check &&
+            self.align == other.align &&
+            self.extended_disparity == other.extended_disparity &&
+            self.subpixel_disparity == other.subpixel_disparity &&
+            self != other
     }
 }
 
 impl From<&DeviceProperties> for Option<DepthConfig> {
     fn from(props: &DeviceProperties) -> Self {
         let mut config = DepthConfig::default();
-        let Some(cam_with_stereo_pair) = props.cameras.iter().find(|feat| !feat.stereo_pairs.is_empty()) else {
-            return None
+        let Some(cam_with_stereo_pair) = props.cameras
+            .iter()
+            .find(|feat| !feat.stereo_pairs.is_empty()) else {
+            return None;
         };
         if let Some((cam_a, cam_b)) = props.default_stereo_pair {
             config.stereo_pair = (cam_a, cam_b);
@@ -281,7 +283,8 @@ impl From<&DeviceProperties> for Option<DepthConfig> {
             let stereo_pair = cam_with_stereo_pair.stereo_pairs[0];
             config.stereo_pair = (cam_with_stereo_pair.board_socket, stereo_pair);
         }
-        config.align = if let Some(color_cam) = props.cameras.iter().find(|cam| cam.name == "Color")
+        config.align = if
+            let Some(color_cam) = props.cameras.iter().find(|cam| cam.name == "Color")
         {
             color_cam.board_socket
         } else {
@@ -315,18 +318,16 @@ impl Default for DeviceConfig {
 impl From<&DeviceProperties> for DeviceConfig {
     fn from(props: &DeviceProperties) -> Self {
         let mut config = Self::default();
-        config.cameras = props
-            .cameras
+        config.cameras = props.cameras
             .iter()
             .map(|cam| CameraConfig {
                 name: cam.name.clone(),
                 fps: 30, // TODO(filip): Do performance improvements to allow higher fps
-                resolution: *cam
-                    .resolutions
+                resolution: *cam.resolutions
                     .iter()
                     .filter(|res| {
-                        res != &&CameraSensorResolution::THE_4_K
-                            && res != &&CameraSensorResolution::THE_12_MP
+                        res != &&CameraSensorResolution::THE_4_K &&
+                            res != &&CameraSensorResolution::THE_12_MP
                     })
                     .last()
                     .unwrap_or(&CameraSensorResolution::THE_800_P),
@@ -378,10 +379,10 @@ impl PartialEq for DeviceConfig {
             (Some(a), Some(b)) => a == b,
             _ => true, // If one is None, it's only different if depth_enabled is different
         };
-        self.cameras == other.cameras
-            && depth_eq
-            && self.depth_enabled == other.depth_enabled
-            && self.ai_model == other.ai_model
+        self.cameras == other.cameras &&
+            depth_eq &&
+            self.depth_enabled == other.depth_enabled &&
+            self.ai_model == other.ai_model
     }
 }
 
@@ -403,7 +404,10 @@ impl fmt::Debug for DeviceConfig {
         write!(
             f,
             "Device config: cams: {:?}, depth: {:?}, ai_model: {:?}, depth_enabled: {:?}",
-            self.cameras, self.depth, self.ai_model, self.depth_enabled
+            self.cameras,
+            self.depth,
+            self.ai_model,
+            self.depth_enabled
         )
     }
 }
@@ -427,6 +431,7 @@ pub enum ErrorAction {
     FullReset,
 }
 
+// TODO(filip): Move to a more appropriate place, refactor depthai.rs in general
 #[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, fmt::Debug)]
 pub struct Error {
     pub action: ErrorAction,
@@ -440,6 +445,11 @@ impl Default for Error {
             message: String::from("Invalid message"),
         }
     }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, fmt::Debug, Default)]
+pub struct Info {
+    pub message: String,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, fmt::Debug)]
@@ -536,7 +546,7 @@ fn default_neural_networks() -> Vec<AiModel> {
             path: String::from("age-gender-recognition-retail-0013"),
             display_name: String::from("Age gender recognition"),
             camera: CameraBoardSocket::CAM_A,
-        },
+        }
     ]
 }
 
@@ -559,7 +569,15 @@ impl Default for State {
 
 #[repr(u8)]
 #[derive(
-    serde::Serialize, serde::Deserialize, Copy, Clone, PartialEq, Eq, fmt::Debug, Hash, EnumIter,
+    serde::Serialize,
+    serde::Deserialize,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    fmt::Debug,
+    Hash,
+    EnumIter
 )]
 pub enum ChannelId {
     ColorImage,
@@ -573,25 +591,21 @@ pub enum ChannelId {
 impl State {
     pub fn only_runtime_configs_changed(
         old_config: &DeviceConfig,
-        new_config: &DeviceConfig,
+        new_config: &DeviceConfig
     ) -> bool {
-        let any_runtime_conf_changed = old_config.depth.is_some()
-            && new_config.depth.is_some()
-            && old_config
-                .depth
-                .unwrap()
-                .only_runtime_configs_differ(&new_config.depth.unwrap()); // || others to be added
-        any_runtime_conf_changed
-            && old_config.cameras == new_config.cameras
-            && old_config.ai_model == new_config.ai_model
+        let any_runtime_conf_changed =
+            old_config.depth.is_some() &&
+            new_config.depth.is_some() &&
+            old_config.depth.unwrap().only_runtime_configs_differ(&new_config.depth.unwrap()); // || others to be added
+        any_runtime_conf_changed &&
+            old_config.cameras == new_config.cameras &&
+            old_config.ai_model == new_config.ai_model
     }
 
     pub fn set_subscriptions(&mut self, subscriptions: &Vec<ChannelId>) {
-        if self.subscriptions.len() == subscriptions.len()
-            && self
-                .subscriptions
-                .iter()
-                .all(|channel_id| subscriptions.contains(channel_id))
+        if
+            self.subscriptions.len() == subscriptions.len() &&
+            self.subscriptions.iter().all(|channel_id| subscriptions.contains(channel_id))
         {
             return;
         }
@@ -648,8 +662,10 @@ impl State {
                     if config.depth.is_some() {
                         subs.push(ChannelId::DepthImage);
                     }
-                    if let Some(color_camera) =
-                        &config.cameras.iter().find(|cam| cam.name == "color")
+                    if
+                        let Some(color_camera) = &config.cameras
+                            .iter()
+                            .find(|cam| cam.name == "color")
                     {
                         if color_camera.stream_enabled {
                             subs.push(ChannelId::ColorImage);
@@ -660,18 +676,18 @@ impl State {
                             subs.push(ChannelId::LeftMono);
                         }
                     }
-                    if let Some(right_cam) = &config.cameras.iter().find(|cam| cam.name == "right")
-                    {
+                    if let Some(right_cam) = &config.cameras.iter().find(|cam| cam.name == "right") {
                         if right_cam.stream_enabled {
                             subs.push(ChannelId::RightMono);
                         }
                     }
                     self.applied_device_config.config = Some(config.clone());
                     self.modified_device_config = config.clone();
-                    let Some(applied_device_config) = self.applied_device_config.config.as_mut() else {
+                    let Some(applied_device_config) =
+                        self.applied_device_config.config.as_mut() else {
                         self.reset();
-                    self.applied_device_config.update_in_progress = false;
-                    return;
+                        self.applied_device_config.update_in_progress = false;
+                        return;
                     };
                     applied_device_config.depth_enabled = config.depth.is_some();
                     self.modified_device_config.depth_enabled =
@@ -698,6 +714,12 @@ impl State {
                         }
                     }
                 }
+                WsMessageData::Info(info) => {
+                    if info.message.is_empty() {
+                        return;
+                    }
+                    re_log::info!("{}", info.message);
+                }
             }
         }
 
@@ -723,12 +745,7 @@ impl State {
 
     pub fn set_device_config(&mut self, config: &mut DeviceConfig, runtime_only: bool) {
         // Don't try to set pipeline in ws not connected
-        if !self
-            .backend_comms
-            .ws
-            .connected
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
+        if !self.backend_comms.ws.is_connected() {
             return;
         }
         if !config.depth_enabled {
