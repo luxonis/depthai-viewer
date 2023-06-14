@@ -65,8 +65,8 @@ fn fs_main(in: VertexOut) -> @location(0) Vec4 {
             let bottom = mix(v01, v11, fract(coord.x));
             sampled_value = mix(top, bottom, fract(coord.y));
         }
-    } else if rect_info.sample_type == SAMPLE_TYPE_NV12_NOFILTER {
-        sampled_value = decode_nv12(texture_float_filterable, in.texcoord);
+    } else if rect_info.sample_type == SAMPLE_TYPE_NV12 {
+        sampled_value = decode_nv12(texture_uint, in.texcoord);
     } else {
         return ERROR_RGBA; // unknown sample type
     }

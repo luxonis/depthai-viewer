@@ -527,16 +527,24 @@ impl Tensor {
             [h, w] => {
                 match &self.data {
                     TensorData::NV12(buf) => {
-                        let y = buf[(*row * w.size + *col) as usize];
-                        let u = buf[((*row / 2) * w.size + *col) as usize];
-                        let v = buf[((*row / 2) * w.size + *col) as usize + 1];
-                        let r = (y as f64 + 1.402 * (v as f64 - 128.0)) as u64;
-                        let g = (y as f64 - 0.34414 * (u as f64 - 128.0) - 0.71414 * (v as f64 - 128.0)) as u64;
-                        let b = (y as f64 + 1.772 * (u as f64 - 128.0)) as u64;
+                        let uv_offset = (w.size * h.size) as u64;
+                        let y = ((buf[(*row * w.size + *col) as usize] as f64) - 16.0) / 216.0;
+                        let u =
+                            ((buf[(uv_offset + (*row / 2) * w.size + *col) as usize] as f64) -
+                                128.0) /
+                            224.0;
+                        let v =
+                            ((buf[((uv_offset + (*row / 2) * w.size + *col) as usize) + 1] as f64) -
+                                128.0) /
+                            224.0;
+                        let r = y + 1.402 * v;
+                        let g = y - 0.344 * u + 0.714 * v;
+                        let b = y + 1.772 * u;
+
                         Some([
-                            TensorElement::U8(r as u8),
-                            TensorElement::U8(g as u8),
-                            TensorElement::U8(b as u8),
+                            TensorElement::U8(f64::clamp(r * 255.0, 0.0, 255.0) as u8),
+                            TensorElement::U8(f64::clamp(g * 255.0, 0.0, 255.0) as u8),
+                            TensorElement::U8(f64::clamp(b * 255.0, 0.0, 255.0) as u8),
                         ])
                     }
                     _ => None,

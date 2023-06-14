@@ -100,7 +100,7 @@ fn color_tensor_to_gpu(
                     (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
                 }
                 (1, TensorData::NV12(buf)) => {
-                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
+                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Uint)
                 }
                 (1, TensorData::I8(buf)) => (cast_slice_to_cow(buf), TextureFormat::R8Snorm),
 
@@ -131,17 +131,19 @@ fn color_tensor_to_gpu(
     }).map_err(|err| anyhow::anyhow!("Failed to create texture for color tensor: {err}"))?;
 
     let texture_format = texture_handle.format();
+    let encoding: Option<TextureEncoding> = (&tensor.data).into();
 
     // Special casing for normalized textures used above:
     let range = if matches!(texture_format, TextureFormat::R8Unorm | TextureFormat::Rgba8UnormSrgb) {
         [0.0, 1.0]
     } else if texture_format == TextureFormat::R8Snorm {
         [-1.0, 1.0]
+    } else if encoding == Some(TextureEncoding::Nv12) {
+        [0.0, 1.0]
     } else {
         crate::gpu_bridge::range(tensor_stats)?
     };
 
-    let encoding: Option<TextureEncoding> = (&tensor.data).into();
     let color_mapper = if
         encoding != Some(TextureEncoding::Nv12) &&
         re_renderer::texture_info::num_texture_components(texture_format) == 1

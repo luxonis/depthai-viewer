@@ -69,7 +69,7 @@ mod gpu_data {
     // ------------------
     //  Encoded textures
     // ------------------
-    const SAMPLE_TYPE_NV12_NOFILTER: u32 = 5;
+    const SAMPLE_TYPE_NV12: u32 = 5;
 
     /// Keep in sync with mirror in `depth_cloud.wgsl.`
     #[repr(C, align(256))]
@@ -132,7 +132,7 @@ mod gpu_data {
                     match colormapped_texture.texture.format().sample_type(None) {
                         Some(wgpu::TextureSampleType::Float { .. }) =>
                             match colormapped_texture.encoding {
-                                Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12_NOFILTER,
+                                Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12,
                                 _ => {
                                     if
                                         texture_info::is_float_filterable(
@@ -146,7 +146,12 @@ mod gpu_data {
                                     }
                                 }
                             }
-                        Some(wgpu::TextureSampleType::Uint) => SAMPLE_TYPE_UINT_NOFILTER,
+                        Some(wgpu::TextureSampleType::Uint) => {
+                            match colormapped_texture.encoding {
+                                Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12,
+                                _ => SAMPLE_TYPE_UINT_NOFILTER,
+                            }
+                        }
                         Some(wgpu::TextureSampleType::Sint) => SAMPLE_TYPE_SINT_NOFILTER,
                         _ => 0,
                     }

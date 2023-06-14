@@ -19,7 +19,7 @@ const SAMPLE_TYPE_UINT_NOFILTER  = 4u;
 // -------------------
 //  Encoded textures
 // -------------------
-const SAMPLE_TYPE_NV12_NOFILTER  = 5u;
+const SAMPLE_TYPE_NV12  = 5u;
 
 // ---
 
@@ -143,8 +143,8 @@ fn compute_point_data(quad_idx: u32) -> PointData {
 
         var color: Vec4;
         if depth_cloud_info.colormap == ALBEDO_TEXTURE {
-            if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_NV12_NOFILTER {
-                color = decode_nv12(albedo_texture_float_filterable, Vec2(f32(texcoords.x), f32(texcoords.y)) / Vec2(f32(wh.x), f32(wh.x)));
+            if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_NV12 {
+                color = decode_nv12(albedo_texture_uint, Vec2(f32(texcoords.x), f32(texcoords.y)) / Vec2(f32(wh.x), f32(wh.x)));
             } else { // TODO(filip): Support all sample types like in rectangle_fs.wgsl
                 if depth_cloud_info.depth_sample_type == SAMPLE_TYPE_FLOAT_FILTER {
                     color = textureSampleLevel(

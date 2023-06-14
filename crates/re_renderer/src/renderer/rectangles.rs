@@ -222,7 +222,7 @@ mod gpu_data {
     // ------------------
     //  Encoded textures
     // ------------------
-    const SAMPLE_TYPE_NV12_NOFILTER: u32 = 5;
+    const SAMPLE_TYPE_NV12: u32 = 5;
 
     // How do we do colormapping?
     const COLOR_MAPPER_OFF: u32 = 1;
@@ -291,19 +291,20 @@ mod gpu_data {
             } = options;
 
             let sample_type = match texture_format.sample_type(None) {
-                Some(wgpu::TextureSampleType::Float { .. }) =>
-                    match encoding {
-                        &Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12_NOFILTER,
-                        _ => {
-                            if texture_info::is_float_filterable(texture_format, device_features) {
-                                SAMPLE_TYPE_FLOAT_FILTER
-                            } else {
-                                SAMPLE_TYPE_FLOAT_NOFILTER
-                            }
-                        }
-                    }
+                Some(wgpu::TextureSampleType::Float { .. }) => if
+                    texture_info::is_float_filterable(texture_format, device_features)
+                {
+                    SAMPLE_TYPE_FLOAT_FILTER
+                } else {
+                    SAMPLE_TYPE_FLOAT_NOFILTER
+                }
                 Some(wgpu::TextureSampleType::Sint) => SAMPLE_TYPE_SINT_NOFILTER,
-                Some(wgpu::TextureSampleType::Uint) => SAMPLE_TYPE_UINT_NOFILTER,
+                Some(wgpu::TextureSampleType::Uint) => {
+                    match encoding {
+                        Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12,
+                        _ => SAMPLE_TYPE_UINT_NOFILTER,
+                    }
+                }
                 _ => {
                     return Err(RectangleError::DepthTexturesNotSupported);
                 }
