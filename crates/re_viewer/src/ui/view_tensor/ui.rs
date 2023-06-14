@@ -48,7 +48,7 @@ impl ViewTensorState {
     pub fn create(tensor: &DecodedTensor) -> ViewTensorState {
         Self {
             slice: SliceSelection {
-                dim_mapping: DimensionMapping::create(tensor.shape()),
+                dim_mapping: DimensionMapping::create(tensor.real_shape().as_slice()),
                 selector_values: Default::default(),
             },
             color_mapping: ColorMapping::default(),
@@ -86,8 +86,8 @@ impl ViewTensorState {
 
         ui.separator();
         ui.strong("Dimension Mapping");
-        dimension_mapping_ui(ctx.re_ui, ui, &mut self.slice.dim_mapping, tensor.shape());
-        let default_mapping = DimensionMapping::create(tensor.shape());
+        dimension_mapping_ui(ctx.re_ui, ui, &mut self.slice.dim_mapping, tensor.real_shape().as_slice());
+        let default_mapping = DimensionMapping::create(tensor.real_shape().as_slice());
         if ui
             .add_enabled(
                 self.slice.dim_mapping != default_mapping,
@@ -97,7 +97,7 @@ impl ViewTensorState {
             .on_hover_text("Reset dimension mapping to the default.")
             .clicked()
         {
-            self.slice.dim_mapping = DimensionMapping::create(tensor.shape());
+            self.slice.dim_mapping = DimensionMapping::create(tensor.real_shape().as_slice());
         }
     }
 }
@@ -113,7 +113,7 @@ pub(crate) fn view_tensor(
     state.tensor = Some(tensor.clone());
 
     if !state.slice.dim_mapping.is_valid(tensor.num_dim()) {
-        state.slice.dim_mapping = DimensionMapping::create(tensor.shape());
+        state.slice.dim_mapping = DimensionMapping::create(&tensor.real_shape().as_slice());
     }
 
     let default_item_spacing = ui.spacing_mut().item_spacing;
@@ -189,7 +189,8 @@ fn paint_tensor_slice(
         tensor_stats,
         state,
     )?;
-    let [width, height] = colormapped_texture.texture.width_height();
+
+    let [width, height] = colormapped_texture.width_height();
 
     let img_size = egui::vec2(width as _, height as _);
     let img_size = Vec2::max(Vec2::splat(1.0), img_size); // better safe than sorry
@@ -208,6 +209,7 @@ fn paint_tensor_slice(
 
     let (response, painter) = ui.allocate_painter(desired_size, egui::Sense::hover());
     let rect = response.rect;
+
     let image_rect = egui::Rect::from_min_max(rect.min, rect.max);
 
     let debug_name = "tensor_slice";
@@ -329,6 +331,7 @@ fn paint_colormap_gradient(
         range: [0.0, 1.0],
         gamma: 1.0,
         color_mapper: Some(re_renderer::renderer::ColorMapper::Function(colormap)),
+        encoding: None,
     };
 
     let debug_name = format!("colormap_{colormap}");
@@ -639,7 +642,7 @@ fn selectors_ui(ui: &mut egui::Ui, state: &mut ViewTensorState, tensor: &Tensor)
             continue;
         }
 
-        let dim = &tensor.shape()[selector.dim_idx];
+        let dim = tensor.real_shape().get(selector.dim_idx).unwrap().to_owned();
         let size = dim.size;
 
         let selector_value = state

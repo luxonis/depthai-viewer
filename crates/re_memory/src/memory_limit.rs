@@ -5,14 +5,14 @@ pub struct MemoryLimit {
     /// This is primarily compared to what is reported by [`crate::AccountingAllocator`] ('counted').
     /// We limit based on this instead of `resident` (RSS) because `counted` is what we have immediate
     /// control over, while RSS depends on what our allocator (MiMalloc) decides to do.
-    /// Default is Some(100MB)
+    /// Default is Some(500MB)
     pub limit: Option<i64>,
 }
 
 impl Default for MemoryLimit {
     fn default() -> Self {
         Self {
-            limit: re_format::parse_bytes("100MB"),
+            limit: re_format::parse_bytes("500MB"),
         }
     }
 }

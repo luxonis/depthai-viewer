@@ -1,4 +1,7 @@
-use re_log_types::{component_types::TensorCastError, DecodedTensor, TensorDataType};
+use re_log_types::{
+    component_types::{TensorCastError},
+    DecodedTensor, TensorDataType,
+};
 use re_renderer::{
     renderer::ColormappedTexture,
     resource_managers::{GpuTexture2D, Texture2DCreationDesc, TextureManager2DError},
@@ -47,6 +50,7 @@ pub fn colormapped_texture(
         color_mapper: Some(re_renderer::renderer::ColorMapper::Function(
             color_mapping.map,
         )),
+        encoding: (&tensor.data).into(),
     })
 }
 

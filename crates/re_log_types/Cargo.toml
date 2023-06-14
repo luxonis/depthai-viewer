@@ -45,6 +45,7 @@ serde = [
 [dependencies]
 
 # Rerun
+re_renderer.workspace = true
 re_format.workspace = true
 re_log.workspace = true
 re_string_interner.workspace = true

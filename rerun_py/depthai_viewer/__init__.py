@@ -13,7 +13,7 @@ from depthai_viewer.log.bounding_box import log_obb
 from depthai_viewer.log.camera import log_pinhole
 from depthai_viewer.log.extension_components import log_extension_components
 from depthai_viewer.log.file import ImageFormat, MeshFormat, log_image_file, log_mesh_file
-from depthai_viewer.log.image import log_depth_image, log_image, log_segmentation_image
+from depthai_viewer.log.image import log_depth_image, log_image, log_segmentation_image, log_encoded_image
 from depthai_viewer.log.imu import log_imu
 from depthai_viewer.log.lines import log_line_segments, log_line_strip, log_path
 from depthai_viewer.log.mesh import log_mesh, log_meshes
@@ -21,7 +21,7 @@ from depthai_viewer.log.pipeline_graph import log_pipeline_graph
 from depthai_viewer.log.points import log_point, log_points
 from depthai_viewer.log.rects import RectFormat, log_rect, log_rects
 from depthai_viewer.log.scalar import log_scalar
-from depthai_viewer.log.tensor import log_tensor
+from depthai_viewer.log.tensor import log_tensor, ImageEncoding
 from depthai_viewer.log.text import LoggingHandler, LogLevel, log_text_entry
 from depthai_viewer.log.transform import log_rigid3, log_unknown_transform, log_view_coordinates
 from depthai_viewer.log.xlink_stats import log_xlink_stats
@@ -43,6 +43,7 @@ __all__ = [
     "log_extension_components",
     "log_image_file",
     "log_image",
+    "log_encoded_image",
     "log_pipeline_graph",
     "log_line_segments",
     "log_line_strip",
@@ -74,6 +75,7 @@ __all__ = [
     "log_xlink_stats",
     "_backend",
     "rerun_shutdown",
+    "ImageEncoding",
 ]
 
 

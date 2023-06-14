@@ -10,26 +10,41 @@
 //! Since we're not allowed to bind many textures at once (no widespread bindless support!),
 //! we are forced to have individual bind groups per rectangle and thus a draw call per rectangle.
 
-use itertools::{izip, Itertools as _};
+use itertools::{ izip, Itertools as _ };
 use smallvec::smallvec;
 
 use crate::{
     allocator::create_and_fill_uniform_buffer_batch,
     depth_offset::DepthOffset,
-    draw_phases::{DrawPhase, OutlineMaskProcessor},
+    draw_phases::{ DrawPhase, OutlineMaskProcessor },
     include_shader_module,
-    resource_managers::{GpuTexture2D, ResourceManagerError},
+    resource_managers::{ GpuTexture2D, ResourceManagerError },
     texture_info,
     view_builder::ViewBuilder,
     wgpu_resources::{
-        BindGroupDesc, BindGroupEntry, BindGroupLayoutDesc, GpuBindGroup, GpuBindGroupLayoutHandle,
-        GpuRenderPipelineHandle, PipelineLayoutDesc, RenderPipelineDesc, SamplerDesc,
+        BindGroupDesc,
+        BindGroupEntry,
+        BindGroupLayoutDesc,
+        GpuBindGroup,
+        GpuBindGroupLayoutHandle,
+        GpuRenderPipelineHandle,
+        PipelineLayoutDesc,
+        RenderPipelineDesc,
+        SamplerDesc,
     },
-    Colormap, OutlineMaskPreference, PickingLayerProcessor, Rgba,
+    Colormap,
+    OutlineMaskPreference,
+    PickingLayerProcessor,
+    Rgba,
 };
 
 use super::{
-    DrawData, FileResolver, FileSystem, RenderContext, Renderer, SharedRendererData,
+    DrawData,
+    FileResolver,
+    FileSystem,
+    RenderContext,
+    Renderer,
+    SharedRendererData,
     WgpuResourcePools,
 };
 
@@ -49,11 +64,20 @@ pub enum TextureFilterMin {
     // TODO(andreas): Offer mipmapping here?
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum TextureEncoding {
+    Mono,
+    Rgb,
+    Rgba,
+    Nv12,
+}
+
 /// Describes a texture and how to map it to a color.
 #[derive(Clone)]
 pub struct ColormappedTexture {
     pub texture: GpuTexture2D,
 
+    pub encoding: Option<TextureEncoding>,
     /// Min/max range of the values in the texture.
     /// Used to normalize the input values (squash them to the 0-1 range).
     pub range: [f32; 2],
@@ -95,6 +119,22 @@ impl ColormappedTexture {
             range: [0.0, 1.0],
             gamma: 1.0,
             color_mapper: None,
+            encoding: None,
+        }
+    }
+
+    /// Calculate the real texture width and height,
+    /// taking into account the texture's encoding.
+    pub fn width_height(&self) -> [u32; 2] {
+        let texture_dim = self.texture.width_height();
+        match &self.encoding {
+            &Some(TextureEncoding::Nv12) => {
+                let real_dim =
+                    glam::Vec2::new(texture_dim[0] as f32, texture_dim[1] as f32) *
+                    glam::Vec2::new(1.0, 2.0 / 3.0);
+                [real_dim.x as u32, real_dim.y as u32]
+            }
+            _ => texture_dim,
         }
     }
 }
@@ -144,11 +184,9 @@ impl Default for RectangleOptions {
 
 #[derive(thiserror::Error, Debug)]
 pub enum RectangleError {
-    #[error(transparent)]
-    ResourceManagerError(#[from] ResourceManagerError),
+    #[error(transparent)] ResourceManagerError(#[from] ResourceManagerError),
 
-    #[error("Texture required special features: {0:?}")]
-    SpecialFeatures(wgpu::Features),
+    #[error("Texture required special features: {0:?}")] SpecialFeatures(wgpu::Features),
 
     // There's really no need for users to be able to sample depth textures.
     // We don't get filtering of depth textures any way.
@@ -158,20 +196,21 @@ pub enum RectangleError {
     #[error("Color mapping is being applied to a four-component RGBA texture")]
     ColormappingRgbaTexture,
 
-    #[error("Only 1 and 4 component textures are supported, got {0} components")]
-    UnsupportedComponentCount(u8),
+    #[error(
+        "Only 1 and 4 component textures are supported, got {0} components"
+    )] UnsupportedComponentCount(u8),
 
     #[error("No color mapper was supplied for this 1-component texture")]
     MissingColorMapper,
 
-    #[error("Invalid color map texture format: {0:?}")]
-    UnsupportedColormapTextureFormat(wgpu::TextureFormat),
+    #[error("Invalid color map texture format: {0:?}")] UnsupportedColormapTextureFormat(
+        wgpu::TextureFormat,
+    ),
 }
 
 mod gpu_data {
-    use crate::{texture_info, wgpu_buffer_types};
-
-    use super::{ColorMapper, RectangleError, TexturedRect};
+    use super::{ ColorMapper, RectangleError, TextureEncoding, TexturedRect };
+    use crate::{ texture_info, wgpu_buffer_types };
 
     // Keep in sync with mirror in rectangle.wgsl
 
@@ -180,6 +219,10 @@ mod gpu_data {
     const SAMPLE_TYPE_FLOAT_NOFILTER: u32 = 2;
     const SAMPLE_TYPE_SINT_NOFILTER: u32 = 3;
     const SAMPLE_TYPE_UINT_NOFILTER: u32 = 4;
+    // ------------------
+    //  Encoded textures
+    // ------------------
+    const SAMPLE_TYPE_NV12: u32 = 5;
 
     // How do we do colormapping?
     const COLOR_MAPPER_OFF: u32 = 1;
@@ -219,7 +262,7 @@ mod gpu_data {
     impl UniformBuffer {
         pub fn from_textured_rect(
             rectangle: &super::TexturedRect,
-            device_features: wgpu::Features,
+            device_features: wgpu::Features
         ) -> Result<Self, RectangleError> {
             let texture_format = rectangle.colormapped_texture.texture.format();
 
@@ -236,6 +279,7 @@ mod gpu_data {
                 range,
                 gamma,
                 color_mapper,
+                encoding,
             } = colormapped_texture;
 
             let super::RectangleOptions {
@@ -247,15 +291,20 @@ mod gpu_data {
             } = options;
 
             let sample_type = match texture_format.sample_type(None) {
-                Some(wgpu::TextureSampleType::Float { .. }) => {
-                    if texture_info::is_float_filterable(texture_format, device_features) {
-                        SAMPLE_TYPE_FLOAT_FILTER
-                    } else {
-                        SAMPLE_TYPE_FLOAT_NOFILTER
-                    }
+                Some(wgpu::TextureSampleType::Float { .. }) => if
+                    texture_info::is_float_filterable(texture_format, device_features)
+                {
+                    SAMPLE_TYPE_FLOAT_FILTER
+                } else {
+                    SAMPLE_TYPE_FLOAT_NOFILTER
                 }
                 Some(wgpu::TextureSampleType::Sint) => SAMPLE_TYPE_SINT_NOFILTER,
-                Some(wgpu::TextureSampleType::Uint) => SAMPLE_TYPE_UINT_NOFILTER,
+                Some(wgpu::TextureSampleType::Uint) => {
+                    match encoding {
+                        Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12,
+                        _ => SAMPLE_TYPE_UINT_NOFILTER,
+                    }
+                }
                 _ => {
                     return Err(RectangleError::DepthTexturesNotSupported);
                 }
@@ -265,18 +314,22 @@ mod gpu_data {
             let color_mapper_int;
 
             match texture_info::num_texture_components(texture_format) {
-                1 => match color_mapper {
-                    Some(ColorMapper::Function(colormap)) => {
-                        color_mapper_int = COLOR_MAPPER_FUNCTION;
-                        colormap_function = *colormap as u32;
+                1 =>
+                    match color_mapper {
+                        Some(ColorMapper::Function(colormap)) => {
+                            color_mapper_int = COLOR_MAPPER_FUNCTION;
+                            colormap_function = *colormap as u32;
+                        }
+                        Some(ColorMapper::Texture(_)) => {
+                            color_mapper_int = COLOR_MAPPER_TEXTURE;
+                        }
+                        None => {
+                            if encoding != &Some(TextureEncoding::Nv12) {
+                                return Err(RectangleError::MissingColorMapper);
+                            }
+                            color_mapper_int = COLOR_MAPPER_OFF;
+                        }
                     }
-                    Some(ColorMapper::Texture(_)) => {
-                        color_mapper_int = COLOR_MAPPER_TEXTURE;
-                    }
-                    None => {
-                        return Err(RectangleError::MissingColorMapper);
-                    }
-                },
                 4 => {
                     if color_mapper.is_some() {
                         return Err(RectangleError::ColormappingRgbaTexture);
@@ -285,7 +338,7 @@ mod gpu_data {
                     }
                 }
                 num_components => {
-                    return Err(RectangleError::UnsupportedComponentCount(num_components))
+                    return Err(RectangleError::UnsupportedComponentCount(num_components));
                 }
             }
 
@@ -297,7 +350,6 @@ mod gpu_data {
                 super::TextureFilterMag::Linear => FILTER_BILINEAR,
                 super::TextureFilterMag::Nearest => FILTER_NEAREST,
             };
-
             Ok(Self {
                 top_left_corner_position: (*top_left_corner_position).into(),
                 colormap_function,
@@ -336,7 +388,7 @@ impl DrawData for RectangleDrawData {
 impl RectangleDrawData {
     pub fn new(
         ctx: &mut RenderContext,
-        rectangles: &[TexturedRect],
+        rectangles: &[TexturedRect]
     ) -> Result<Self, RectangleError> {
         crate::profile_function!();
 
@@ -345,7 +397,7 @@ impl RectangleDrawData {
             &ctx.shared_renderer_data,
             &mut ctx.gpu_resources,
             &ctx.device,
-            &mut ctx.resolver,
+            &mut ctx.resolver
         );
 
         if rectangles.is_empty() {
@@ -363,7 +415,7 @@ impl RectangleDrawData {
         let uniform_buffer_bindings = create_and_fill_uniform_buffer_batch(
             ctx,
             "rectangle uniform buffers".into(),
-            uniform_buffers.into_iter(),
+            uniform_buffers.into_iter()
         );
 
         let mut instances = Vec::with_capacity(rectangles.len());
@@ -371,12 +423,12 @@ impl RectangleDrawData {
             let options = &rectangle.options;
             let sampler = ctx.gpu_resources.samplers.get_or_create(
                 &ctx.device,
-                &SamplerDesc {
+                &(SamplerDesc {
                     label: format!(
                         "rectangle sampler mag {:?} min {:?}",
-                        options.texture_filter_magnification, options.texture_filter_minification
-                    )
-                    .into(),
+                        options.texture_filter_magnification,
+                        options.texture_filter_minification
+                    ).into(),
                     mag_filter: match options.texture_filter_magnification {
                         TextureFilterMag::Linear => wgpu::FilterMode::Linear,
                         TextureFilterMag::Nearest => wgpu::FilterMode::Nearest,
@@ -387,15 +439,13 @@ impl RectangleDrawData {
                     },
                     mipmap_filter: wgpu::FilterMode::Nearest,
                     ..Default::default()
-                },
+                })
             );
 
             let texture = &rectangle.colormapped_texture.texture;
             let texture_format = texture.creation_desc.format;
             if texture_format.required_features() != Default::default() {
-                return Err(RectangleError::SpecialFeatures(
-                    texture_format.required_features(),
-                ));
+                return Err(RectangleError::SpecialFeatures(texture_format.required_features()));
             }
 
             // We set up several texture sources, then instruct the shader to read from at most one of them.
@@ -424,8 +474,8 @@ impl RectangleDrawData {
             }
 
             // We also set up an optional colormap texture.
-            let colormap_texture = if let Some(ColorMapper::Texture(handle)) =
-                &rectangle.colormapped_texture.color_mapper
+            let colormap_texture = if
+                let Some(ColorMapper::Texture(handle)) = &rectangle.colormapped_texture.color_mapper
             {
                 let format = handle.format();
                 if format != wgpu::TextureFormat::Rgba8UnormSrgb {
@@ -440,7 +490,7 @@ impl RectangleDrawData {
                 bind_group: ctx.gpu_resources.bind_groups.alloc(
                     &ctx.device,
                     &ctx.gpu_resources,
-                    &BindGroupDesc {
+                    &(BindGroupDesc {
                         label: "RectangleInstance::bind_group".into(),
                         entries: smallvec![
                             uniform_buffer,
@@ -449,10 +499,10 @@ impl RectangleDrawData {
                             BindGroupEntry::DefaultTextureView(texture_sint),
                             BindGroupEntry::DefaultTextureView(texture_uint),
                             BindGroupEntry::DefaultTextureView(colormap_texture),
-                            BindGroupEntry::DefaultTextureView(texture_float_filterable),
+                            BindGroupEntry::DefaultTextureView(texture_float_filterable)
                         ],
                         layout: rectangle_renderer.bind_group_layout,
-                    },
+                    })
                 ),
                 draw_outline_mask: rectangle.options.outline_mask.is_some(),
             });
@@ -476,13 +526,13 @@ impl Renderer for RectangleRenderer {
         shared_data: &SharedRendererData,
         pools: &mut WgpuResourcePools,
         device: &wgpu::Device,
-        resolver: &mut FileResolver<Fs>,
+        resolver: &mut FileResolver<Fs>
     ) -> Self {
         crate::profile_function!();
 
         let bind_group_layout = pools.bind_group_layouts.get_or_create(
             device,
-            &BindGroupLayoutDesc {
+            &(BindGroupLayoutDesc {
                 label: "RectangleRenderer::bind_group_layout".into(),
                 entries: vec![
                     wgpu::BindGroupLayoutEntry {
@@ -493,8 +543,9 @@ impl Renderer for RectangleRenderer {
                             // We could use dynamic offset here into a single large buffer.
                             // But we have to set a new texture anyways and its doubtful that splitting the bind group is of any use.
                             has_dynamic_offset: false,
-                            min_binding_size: (std::mem::size_of::<gpu_data::UniformBuffer>()
-                                as u64)
+                            min_binding_size: (
+                                std::mem::size_of::<gpu_data::UniformBuffer>() as u64
+                            )
                                 .try_into()
                                 .ok(),
                         },
@@ -561,29 +612,29 @@ impl Renderer for RectangleRenderer {
                             multisampled: false,
                         },
                         count: None,
-                    },
+                    }
                 ],
-            },
+            })
         );
 
         let pipeline_layout = pools.pipeline_layouts.get_or_create(
             device,
-            &PipelineLayoutDesc {
+            &(PipelineLayoutDesc {
                 label: "RectangleRenderer::pipeline_layout".into(),
                 entries: vec![shared_data.global_bindings.layout, bind_group_layout],
-            },
-            &pools.bind_group_layouts,
+            }),
+            &pools.bind_group_layouts
         );
 
         let shader_module_vs = pools.shader_modules.get_or_create(
             device,
             resolver,
-            &include_shader_module!("../../shader/rectangle_vs.wgsl"),
+            &include_shader_module!("../../shader/rectangle_vs.wgsl")
         );
         let shader_module_fs = pools.shader_modules.get_or_create(
             device,
             resolver,
-            &include_shader_module!("../../shader/rectangle_fs.wgsl"),
+            &include_shader_module!("../../shader/rectangle_fs.wgsl")
         );
 
         let render_pipeline_desc_color = RenderPipelineDesc {
@@ -594,12 +645,14 @@ impl Renderer for RectangleRenderer {
             fragment_entrypoint: "fs_main".into(),
             fragment_handle: shader_module_fs,
             vertex_buffers: smallvec![],
-            render_targets: smallvec![Some(wgpu::ColorTargetState {
-                format: ViewBuilder::MAIN_TARGET_COLOR_FORMAT,
-                // TODO(andreas): have two render pipelines, an opaque one and a transparent one. Transparent shouldn't write depth!
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            render_targets: smallvec![
+                Some(wgpu::ColorTargetState {
+                    format: ViewBuilder::MAIN_TARGET_COLOR_FORMAT,
+                    // TODO(andreas): have two render pipelines, an opaque one and a transparent one. Transparent shouldn't write depth!
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })
+            ],
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 cull_mode: None,
@@ -612,35 +665,35 @@ impl Renderer for RectangleRenderer {
             device,
             &render_pipeline_desc_color,
             &pools.pipeline_layouts,
-            &pools.shader_modules,
+            &pools.shader_modules
         );
         let render_pipeline_picking_layer = pools.render_pipelines.get_or_create(
             device,
-            &RenderPipelineDesc {
+            &(RenderPipelineDesc {
                 label: "RectangleRenderer::render_pipeline_picking_layer".into(),
                 fragment_entrypoint: "fs_main_picking_layer".into(),
                 render_targets: smallvec![Some(PickingLayerProcessor::PICKING_LAYER_FORMAT.into())],
                 depth_stencil: PickingLayerProcessor::PICKING_LAYER_DEPTH_STATE,
                 multisample: PickingLayerProcessor::PICKING_LAYER_MSAA_STATE,
                 ..render_pipeline_desc_color.clone()
-            },
+            }),
             &pools.pipeline_layouts,
-            &pools.shader_modules,
+            &pools.shader_modules
         );
         let render_pipeline_outline_mask = pools.render_pipelines.get_or_create(
             device,
-            &RenderPipelineDesc {
+            &(RenderPipelineDesc {
                 label: "RectangleRenderer::render_pipeline_outline_mask".into(),
                 fragment_entrypoint: "fs_main_outline_mask".into(),
                 render_targets: smallvec![Some(OutlineMaskProcessor::MASK_FORMAT.into())],
                 depth_stencil: OutlineMaskProcessor::MASK_DEPTH_STATE,
                 multisample: OutlineMaskProcessor::mask_default_msaa_state(
-                    shared_data.config.hardware_tier,
+                    shared_data.config.hardware_tier
                 ),
                 ..render_pipeline_desc_color
-            },
+            }),
             &pools.pipeline_layouts,
-            &pools.shader_modules,
+            &pools.shader_modules
         );
 
         RectangleRenderer {
@@ -656,7 +709,7 @@ impl Renderer for RectangleRenderer {
         pools: &'a WgpuResourcePools,
         phase: DrawPhase,
         pass: &mut wgpu::RenderPass<'a>,
-        draw_data: &'a Self::RendererDrawData,
+        draw_data: &'a Self::RendererDrawData
     ) -> anyhow::Result<()> {
         crate::profile_function!();
         if draw_data.instances.is_empty() {
@@ -686,10 +739,6 @@ impl Renderer for RectangleRenderer {
 
     fn participated_phases() -> &'static [DrawPhase] {
         // TODO(andreas): This a hack. We have both opaque and transparent.
-        &[
-            DrawPhase::OutlineMask,
-            DrawPhase::Opaque,
-            DrawPhase::PickingLayer,
-        ]
+        &[DrawPhase::OutlineMask, DrawPhase::Opaque, DrawPhase::PickingLayer]
     }
 }

@@ -372,7 +372,7 @@ class DepthaiViewerBack:
     # Sdk callbacks for handling data from the device and sending it to the frontend
     sdk_callbacks: SdkCallbacks
 
-    def __init__(self, compression: bool = False) -> None:
+    def __init__(self) -> None:
         self.action_queue = Queue()
         self.result_queue = Queue()
         self.send_message_queue = Queue()
@@ -465,6 +465,7 @@ class DepthaiViewerBack:
                     self.send_message_queue.put(
                         json.dumps({"type": "Error", "data": {"action": "FullReset", "message": "Device disconnected"}})
                     )
+
 
 
 if __name__ == "__main__":

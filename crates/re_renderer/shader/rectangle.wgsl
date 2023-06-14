@@ -10,6 +10,11 @@ const SAMPLE_TYPE_FLOAT_FILTER   = 1u;
 const SAMPLE_TYPE_FLOAT_NOFILTER = 2u;
 const SAMPLE_TYPE_SINT_NOFILTER  = 3u;
 const SAMPLE_TYPE_UINT_NOFILTER  = 4u;
+// ------------------
+//  Encoded textures
+// ------------------
+const SAMPLE_TYPE_NV12  = 5u;
+
 
 // How do we do colormapping?
 const COLOR_MAPPER_OFF      = 1u;

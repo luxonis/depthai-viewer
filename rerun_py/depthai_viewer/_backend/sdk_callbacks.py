@@ -21,6 +21,7 @@ from depthai_viewer._backend.device_configuration import CameraConfiguration
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
+from depthai_viewer import bindings
 
 
 class EntityPath:
@@ -108,12 +109,15 @@ class SdkCallbacks:
             width=w,
             height=h,
         )
-        img_frame = (
-            packet.frame
-            if args.image_kind == dai.CameraSensorType.MONO
-            else cv2.cvtColor(packet.frame, cv2.COLOR_BGR2RGB)
+        img_frame = packet.frame if args.image_kind == dai.CameraSensorType.MONO else packet.msg.getData()
+        # else cv2.cvtColor(packet.frame, cv2.COLOR_BGR2RGBA)
+        viewer.log_encoded_image(
+            f"{args.board_socket.name}/transform/camera/Image",
+            img_frame,
+            width=w,
+            height=h,
+            encoding=None if args.image_kind == dai.CameraSensorType.MONO else viewer.ImageEncoding.NV12,
         )
-        viewer.log_image(f"{args.board_socket.name}/transform/camera/Image", img_frame)
 
     def on_imu(self, packet: IMUPacket) -> None:
         for data in packet.data:

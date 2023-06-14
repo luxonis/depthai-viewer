@@ -1266,6 +1266,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dcv-color-primitives"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6404eb429533f00a9430a015daca9235593068a1080860aa5cfbde6a8d9f7ca8"
+dependencies = [
+ "paste",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "depthai-viewer"
 version = "0.0.7"
 dependencies = [
@@ -4091,6 +4101,7 @@ dependencies = [
  "rand",
  "re_format",
  "re_log",
+ "re_renderer",
  "re_string_interner",
  "re_tuid",
  "rmp-serde",
@@ -4303,6 +4314,7 @@ dependencies = [
  "cocoa",
  "console_error_panic_hook",
  "crossbeam-channel",
+ "dcv-color-primitives",
  "eframe",
  "egui",
  "egui-wgpu",

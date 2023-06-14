@@ -174,8 +174,7 @@ impl DeviceSettingsPanel {
                     false,
                     |ui| {
                         for res in camera_features.resolutions.clone() {
-                            let disabled = res == depthai::CameraSensorResolution::THE_4_K
-                                || res == depthai::CameraSensorResolution::THE_12_MP;
+                            let disabled = false;
                             ui.add_enabled_ui(!disabled, |ui| {
                                 ui.selectable_value(
                                     &mut camera_config.resolution,
