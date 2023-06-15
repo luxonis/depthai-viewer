@@ -227,7 +227,7 @@ class SelectedDevice:
     def update_pipeline(self, config: PipelineConfiguration, runtime_only: bool, callbacks: "SdkCallbacks") -> Message:
         if self._oak_cam is None:
             return ErrorMessage("No device selected, can't update pipeline!")
-        if self._oak_cam.running():
+        if self._oak_cam.device.isPipelineRunning():
             if runtime_only:
                 if config.depth is not None:
                     self._stereo.control.send_controls(config.depth.to_runtime_controls())

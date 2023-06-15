@@ -26,7 +26,7 @@ impl Default for CameraConfig {
             resolution: CameraSensorResolution::THE_1080_P,
             kind: CameraSensorKind::COLOR,
             board_socket: CameraBoardSocket::CAM_A,
-            name: String::from("color"),
+            name: String::from("Color"),
             stream_enabled: true,
         }
     }
@@ -45,6 +45,10 @@ impl CameraConfig {
             board_socket: CameraBoardSocket::CAM_C,
             ..Default::default()
         }
+    }
+
+    pub fn is_color_camera(&self) -> bool {
+        self.name == "Color"
     }
 }
 
@@ -174,6 +178,12 @@ pub struct CameraFeatures {
     pub intrinsics: Option<[[f32; 3]; 3]>,
 }
 
+impl CameraFeatures {
+    pub fn is_color_camera(&self) -> bool {
+        self.name == "Color"
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug, Default)]
 pub struct DeviceProperties {
     pub id: String,
@@ -284,7 +294,7 @@ impl From<&DeviceProperties> for Option<DepthConfig> {
             config.stereo_pair = (cam_with_stereo_pair.board_socket, stereo_pair);
         }
         config.align = if
-            let Some(color_cam) = props.cameras.iter().find(|cam| cam.name == "Color")
+            let Some(color_cam) = props.cameras.iter().find(|cam| cam.is_color_camera())
         {
             color_cam.board_socket
         } else {
@@ -318,6 +328,8 @@ impl Default for DeviceConfig {
 impl From<&DeviceProperties> for DeviceConfig {
     fn from(props: &DeviceProperties) -> Self {
         let mut config = Self::default();
+
+        let has_color_cam = props.cameras.iter().any(|cam| cam.is_color_camera());
         config.cameras = props.cameras
             .iter()
             .map(|cam| CameraConfig {
@@ -332,7 +344,11 @@ impl From<&DeviceProperties> for DeviceConfig {
                     .last()
                     .unwrap_or(&CameraSensorResolution::THE_800_P),
                 board_socket: cam.board_socket,
-                stream_enabled: true,
+                stream_enabled: if has_color_cam {
+                    cam.is_color_camera()
+                } else {
+                    true
+                },
                 kind: *cam.supported_types.first().unwrap(),
             })
             .collect();
@@ -478,7 +494,7 @@ impl AiModel {
 impl From<&DeviceProperties> for AiModel {
     fn from(props: &DeviceProperties) -> Self {
         let mut model = Self::default();
-        if let Some(cam) = props.cameras.iter().find(|cam| cam.name == "Color") {
+        if let Some(cam) = props.cameras.iter().find(|cam| cam.is_color_camera()) {
             model.camera = cam.board_socket;
         } else if let Some(cam) = props.cameras.first() {
             model.camera = cam.board_socket;
@@ -665,7 +681,7 @@ impl State {
                     if
                         let Some(color_camera) = &config.cameras
                             .iter()
-                            .find(|cam| cam.name == "color")
+                            .find(|cam| cam.is_color_camera())
                     {
                         if color_camera.stream_enabled {
                             subs.push(ChannelId::ColorImage);
@@ -698,6 +714,10 @@ impl State {
                 WsMessageData::DeviceProperties(device) => {
                     re_log::debug!("Setting device: {device:?}");
                     self.set_device(device);
+                    if !self.selected_device.id.is_empty() {
+                        // Apply default pipeline
+                        self.set_pipeline(&mut self.modified_device_config.clone(), false);
+                    }
                 }
                 WsMessageData::Error(error) => {
                     re_log::error!("Error: {:}", error.message);
@@ -745,8 +765,7 @@ impl State {
         self.set_update_in_progress(true);
     }
 
-
-    pub fn set_device_config(&mut self, config: &mut DeviceConfig, runtime_only: bool) {
+    pub fn set_pipeline(&mut self, config: &mut DeviceConfig, runtime_only: bool) {
         // Don't try to set pipeline if ws isn't connected
         if !self.backend_comms.ws.is_connected() {
             return;

@@ -397,7 +397,7 @@ impl DeviceSettingsPanel {
                                             !ctx.depthai_state.is_update_in_progress();
 
                                         if !apply_enabled && only_runtime_configs_changed {
-                                            ctx.depthai_state.set_device_config(
+                                            ctx.depthai_state.set_pipeline(
                                                 &mut device_config,
                                                 true
                                             );
@@ -435,7 +435,7 @@ impl DeviceSettingsPanel {
                                                 )
                                                 .clicked()
                                         {
-                                            ctx.depthai_state.set_device_config(
+                                            ctx.depthai_state.set_pipeline(
                                                 &mut device_config,
                                                 false
                                             );
