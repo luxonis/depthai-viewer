@@ -697,12 +697,7 @@ impl State {
                 }
                 WsMessageData::DeviceProperties(device) => {
                     re_log::debug!("Setting device: {device:?}");
-                    self.selected_device = device;
-                    self.backend_comms.set_subscriptions(&self.subscriptions);
-                    self.modified_device_config = DeviceConfig::from(&self.selected_device);
-                    // self.backend_comms
-                    //     .set_pipeline(&self.applied_device_config.config, false);
-                    self.set_update_in_progress(false);
+                    self.set_device(device);
                 }
                 WsMessageData::Error(error) => {
                     re_log::error!("Error: {:}", error.message);
@@ -710,7 +705,7 @@ impl State {
                     match error.action {
                         ErrorAction::None => (),
                         ErrorAction::FullReset => {
-                            self.set_device(String::new());
+                            self.select_device(String::new());
                         }
                     }
                 }
@@ -736,15 +731,23 @@ impl State {
         }
     }
 
-    pub fn set_device(&mut self, device_id: DeviceId) {
+    fn set_device(&mut self, device_properties: DeviceProperties) {
+        self.selected_device = device_properties;
+        self.backend_comms.set_subscriptions(&self.subscriptions);
+        self.modified_device_config = DeviceConfig::from(&self.selected_device);
+        self.set_update_in_progress(false);
+    }
+
+    pub fn select_device(&mut self, device_id: DeviceId) {
         re_log::debug!("Setting device: {:?}", device_id);
         self.applied_device_config.config = None;
-        self.backend_comms.set_device(device_id);
+        self.backend_comms.select_device(device_id);
         self.set_update_in_progress(true);
     }
 
+
     pub fn set_device_config(&mut self, config: &mut DeviceConfig, runtime_only: bool) {
-        // Don't try to set pipeline in ws not connected
+        // Don't try to set pipeline if ws isn't connected
         if !self.backend_comms.ws.is_connected() {
             return;
         }

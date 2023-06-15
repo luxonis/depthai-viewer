@@ -31,11 +31,11 @@ pub mod view_spatial;
 use self::scene::SceneQuery;
 
 pub(crate) use self::blueprint::Blueprint;
-pub(crate) use self::space_view::{SpaceView, SpaceViewId, SpaceViewKind};
+pub(crate) use self::space_view::{ SpaceView, SpaceViewId, SpaceViewKind };
 
-pub use self::annotations::{Annotations, DefaultColor, MISSING_ANNOTATIONS};
+pub use self::annotations::{ Annotations, DefaultColor, MISSING_ANNOTATIONS };
 pub use self::data_blueprint::DataBlueprintGroupHandle;
-pub use self::selection_history::{HistoricalSelection, SelectionHistory};
+pub use self::selection_history::{ HistoricalSelection, SelectionHistory };
 pub use self::view_category::ViewCategory;
 pub use self::viewport::Viewport;
 

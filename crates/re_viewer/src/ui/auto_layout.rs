@@ -10,7 +10,7 @@
 // TODO(emilk): fix O(N^2) execution time (where N = number of spaces)
 
 use core::panic;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{ BTreeMap, BTreeSet, VecDeque };
 
 use ahash::HashMap;
 use egui::Vec2;
@@ -18,12 +18,12 @@ use egui_dock::NodeIndex;
 use itertools::Itertools as _;
 
 use lazy_static::lazy_static;
-use re_data_store::{EntityPath, EntityPathPart};
+use re_data_store::{ EntityPath, EntityPathPart };
 
 use crate::depthai::depthai;
 
 use super::{
-    space_view::{SpaceView, SpaceViewKind},
+    space_view::{ SpaceView, SpaceViewKind },
     view_category::ViewCategory,
     viewport::Tab,
     SpaceViewId,
@@ -44,10 +44,20 @@ pub struct SpaceMakeInfo {
     pub kind: SpaceViewKind,
 }
 
-enum LayoutSplit {
+pub(crate) enum LayoutSplit {
     LeftRight(Box<LayoutSplit>, f32, Box<LayoutSplit>),
     TopBottom(Box<LayoutSplit>, f32, Box<LayoutSplit>),
     Leaf(Vec<SpaceMakeInfo>),
+}
+
+impl LayoutSplit {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            LayoutSplit::Leaf(spaces) => spaces.is_empty(),
+            LayoutSplit::LeftRight(left, _, right) => left.is_empty() && right.is_empty(),
+            LayoutSplit::TopBottom(top, _, bottom) => top.is_empty() && bottom.is_empty(),
+        }
+    }
 }
 
 impl std::fmt::Debug for LayoutSplit {
@@ -63,7 +73,10 @@ impl std::fmt::Debug for LayoutSplit {
                 write!(
                     f,
                     "Leaf({:?})",
-                    spaces.iter().map(|s| s.path.clone()).collect_vec()
+                    spaces
+                        .iter()
+                        .map(|s| s.path.clone())
+                        .collect_vec()
                 )
             }
         }
@@ -71,15 +84,23 @@ impl std::fmt::Debug for LayoutSplit {
 }
 
 enum SplitDirection {
-    LeftRight { left: Vec2, t: f32, right: Vec2 },
-    TopBottom { top: Vec2, t: f32, bottom: Vec2 },
+    LeftRight {
+        left: Vec2,
+        t: f32,
+        right: Vec2,
+    },
+    TopBottom {
+        top: Vec2,
+        t: f32,
+        bottom: Vec2,
+    },
 }
 
 fn right_panel_split() -> LayoutSplit {
     LayoutSplit::TopBottom(
         LayoutSplit::Leaf(vec![CONFIG_SPACE_VIEW.clone(), STATS_SPACE_VIEW.clone()]).into(),
         0.7,
-        LayoutSplit::Leaf(vec![SELECTION_SPACE_VIEW.clone()]).into(),
+        LayoutSplit::Leaf(vec![SELECTION_SPACE_VIEW.clone()]).into()
     )
 }
 
@@ -110,14 +131,14 @@ lazy_static! {
     static ref CONSTANT_SPACE_VIEWS: Vec<SpaceViewId> = vec![
         CONFIG_SPACE_VIEW.id,
         STATS_SPACE_VIEW.id,
-        SELECTION_SPACE_VIEW.id,
+        SELECTION_SPACE_VIEW.id
     ];
 }
 
 fn push_space_view_to_leaf(
     tree: &mut egui_dock::Tree<Tab>,
     leaf: NodeIndex,
-    space_view: &SpaceView,
+    space_view: &SpaceView
 ) {
     tree.set_focused_node(leaf);
     tree.push_to_focused_leaf(space_view.into());
@@ -125,13 +146,13 @@ fn push_space_view_to_leaf(
 
 fn find_space_path_in_tree(
     tree: &egui_dock::Tree<Tab>,
-    space_view_path: &EntityPath,
+    space_view_path: &EntityPath
 ) -> Option<Tab> {
     tree.tabs()
         .find(|tab| {
             let Some(path) = &tab.space_path else {
-            return false;
-        };
+                return false;
+            };
             path == space_view_path
         })
         .cloned()
@@ -141,7 +162,6 @@ fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
     let mut node = NodeIndex::root();
     loop {
         if tree[node].is_leaf() {
-            println!("Node: {node:?}");
             return node;
         }
         node = node.right();
@@ -207,15 +227,22 @@ fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
 // }
 
 /// Layout `CAM_A` `CAM_B` | `CAM_C` with 3d views on top and 2d views on the bottom in the same group. (only one 2d and one 3d view visible from the start)
-fn create_inner_viewport_layout(spaces: &Vec<SpaceMakeInfo>) -> LayoutSplit {
-    let mut groups: HashMap<EntityPathPart, (Vec<SpaceMakeInfo>, Vec<SpaceMakeInfo>)> =
-        HashMap::default();
+fn create_inner_viewport_layout(
+    viewport_size: egui::Vec2,
+    spaces: &Vec<SpaceMakeInfo>
+) -> LayoutSplit {
+    let mut groups: HashMap<
+        EntityPathPart,
+        (Vec<SpaceMakeInfo>, Vec<SpaceMakeInfo>)
+    > = HashMap::default();
 
     for space in spaces {
         if let Some(path) = &space.path {
             let base_path = match path.as_slice().first() {
                 Some(part) => part.clone(),
-                None => continue,
+                None => {
+                    continue;
+                }
             };
 
             let (views_2d, views_3d) = groups.entry(base_path).or_default();
@@ -228,8 +255,10 @@ fn create_inner_viewport_layout(spaces: &Vec<SpaceMakeInfo>) -> LayoutSplit {
         }
     }
 
-    let mut sorted_groups: BTreeMap<EntityPathPart, (Vec<SpaceMakeInfo>, Vec<SpaceMakeInfo>)> =
-        BTreeMap::new();
+    let mut sorted_groups: BTreeMap<
+        EntityPathPart,
+        (Vec<SpaceMakeInfo>, Vec<SpaceMakeInfo>)
+    > = BTreeMap::new();
     for (key, value) in groups {
         sorted_groups.insert(key, value);
     }
@@ -239,11 +268,126 @@ fn create_inner_viewport_layout(spaces: &Vec<SpaceMakeInfo>) -> LayoutSplit {
         all_2d.extend(views_2d);
         all_3d.extend(views_3d);
     }
-    LayoutSplit::TopBottom(
-        LayoutSplit::Leaf(all_3d).into(),
-        0.5,
-        LayoutSplit::Leaf(all_2d).into(),
-    )
+
+    let monos_2d = all_2d
+        .iter()
+        .filter(|space| {
+            if let Some(last) = space.path.as_ref().and_then(|path| path.as_slice().last()) {
+                last == &EntityPathPart::from("mono_cam")
+            } else {
+                false
+            }
+        })
+        .cloned()
+        .collect_vec();
+
+    let colors_2d = all_2d
+        .iter()
+        .filter(|space| {
+            if let Some(last) = space.path.as_ref().and_then(|path| path.as_slice().last()) {
+                last == &EntityPathPart::from("color_cam")
+            } else {
+                false
+            }
+        })
+        .cloned()
+        .collect_vec();
+
+    let monos_3d = all_3d
+        .iter()
+        .filter(|space_3d| {
+            if
+                let Some(socket_3d) = space_3d.path
+                    .as_ref()
+                    .and_then(|path| path.as_slice().first())
+            {
+                monos_2d.iter().any(|space_2d| {
+                    if
+                        let Some(socket_2d) = space_2d.path
+                            .as_ref()
+                            .and_then(|path| path.as_slice().first())
+                    {
+                        socket_2d == socket_3d
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        })
+        .cloned()
+        .collect_vec();
+
+    let colors_3d = all_3d
+        .iter()
+        .filter(|space_3d| {
+            if
+                let Some(socket_3d) = space_3d.path
+                    .as_ref()
+                    .and_then(|path| path.as_slice().first())
+            {
+                colors_2d.iter().any(|space_2d| {
+                    if
+                        let Some(socket_2d) = space_2d.path
+                            .as_ref()
+                            .and_then(|path| path.as_slice().first())
+                    {
+                        socket_2d == socket_3d
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        })
+        .cloned()
+        .collect_vec();
+
+    let color_split_2d = LayoutSplit::Leaf(colors_2d.clone().into());
+    let color_split_3d = LayoutSplit::Leaf(colors_3d.clone().into());
+    let mono_split_2d = LayoutSplit::Leaf(monos_2d.clone().into());
+    let mono_split_3d = LayoutSplit::Leaf(monos_3d.clone().into());
+
+    let mono_split = if monos_2d.is_empty() && monos_3d.is_empty() {
+        LayoutSplit::Leaf(vec![])
+    } else if monos_2d.is_empty() && !monos_3d.is_empty() {
+        mono_split_3d
+    } else if !monos_2d.is_empty() && monos_3d.is_empty() {
+        mono_split_2d
+    } else {
+        LayoutSplit::TopBottom(mono_split_3d.into(), 0.5, mono_split_2d.into())
+    };
+
+    let color_split = if colors_2d.is_empty() && colors_3d.is_empty() {
+        LayoutSplit::Leaf(vec![])
+    } else if colors_2d.is_empty() && !colors_3d.is_empty() {
+        color_split_3d
+    } else if !colors_2d.is_empty() && colors_3d.is_empty() {
+        color_split_2d
+    } else {
+        LayoutSplit::TopBottom(color_split_3d.into(), 0.5, color_split_2d.into())
+    };
+
+    if color_split.is_empty() && mono_split.is_empty() {
+        stock_rerun_split(viewport_size, spaces)
+    } else if color_split.is_empty() && !mono_split.is_empty() {
+        mono_split
+    } else if !color_split.is_empty() && mono_split.is_empty() {
+        color_split
+    } else {
+        LayoutSplit::LeftRight(color_split.into(), 0.5, mono_split.into())
+    }
+}
+
+fn stock_rerun_split(viewport_size: egui::Vec2, spaces: &Vec<SpaceMakeInfo>) -> LayoutSplit {
+    if !spaces.is_empty() {
+        // Users often organize by path prefix, so we start by splitting along that
+        layout_by_path_prefix(viewport_size, &mut spaces.to_owned())
+    } else {
+        LayoutSplit::Leaf(vec![])
+    }
 }
 
 /// Default layout of space views tuned for depthai-viewer
@@ -251,7 +395,7 @@ pub(crate) fn default_tree_from_space_views(
     viewport_size: egui::Vec2,
     visible: &std::collections::BTreeSet<SpaceViewId>,
     space_views: &HashMap<SpaceViewId, SpaceView>,
-    is_maximized: bool,
+    is_maximized: bool
 ) -> egui_dock::Tree<Tab> {
     // TODO(filip): Implement sensible auto layout when space views changes.
     // Something like:
@@ -265,11 +409,7 @@ pub(crate) fn default_tree_from_space_views(
         .filter(|(space_view_id, _space_view)| visible.contains(space_view_id))
         // Sort for determinism:
         .sorted_by_key(|(space_view_id, space_view)| {
-            (
-                &space_view.space_path,
-                &space_view.display_name,
-                *space_view_id,
-            )
+            (&space_view.space_path, &space_view.display_name, *space_view_id)
         })
         .map(|(space_view_id, space_view)| {
             let aspect_ratio = match space_view.category {
@@ -286,7 +426,7 @@ pub(crate) fn default_tree_from_space_views(
                     }
                 }
                 ViewCategory::Tensor | ViewCategory::TimeSeries => Some(1.0), // Not sure if we should do `None` here.
-                ViewCategory::Text | ViewCategory::NodeGraph => Some(2.0),    // Make text logs wide
+                ViewCategory::Text | ViewCategory::NodeGraph => Some(2.0), // Make text logs wide
                 ViewCategory::BarChart => None,
             };
 
@@ -306,14 +446,15 @@ pub(crate) fn default_tree_from_space_views(
                 let space_view_id = visible.first().unwrap();
                 if space_views.get(space_view_id).is_none() {
                     if space_view_id == &STATS_SPACE_VIEW.id {
-                        println!("Space view is stats space view!");
-                        LayoutSplit::Leaf(vec![SpaceMakeInfo {
-                            id: *space_view_id,
-                            path: None,
-                            category: None,
-                            aspect_ratio: None,
-                            kind: SpaceViewKind::Stats,
-                        }])
+                        LayoutSplit::Leaf(
+                            vec![SpaceMakeInfo {
+                                id: *space_view_id,
+                                path: None,
+                                category: None,
+                                aspect_ratio: None,
+                                kind: SpaceViewKind::Stats,
+                            }]
+                        )
                     } else {
                         panic!("Can't maximize this space view");
                     }
@@ -322,9 +463,9 @@ pub(crate) fn default_tree_from_space_views(
                 }
             } else {
                 LayoutSplit::LeftRight(
-                    create_inner_viewport_layout(&spaces).into(),
+                    create_inner_viewport_layout(viewport_size, &spaces).into(),
                     0.7,
-                    right_panel_split().into(),
+                    right_panel_split().into()
                 )
             }
         };
@@ -336,8 +477,8 @@ pub(crate) fn default_tree_from_space_views(
             &LayoutSplit::LeftRight(
                 LayoutSplit::Leaf(vec![]).into(),
                 0.7,
-                right_panel_split().into(),
-            ),
+                right_panel_split().into()
+            )
         );
     }
     if !is_maximized {
@@ -361,9 +502,10 @@ pub(crate) fn default_tree_from_space_views(
         }
         let (config_node, config_tab) = tree
             .find_tab(
-                tree.tabs()
+                tree
+                    .tabs()
                     .find(|tab| tab.space_view_id == CONFIG_SPACE_VIEW.id)
-                    .unwrap(), // CONFIG_SPACE_VIEW is always present
+                    .unwrap() // CONFIG_SPACE_VIEW is always present
             )
             .unwrap();
         tree.set_active_tab(config_node, config_tab);
@@ -374,7 +516,7 @@ pub(crate) fn default_tree_from_space_views(
 fn tree_from_split(
     tree: &mut egui_dock::Tree<Tab>,
     parent: egui_dock::NodeIndex,
-    split: &LayoutSplit,
+    split: &LayoutSplit
 ) {
     match split {
         LayoutSplit::LeftRight(left, fraction, right) => {
@@ -445,7 +587,10 @@ fn split_groups(viewport_size: egui::Vec2, groups: Vec<Vec<SpaceMakeInfo>>) -> L
 fn find_group_split_point(groups: Vec<Vec<SpaceMakeInfo>>) -> (Vec<SpaceMakeInfo>, usize) {
     assert!(groups.len() > 1);
 
-    let num_spaces: usize = groups.iter().map(|g| g.len()).sum();
+    let num_spaces: usize = groups
+        .iter()
+        .map(|g| g.len())
+        .sum();
 
     let mut best_split = 0;
     let mut rearranged_spaces = vec![];
@@ -455,14 +600,15 @@ fn find_group_split_point(groups: Vec<Vec<SpaceMakeInfo>>) -> (Vec<SpaceMakeInfo
         let split_candidate = rearranged_spaces.len();
 
         // Prefer the split that is closest to the middle:
-        if (split_candidate as f32 / num_spaces as f32 - 0.5).abs()
-            < (best_split as f32 / num_spaces as f32 - 0.5).abs()
+        if
+            ((split_candidate as f32) / (num_spaces as f32) - 0.5).abs() <
+            ((best_split as f32) / (num_spaces as f32) - 0.5).abs()
         {
             best_split = split_candidate;
         }
     }
     assert_eq!(rearranged_spaces.len(), num_spaces);
-    assert!(0 < best_split && best_split < num_spaces,);
+    assert!(0 < best_split && best_split < num_spaces);
 
     (rearranged_spaces, best_split)
 }
@@ -470,13 +616,13 @@ fn find_group_split_point(groups: Vec<Vec<SpaceMakeInfo>>) -> (Vec<SpaceMakeInfo
 fn suggest_split_direction(
     viewport_size: egui::Vec2,
     spaces: &[SpaceMakeInfo],
-    split_index: usize,
+    split_index: usize
 ) -> SplitDirection {
     use egui::vec2;
 
     assert!(0 < split_index && split_index < spaces.len());
 
-    let t = split_index as f32 / spaces.len() as f32;
+    let t = (split_index as f32) / (spaces.len() as f32);
 
     let desired_aspect_ratio = desired_aspect_ratio(spaces).unwrap_or(16.0 / 9.0);
 
@@ -494,7 +640,7 @@ fn suggest_split_direction(
 fn split_spaces_at(
     viewport_size: egui::Vec2,
     spaces: &mut [SpaceMakeInfo],
-    split_index: usize,
+    split_index: usize
 ) -> LayoutSplit {
     assert!(0 < split_index && split_index < spaces.len());
 

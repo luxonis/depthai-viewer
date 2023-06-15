@@ -70,7 +70,7 @@ impl BackendCommChannel {
         );
     }
 
-    pub fn set_device(&mut self, device_id: depthai::DeviceId) {
+    pub fn select_device(&mut self, device_id: depthai::DeviceId) {
         self.ws.send(
             serde_json
                 ::to_string(

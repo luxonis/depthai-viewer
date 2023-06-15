@@ -254,7 +254,9 @@ class SelectedDevice:
                 encode=self.use_encoding,
             )
             if cam.stream_enabled:
-                callback_args = CameraCallbackArgs(board_socket=cam.board_socket, image_kind=cam.kind)
+                callback_args = CameraCallbackArgs(
+                    board_socket=cam.board_socket, image_kind=cam.kind, encoded=self.use_encoding
+                )
                 self._oak_cam.callback(
                     sdk_cam, callbacks.build_callback(callback_args), enable_visualizer=self.use_encoding
                 )

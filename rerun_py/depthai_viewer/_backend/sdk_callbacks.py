@@ -24,24 +24,11 @@ from depthai_viewer.components.rect2d import RectFormat
 from depthai_viewer import bindings
 
 
-class EntityPath:
-    LEFT_PINHOLE_CAMERA = "mono/camera/left_mono"
-    LEFT_CAMERA_IMAGE = "mono/camera/left_mono/Left mono"
-    RIGHT_PINHOLE_CAMERA = "mono/camera/right_mono"
-    RIGHT_CAMERA_IMAGE = "mono/camera/right_mono/Right mono"
-    RGB_PINHOLE_CAMERA = "color/camera/rgb"
-    RGB_CAMERA_IMAGE = "color/camera/rgb/Color camera"
-
-    DETECTIONS = "color/camera/rgb/Detections"
-    DETECTION = "color/camera/rgb/Detection"
-
-    RGB_CAMERA_TRANSFORM = "color/camera"
-    MONO_CAMERA_TRANSFORM = "mono/camera"
-
-
 class CameraCallbackArgs(BaseModel):  # type: ignore[misc]
     board_socket: dai.CameraBoardSocket
     image_kind: dai.CameraSensorType
+    encoded: bool
+    """Are the frames MJPEG encoded?"""
 
     class Config:
         arbitrary_types_allowed = True
@@ -103,21 +90,27 @@ class SdkCallbacks:
         except Exception:
             f_len = (w * h) ** 0.5
             child_from_parent = np.array([[f_len, 0, w / 2], [0, f_len, h / 2], [0, 0, 1]])
+        cam = cam_kind(args.image_kind)
         viewer.log_pinhole(
-            f"{args.board_socket.name}/transform/camera/",
+            f"{args.board_socket.name}/transform/{cam}/",
             child_from_parent=child_from_parent,
             width=w,
             height=h,
         )
         img_frame = packet.frame if args.image_kind == dai.CameraSensorType.MONO else packet.msg.getData()
-        # else cv2.cvtColor(packet.frame, cv2.COLOR_BGR2RGBA)
-        viewer.log_encoded_image(
-            f"{args.board_socket.name}/transform/camera/Image",
-            img_frame,
-            width=w,
-            height=h,
-            encoding=None if args.image_kind == dai.CameraSensorType.MONO else viewer.ImageEncoding.NV12,
-        )
+        entity_path = f"{args.board_socket.name}/transform/{cam}/Image"
+        if args.encoded:
+            viewer.log_image_file(entity_path, img_bytes=img_frame, img_format=viewer.ImageFormat.JPEG)
+        elif packet.msg.getType() == dai.RawImgFrame.Type.NV12:
+            viewer.log_encoded_image(
+                entity_path,
+                img_frame,
+                width=w,
+                height=h,
+                encoding=None if args.image_kind == dai.CameraSensorType.MONO else viewer.ImageEncoding.NV12,
+            )
+        else:
+            viewer.log_image(entity_path, img_frame)
 
     def on_imu(self, packet: IMUPacket) -> None:
         for data in packet.data:
@@ -136,7 +129,8 @@ class SdkCallbacks:
         if Topic.DepthImage not in self.store.subscriptions:
             return
         depth_frame = frame.frame
-        path = f"{args.alignment_camera.board_socket.name}/transform/camera" + "/Depth"
+        cam = cam_kind(args.alignment_camera.kind)
+        path = f"{args.alignment_camera.board_socket.name}/transform/{cam}" + "/Depth"
         if not self.store.pipeline_config or not self.store.pipeline_config.depth:
             # Essentially impossible to get here
             return
@@ -144,8 +138,9 @@ class SdkCallbacks:
 
     def _on_detections(self, packet: DetectionPacket, args: AiModelCallbackArgs) -> None:
         rects, colors, labels = self._detections_to_rects_colors_labels(packet, args.labels)
+        cam = cam_kind(args.camera.kind)
         viewer.log_rects(
-            f"{args.camera.board_socket.name}/transform/camera/Detections",
+            f"{args.camera.board_socket.name}/transform/{cam}/Detections",
             rects,
             rect_format=RectFormat.XYXY,
             colors=colors,
@@ -177,8 +172,10 @@ class SdkCallbacks:
             label = f"{gender_str}, {age}"
             color = [255, 0, 0] if gender[0] > gender[1] else [0, 0, 255]
             # TODO(filip): maybe use viewer.log_annotation_context to log class colors for detections
+
+            cam = cam_kind(args.camera.kind)
             viewer.log_rect(
-                f"{args.camera.board_socket.name}/transform/camera/Detection",
+                f"{args.camera.board_socket.name}/transform/{cam}/Detection",
                 self._rect_from_detection(det),
                 rect_format=RectFormat.XYXY,
                 color=color,
@@ -190,3 +187,8 @@ class SdkCallbacks:
             *detection.bottom_right,
             *detection.top_left,
         ]
+
+
+def cam_kind(sensor: dai.CameraSensorType) -> str:
+    """Returns camera kind string for given sensor type."""
+    return "mono_cam" if sensor == dai.CameraSensorType.MONO else "color_cam"
