@@ -119,7 +119,7 @@ impl App {
     #[cfg(not(target_arch = "wasm32"))]
     fn spawn_backend(environment: &Option<BackendEnvironment>) -> Option<std::process::Child> {
         let Some(environment) = environment else {
-            panic!("Backend environemnt is missing, exiting...");
+            panic!("Backend environment is missing, exiting...");
         };
         let backend_handle = match std::process::Command::new(environment.python_path.clone())
             .args(["-m", "depthai_viewer._backend.main"])
@@ -313,7 +313,7 @@ impl App {
             Command::Quit => {
                 self.state.depthai_state.shutdown();
                 if let Some(backend_handle) = &mut self.backend_handle {
-                    backend_handle.kill();
+                    backend_handle.kill().expect("Failed to kill backend");
                 }
                 _frame.close();
             }

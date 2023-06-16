@@ -71,9 +71,8 @@ impl Viewport {
 
         let mut blueprint = Self::default();
         for space_view in all_possible_space_views(ctx, spaces_info)
-            .into_iter()
-            .filter(|sv| sv.is_depthai_spaceview)
         {
+            println!("All possible: {:?}", space_view.space_path);
             blueprint.add_space_view(space_view);
         }
         blueprint

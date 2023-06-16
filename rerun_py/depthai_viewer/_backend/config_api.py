@@ -14,11 +14,12 @@ from depthai_viewer._backend.device_configuration import (
     DeviceProperties,
     PipelineConfiguration,
 )
-from depthai_viewer._backend.store import Action
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer._backend.messages import *
+import atexit
 
 
+atexit.register(lambda: print("Exiting..."))
 signal(SIGINT, lambda *args, **kwargs: exit(0))
 
 # Definitions for linting
@@ -32,9 +33,19 @@ result_queue: Queue  # type: ignore[type-arg]
 send_message_queue: Queue  # type: ignore[type-arg]
 
 
+class Action(Enum):
+    UPDATE_PIPELINE = 0
+    SELECT_DEVICE = 1
+    GET_SUBSCRIPTIONS = 2
+    SET_SUBSCRIPTIONS = 3
+    GET_PIPELINE = 4
+    RESET = 5  # When anything bad happens, a reset occurs (like closing ws connection)
+    GET_AVAILABLE_DEVICES = 6
+
+
 def dispatch_action(action: Action, **kwargs) -> Message:  # type: ignore[no-untyped-def]
     """
-    Dispatches an action that will be executed by store.py.
+    Dispatches an action that will be executed by main.py.
 
     Returns: Message that will be sent to the frontend
     """

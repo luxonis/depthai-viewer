@@ -92,7 +92,6 @@ impl SpaceView {
         // Spaces are now always named after the final element of the space-path (or the root), independent of the
         // query entities.
         let mut is_depthai_spaceview = false;
-
         let display_name = if let Some(board_socket_part) = space_path.as_slice().first() {
             let is_3d = space_path.len() == 1;
             let mut is_2d = false;
