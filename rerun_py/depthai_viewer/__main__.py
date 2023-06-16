@@ -52,7 +52,9 @@ def create_venv_and_install_dependencies() -> str:
                     "-m",
                     "pip",
                     "install",
-                    "depthai_sdk==1.11.0",
+                    "depthai_sdk==1.11.0.dev0+45792c8625da84d88e0c79f6f49ba5a6b89e2ccf",
+                    "--extra-index-url",
+                    "https://artifacts.luxonis.com/artifactory/luxonis-python-snapshot-local/"
                 ],
                 check=True,
             )
