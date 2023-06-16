@@ -1,40 +1,25 @@
 use re_arrow_store::Timeline;
-use re_data_store::{ EntityPath, EntityPropertyMap, EntityTree, InstancePath, TimeInt };
+use re_data_store::{EntityPath, EntityPropertyMap, EntityTree, InstancePath, TimeInt};
 use re_log_types::EntityPathPart;
-use re_renderer::{ GpuReadbackIdentifier, ScreenshotProcessor };
+use re_renderer::{GpuReadbackIdentifier, ScreenshotProcessor};
 
 use crate::{
     depthai::depthai,
-    misc::{ space_info::SpaceInfoCollection, SpaceViewHighlights, TransformCache, ViewerContext },
+    misc::{space_info::SpaceInfoCollection, SpaceViewHighlights, TransformCache, ViewerContext},
     ui::view_category::categorize_entity_path,
 };
 
 use super::{
-    data_blueprint::DataBlueprintTree,
-    space_view_heuristics::default_queried_entities,
-    view_bar_chart,
-    view_category::ViewCategory,
-    view_node_graph,
-    view_spatial,
-    view_tensor,
-    view_text,
-    view_time_series,
+    data_blueprint::DataBlueprintTree, space_view_heuristics::default_queried_entities,
+    view_bar_chart, view_category::ViewCategory, view_node_graph, view_spatial, view_tensor,
+    view_text, view_time_series,
 };
 
 // ----------------------------------------------------------------------------
 
 /// A unique id for each space view.
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    serde::Deserialize,
-    serde::Serialize
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Deserialize, serde::Serialize,
 )]
 pub struct SpaceViewId(uuid::Uuid);
 
@@ -100,7 +85,7 @@ impl SpaceView {
         ctx: &ViewerContext<'_>,
         category: ViewCategory,
         space_path: &EntityPath,
-        queries_entities: &[EntityPath]
+        queries_entities: &[EntityPath],
     ) -> Self {
         // We previously named the [`SpaceView`] after the [`EntityPath`] if there was only a single entity. However,
         // this led to somewhat confusing and inconsistent behavior. See https://github.com/rerun-io/rerun/issues/1220
@@ -113,20 +98,17 @@ impl SpaceView {
             let mut is_2d = false;
             if !is_3d {
                 let last_part = space_path.iter().last().unwrap();
-                is_2d =
-                    last_part == &EntityPathPart::from("mono_cam") ||
-                    last_part == &EntityPathPart::from("color_cam");
+                is_2d = (last_part == &EntityPathPart::from("mono_cam")
+                    || last_part == &EntityPathPart::from("color_cam"))
+                    && last_part != &EntityPathPart::from("transform");
             }
-            if
-                let Some(board_socket) = depthai::create_camera_board_socket(
-                    board_socket_part.to_string().as_str()
-                )
+            if let Some(board_socket) =
+                depthai::CameraBoardSocket::from(board_socket_part.to_string())
             {
                 let camera_features = ctx.depthai_state.get_connected_cameras();
-                if
-                    let Some(camera) = camera_features
-                        .iter()
-                        .find(|camera| camera.board_socket == board_socket)
+                if let Some(camera) = camera_features
+                    .iter()
+                    .find(|camera| camera.board_socket == board_socket)
                 {
                     if is_3d {
                         is_depthai_spaceview = true;
@@ -148,10 +130,8 @@ impl SpaceView {
         };
 
         let mut data_blueprint_tree = DataBlueprintTree::default();
-        data_blueprint_tree.insert_entities_according_to_hierarchy(
-            queries_entities.iter(),
-            space_path
-        );
+        data_blueprint_tree
+            .insert_entities_according_to_hierarchy(queries_entities.iter(), space_path);
 
         Self {
             display_name,
@@ -168,30 +148,24 @@ impl SpaceView {
     pub fn on_frame_start(
         &mut self,
         ctx: &mut ViewerContext<'_>,
-        spaces_info: &SpaceInfoCollection
+        spaces_info: &SpaceInfoCollection,
     ) {
         self.data_blueprint.on_frame_start();
 
         if !self.entities_determined_by_user {
             // Add entities that have been logged since we were created
-            let queries_entities = default_queried_entities(
-                ctx,
-                &self.space_path,
-                spaces_info,
-                self.category
-            );
-            self.data_blueprint.insert_entities_according_to_hierarchy(
-                queries_entities.iter(),
-                &self.space_path
-            );
+            let queries_entities =
+                default_queried_entities(ctx, &self.space_path, spaces_info, self.category);
+            self.data_blueprint
+                .insert_entities_according_to_hierarchy(queries_entities.iter(), &self.space_path);
         }
 
-        while
-            ScreenshotProcessor::next_readback_result(
-                ctx.render_ctx,
-                self.id.gpu_readback_id(),
-                |data, extent, mode| self.handle_pending_screenshots(data, extent, mode)
-            ).is_some()
+        while ScreenshotProcessor::next_readback_result(
+            ctx.render_ctx,
+            self.id.gpu_readback_id(),
+            |data, extent, mode| self.handle_pending_screenshots(data, extent, mode),
+        )
+        .is_some()
         {}
     }
 
@@ -206,10 +180,9 @@ impl SpaceView {
         }
 
         // Get next available file name.
-        let safe_display_name = self.display_name.replace(
-            |c: char| !c.is_alphanumeric() && c != ' ',
-            ""
-        );
+        let safe_display_name = self
+            .display_name
+            .replace(|c: char| !c.is_alphanumeric() && c != ' ', "");
         let mut i = 1;
         let filename = loop {
             let filename = format!("Screenshot {safe_display_name} - {i}.png");
@@ -251,14 +224,13 @@ impl SpaceView {
                     ui,
                     &self.data_blueprint,
                     &self.space_path,
-                    self.id
+                    self.id,
                 );
             }
             ViewCategory::Tensor => {
                 if let Some(selected_tensor) = &self.view_state.selected_tensor {
-                    if
-                        let Some(state_tensor) =
-                            self.view_state.state_tensors.get_mut(selected_tensor)
+                    if let Some(state_tensor) =
+                        self.view_state.state_tensors.get_mut(selected_tensor)
                     {
                         state_tensor.ui(ctx, ui);
                     }
@@ -273,7 +245,7 @@ impl SpaceView {
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
         latest_at: TimeInt,
-        highlights: &SpaceViewHighlights
+        highlights: &SpaceViewHighlights,
     ) {
         crate::profile_function!();
 
@@ -313,14 +285,13 @@ impl SpaceView {
                     &ctx.log_db.entity_db,
                     &ctx.rec_cfg.time_ctrl,
                     &self.space_path,
-                    self.data_blueprint.data_blueprints_projected()
+                    self.data_blueprint.data_blueprints_projected(),
                 );
                 let mut scene = view_spatial::SceneSpatial::new(ctx.render_ctx);
                 scene.load(ctx, &query, &transforms, highlights);
-                self.view_state.state_spatial.update_object_property_heuristics(
-                    ctx,
-                    &mut self.data_blueprint
-                );
+                self.view_state
+                    .state_spatial
+                    .update_object_property_heuristics(ctx, &mut self.data_blueprint);
                 self.view_state.ui_spatial(
                     ctx,
                     ui,
@@ -328,7 +299,7 @@ impl SpaceView {
                     scene,
                     self.id,
                     highlights,
-                    self.data_blueprint.data_blueprints_projected()
+                    self.data_blueprint.data_blueprints_projected(),
                 );
             }
 
@@ -355,7 +326,7 @@ impl SpaceView {
             &mut (|path: &EntityPath| {
                 self.data_blueprint.remove_entity(path);
                 self.entities_determined_by_user = true;
-            })
+            }),
         );
     }
 
@@ -366,34 +337,30 @@ impl SpaceView {
         &mut self,
         tree: &EntityTree,
         spaces_info: &SpaceInfoCollection,
-        log_db: &re_data_store::LogDb
+        log_db: &re_data_store::LogDb,
     ) {
         crate::profile_function!();
 
         let mut entities = Vec::new();
         tree.visit_children_recursively(
             &mut (|entity_path: &EntityPath| {
-                let entity_categories = categorize_entity_path(
-                    Timeline::log_time(),
-                    log_db,
-                    entity_path
-                );
+                let entity_categories =
+                    categorize_entity_path(Timeline::log_time(), log_db, entity_path);
 
-                if
-                    entity_categories.contains(self.category) &&
-                    !self.data_blueprint.contains_entity(entity_path) &&
-                    spaces_info.is_reachable_by_transform(entity_path, &self.space_path).is_ok()
+                if entity_categories.contains(self.category)
+                    && !self.data_blueprint.contains_entity(entity_path)
+                    && spaces_info
+                        .is_reachable_by_transform(entity_path, &self.space_path)
+                        .is_ok()
                 {
                     entities.push(entity_path.clone());
                 }
-            })
+            }),
         );
 
         if !entities.is_empty() {
-            self.data_blueprint.insert_entities_according_to_hierarchy(
-                entities.iter(),
-                &self.space_path
-            );
+            self.data_blueprint
+                .insert_entities_according_to_hierarchy(entities.iter(), &self.space_path);
             self.entities_determined_by_user = true;
         }
     }
@@ -426,7 +393,7 @@ impl ViewState {
         scene: view_spatial::SceneSpatial,
         space_view_id: SpaceViewId,
         highlights: &SpaceViewHighlights,
-        entity_properties: &EntityPropertyMap
+        entity_properties: &EntityPropertyMap,
     ) {
         ui.vertical(|ui| {
             self.state_spatial.view_spatial(
@@ -436,7 +403,7 @@ impl ViewState {
                 scene,
                 space_view_id,
                 highlights,
-                entity_properties
+                entity_properties,
             );
         });
     }
@@ -445,7 +412,7 @@ impl ViewState {
         &mut self,
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        scene: &view_tensor::SceneTensor
+        scene: &view_tensor::SceneTensor,
     ) {
         if scene.tensors.is_empty() {
             ui.centered_and_justified(|ui| ui.label("(empty)"));
@@ -474,7 +441,8 @@ impl ViewState {
 
             if let Some(selected_tensor) = &self.selected_tensor {
                 if let Some(tensor) = scene.tensors.get(selected_tensor) {
-                    let state_tensor = self.state_tensors
+                    let state_tensor = self
+                        .state_tensors
                         .entry(selected_tensor.clone())
                         .or_insert_with(|| view_tensor::ViewTensorState::create(tensor));
                     view_tensor::view_tensor(ctx, ui, state_tensor, tensor);
@@ -487,12 +455,13 @@ impl ViewState {
         &mut self,
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        scene: &view_text::SceneText
+        scene: &view_text::SceneText,
     ) {
         (egui::Frame {
             inner_margin: re_ui::ReUi::view_padding().into(),
             ..egui::Frame::default()
-        }).show(ui, |ui| {
+        })
+        .show(ui, |ui| {
             view_text::view_text(ctx, ui, &mut self.state_text, scene);
         });
     }
@@ -501,12 +470,13 @@ impl ViewState {
         &mut self,
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        scene: &view_node_graph::SceneNodeGraph
+        scene: &view_node_graph::SceneNodeGraph,
     ) {
         (egui::Frame {
             inner_margin: re_ui::ReUi::view_padding().into(),
             ..egui::Frame::default()
-        }).show(ui, |ui| {
+        })
+        .show(ui, |ui| {
             view_node_graph::view_node_graph(ctx, ui, &mut self.state_node_graph, scene)
         });
     }
@@ -515,7 +485,7 @@ impl ViewState {
         &mut self,
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        scene: &view_bar_chart::SceneBarChart
+        scene: &view_bar_chart::SceneBarChart,
     ) {
         ui.vertical(|ui| {
             ui.scope(|ui| {
@@ -528,7 +498,7 @@ impl ViewState {
         &mut self,
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        scene: &view_time_series::SceneTimeSeries
+        scene: &view_time_series::SceneTimeSeries,
     ) {
         ui.vertical(|ui| {
             ui.scope(|ui| {

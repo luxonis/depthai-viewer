@@ -6,32 +6,22 @@ use ahash::HashMap;
 use itertools::Itertools as _;
 
 use re_arrow_store::LatestAtQuery;
-use re_data_store::{ query_latest_single, EntityPath };
+use re_data_store::{query_latest_single, EntityPath};
 use re_log_types::{
-    component_types::TensorDataMeaning,
-    EntityPathPart,
-    Tensor,
-    Time,
-    TimeInt,
-    Timeline,
+    component_types::TensorDataMeaning, EntityPathPart, Tensor, Time, TimeInt, Timeline,
 };
 
 use crate::{
     depthai::depthai,
-    misc::{ space_info::SpaceInfoCollection, Item, SpaceViewHighlights, ViewerContext },
-    ui::{ space_view_heuristics::default_created_space_views, stats_panel::StatsPanel },
+    misc::{space_info::SpaceInfoCollection, Item, SpaceViewHighlights, ViewerContext},
+    ui::{space_view_heuristics::default_created_space_views, stats_panel::StatsPanel},
 };
 
 use super::{
-    device_settings_panel::DeviceSettingsPanel,
-    selection_panel::SelectionPanel,
+    device_settings_panel::DeviceSettingsPanel, selection_panel::SelectionPanel,
     space_view_entity_picker::SpaceViewEntityPicker,
-    space_view_heuristics::all_possible_space_views,
-    stats_panel::StatsPanelState,
-    view_category::ViewCategory,
-    view_spatial::SpatialNavigationMode,
-    SpaceView,
-    SpaceViewId,
+    space_view_heuristics::all_possible_space_views, stats_panel::StatsPanelState,
+    view_category::ViewCategory, view_spatial::SpatialNavigationMode, SpaceView, SpaceViewId,
     SpaceViewKind,
 };
 
@@ -80,7 +70,10 @@ impl Viewport {
         crate::profile_function!();
 
         let mut blueprint = Self::default();
-        for space_view in default_created_space_views(ctx, spaces_info) {
+        for space_view in all_possible_space_views(ctx, spaces_info)
+            .into_iter()
+            .filter(|sv| sv.is_depthai_spaceview)
+        {
             blueprint.add_space_view(space_view);
         }
         blueprint
@@ -127,12 +120,11 @@ impl Viewport {
         &mut self,
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        spaces_info: &SpaceInfoCollection
+        spaces_info: &SpaceInfoCollection,
     ) {
         crate::profile_function!();
 
-        egui::ScrollArea
-            ::vertical()
+        egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 ui.style_mut().wrap = Some(false);
@@ -142,7 +134,8 @@ impl Viewport {
                 // as they didn't create the blueprint by logging the data
                 for space_view in all_possible_space_views(ctx, spaces_info)
                     .into_iter()
-                    .filter(|sv| sv.is_depthai_spaceview) {
+                    .filter(|sv| sv.is_depthai_spaceview)
+                {
                     self.available_space_view_row_ui(ctx, ui, space_view);
                 }
             });
@@ -152,52 +145,61 @@ impl Viewport {
         &mut self,
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        space_view: SpaceView
+        space_view: SpaceView,
     ) {
         let space_path = space_view.space_path.clone(); // to avoid borrowing issue in .body() of collapsing state
         let collapsing_header_id = ui.id().with(space_view.display_name.clone());
-        egui::collapsing_header::CollapsingState
-            ::load_with_default_open(ui.ctx(), collapsing_header_id, true)
-            .show_header(ui, |ui| {
-                ui.label(space_view.display_name.clone());
-                let mut ui = ui.child_ui(
-                    ui.max_rect(),
-                    egui::Layout::right_to_left(egui::Align::Center)
-                );
-                if ctx.re_ui.small_icon_button(&mut ui, &re_ui::icons::ADD).clicked() {
-                    self.add_space_view(space_view);
-                }
-            })
-            .body(|ui| {
-                let instances_of_space_view = self.visible.iter().filter(|id| {
-                    if let Some(sv) = self.space_views.get(*id) {
-                        sv.space_path == space_path
-                    } else {
-                        false
-                    }
-                });
-                let mut space_views_to_remove = Vec::new();
-                for sv_id in instances_of_space_view {
-                    ui.horizontal(|ui| {
-                        let label = format!("🔹 {}", self.space_views[sv_id].display_name);
-                        ui.label(label);
-                        let mut ui = ui.child_ui(
-                            ui.max_rect(),
-                            egui::Layout::right_to_left(egui::Align::Center)
-                        );
-                        if ctx.re_ui.small_icon_button(&mut ui, &re_ui::icons::REMOVE).clicked() {
-                            space_views_to_remove.push(*sv_id);
-                            self.has_been_user_edited.insert(
-                                self.space_views[sv_id].space_path.clone(),
-                                true
-                            );
-                        }
-                    });
-                }
-                for sv_id in &space_views_to_remove {
-                    self.remove(sv_id);
+        egui::collapsing_header::CollapsingState::load_with_default_open(
+            ui.ctx(),
+            collapsing_header_id,
+            true,
+        )
+        .show_header(ui, |ui| {
+            ui.label(space_view.display_name.clone());
+            let mut ui = ui.child_ui(
+                ui.max_rect(),
+                egui::Layout::right_to_left(egui::Align::Center),
+            );
+            if ctx
+                .re_ui
+                .small_icon_button(&mut ui, &re_ui::icons::ADD)
+                .clicked()
+            {
+                self.add_space_view(space_view);
+            }
+        })
+        .body(|ui| {
+            let instances_of_space_view = self.visible.iter().filter(|id| {
+                if let Some(sv) = self.space_views.get(*id) {
+                    sv.space_path == space_path
+                } else {
+                    false
                 }
             });
+            let mut space_views_to_remove = Vec::new();
+            for sv_id in instances_of_space_view {
+                ui.horizontal(|ui| {
+                    let label = format!("🔹 {}", self.space_views[sv_id].display_name);
+                    ui.label(label);
+                    let mut ui = ui.child_ui(
+                        ui.max_rect(),
+                        egui::Layout::right_to_left(egui::Align::Center),
+                    );
+                    if ctx
+                        .re_ui
+                        .small_icon_button(&mut ui, &re_ui::icons::REMOVE)
+                        .clicked()
+                    {
+                        space_views_to_remove.push(*sv_id);
+                        self.has_been_user_edited
+                            .insert(self.space_views[sv_id].space_path.clone(), true);
+                    }
+                });
+            }
+            for sv_id in &space_views_to_remove {
+                self.remove(sv_id);
+            }
+        });
     }
 
     pub(crate) fn mark_user_interaction(&mut self) {}
@@ -236,7 +238,7 @@ impl Viewport {
     fn get_space_views_to_delete(
         &mut self,
         ctx: &mut ViewerContext<'_>,
-        spaces_info: &SpaceInfoCollection
+        spaces_info: &SpaceInfoCollection,
     ) -> Vec<SpaceViewId> {
         let mut space_views_to_delete = Vec::new();
         let binding = all_possible_space_views(ctx, spaces_info);
@@ -258,13 +260,13 @@ impl Viewport {
             }
         }
         for space_view in self.space_views.values() {
-            if
-                !possible_space_views
-                    .iter()
-                    .map(|sv| sv.space_path.clone())
-                    .contains(&space_view.space_path)
+            if !possible_space_views
+                .iter()
+                .map(|sv| sv.space_path.clone())
+                .contains(&space_view.space_path)
             {
-                self.has_been_user_edited.insert(space_view.space_path.clone(), false);
+                self.has_been_user_edited
+                    .insert(space_view.space_path.clone(), false);
                 space_views_to_delete.push(space_view.id);
             }
         }
@@ -274,7 +276,7 @@ impl Viewport {
     pub fn on_frame_start(
         &mut self,
         ctx: &mut ViewerContext<'_>,
-        spaces_info: &SpaceInfoCollection
+        spaces_info: &SpaceInfoCollection,
     ) {
         crate::profile_function!();
 
@@ -288,11 +290,11 @@ impl Viewport {
             space_view.on_frame_start(ctx, spaces_info);
         }
         for space_view_candidate in default_created_space_views(ctx, spaces_info) {
-            if
-                !self.has_been_user_edited
-                    .get(&space_view_candidate.space_path)
-                    .unwrap_or(&false) &&
-                self.should_auto_add_space_view(&space_view_candidate)
+            if !self
+                .has_been_user_edited
+                .get(&space_view_candidate.space_path)
+                .unwrap_or(&false)
+                && self.should_auto_add_space_view(&space_view_candidate)
             {
                 self.add_space_view(space_view_candidate);
             }
@@ -308,10 +310,10 @@ impl Viewport {
                     return false;
                 }
 
-                if
-                    space_view_candidate.data_blueprint
-                        .entity_paths()
-                        .is_subset(existing_view.data_blueprint.entity_paths())
+                if space_view_candidate
+                    .data_blueprint
+                    .entity_paths()
+                    .is_subset(existing_view.data_blueprint.entity_paths())
                 {
                     // This space view wouldn't add anything we haven't already
                     return false;
@@ -348,14 +350,15 @@ impl Viewport {
         };
 
         // Lazily create a layout tree based on which SpaceViews should be visible:
-        let mut tree = self.trees
+        let mut tree = self
+            .trees
             .entry(visible_space_views.clone())
             .or_insert_with(|| {
                 super::auto_layout::default_tree_from_space_views(
                     ui.available_size(),
                     &visible_space_views,
                     &self.space_views,
-                    self.maximized.is_some()
+                    self.maximized.is_some(),
                 )
             })
             .clone();
@@ -376,8 +379,7 @@ impl Viewport {
 
             ui.spacing_mut().item_spacing.x = re_ui::ReUi::view_padding();
 
-            egui_dock::DockArea
-                ::new(&mut tree)
+            egui_dock::DockArea::new(&mut tree)
                 .id(egui::Id::new("space_view_dock"))
                 .style(re_ui::egui_dock_style(ui.style()))
                 .show_inside(ui, &mut tab_viewer);
@@ -395,18 +397,26 @@ impl Viewport {
 
                 // `rect` includes the tab area, while `viewport` is just the tab body.
                 // so the tab bar rect is:
-                let tab_bar_rect = egui::Rect::from_x_y_ranges(
-                    rect.x_range(),
-                    rect.top()..=viewport.top()
-                );
+                let tab_bar_rect =
+                    egui::Rect::from_x_y_ranges(rect.x_range(), rect.top()..=viewport.top());
 
                 // rect/viewport can be invalid for the first frame
-                tab_bar_rect.is_finite().then_some((space_view_tab.clone(), tab_bar_rect))
+                tab_bar_rect
+                    .is_finite()
+                    .then_some((space_view_tab.clone(), tab_bar_rect))
             })
             .collect_vec();
         self.trees.insert(visible_space_views, tree);
 
-        for (Tab { space_view_id, space_view_kind, .. }, tab_bar_rect) in tab_bars {
+        for (
+            Tab {
+                space_view_id,
+                space_view_kind,
+                ..
+            },
+            tab_bar_rect,
+        ) in tab_bars
+        {
             match space_view_kind {
                 SpaceViewKind::Data | SpaceViewKind::Stats => {
                     let mut entities_to_skip = Vec::new();
@@ -424,22 +434,23 @@ impl Viewport {
                                         }
                                     }
                                 }
-                                is3d |=
-                                    entity_path.len() == 2 &&
-                                    entity_path.iter().last().unwrap() ==
-                                        &EntityPathPart::from("transform");
+                                is3d |= entity_path.len() == 2
+                                    && entity_path.iter().last().unwrap()
+                                        == &EntityPathPart::from("transform");
                                 if let Some(last_part) = entity_path.iter().last() {
                                     has_depth |= last_part == &EntityPathPart::from("Depth");
                                 }
-                            })
+                            }),
                         );
                         if let Some(image_to_hide) = image_to_hide {
                             entities_to_skip.push(image_to_hide.clone());
-                            let mut props = space_view.data_blueprint
+                            let mut props = space_view
+                                .data_blueprint
                                 .data_blueprints_individual()
                                 .get(&image_to_hide);
                             props.visible = false;
-                            space_view.data_blueprint
+                            space_view
+                                .data_blueprint
                                 .data_blueprints_individual()
                                 .set(image_to_hide.clone(), props);
                         }
@@ -451,7 +462,7 @@ impl Viewport {
                         tab_bar_rect,
                         space_view_id,
                         num_space_views,
-                        entities_to_skip.as_slice()
+                        entities_to_skip.as_slice(),
                     );
                 }
                 SpaceViewKind::Selection => {
@@ -486,14 +497,13 @@ fn blueprint_row_with_buttons(
     enabled: bool,
     visible: bool,
     add_content: impl FnOnce(&mut egui::Ui) -> egui::Response,
-    add_on_hover_buttons: impl FnOnce(&re_ui::ReUi, &mut egui::Ui)
+    add_on_hover_buttons: impl FnOnce(&re_ui::ReUi, &mut egui::Ui),
 ) {
     let where_to_add_hover_rect = ui.painter().add(egui::Shape::Noop);
 
     // Make the main button span the whole width to make it easier to click:
-    let main_button_response = ui.with_layout(
-        egui::Layout::top_down_justified(egui::Align::LEFT),
-        |ui| {
+    let main_button_response = ui
+        .with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
             ui.style_mut().wrap = Some(false);
 
             // Turn off the background color of hovered buttons.
@@ -507,7 +517,10 @@ fn blueprint_row_with_buttons(
             visuals.widgets.open.weak_bg_fill = egui::Color32::TRANSPARENT;
             visuals.widgets.open.bg_fill = egui::Color32::TRANSPARENT;
 
-            if ui.interact(ui.max_rect(), ui.id(), egui::Sense::hover()).hovered() {
+            if ui
+                .interact(ui.max_rect(), ui.id(), egui::Sense::hover())
+                .hovered()
+            {
                 // Clip the main button so that the on-hover buttons have room to cover it.
                 // Ideally we would only clip the button _text_, not the button background, but that's not possible.
                 let mut clip_rect = ui.max_rect();
@@ -528,17 +541,22 @@ fn blueprint_row_with_buttons(
             }
 
             add_content(ui)
-        }
-    ).inner;
+        })
+        .inner;
 
     let main_button_rect = main_button_response.rect;
 
     // We check the same rectangle as the main button,
     // but we will also catch hovers on the visibility button (if any).
-    let button_hovered = ui.interact(main_button_rect, ui.id(), egui::Sense::hover()).hovered();
+    let button_hovered = ui
+        .interact(main_button_rect, ui.id(), egui::Sense::hover())
+        .hovered();
     if button_hovered {
         // Just put the buttons on top of the existing ui:
-        let mut ui = ui.child_ui(ui.max_rect(), egui::Layout::right_to_left(egui::Align::Center));
+        let mut ui = ui.child_ui(
+            ui.max_rect(),
+            egui::Layout::right_to_left(egui::Align::Center),
+        );
         add_on_hover_buttons(re_ui, &mut ui);
     }
 
@@ -550,7 +568,7 @@ fn blueprint_row_with_buttons(
         let hover_rect = main_button_rect.expand(visuals.expansion);
         ui.painter().set(
             where_to_add_hover_rect,
-            egui::Shape::rect_filled(hover_rect, visuals.rounding, visuals.bg_fill)
+            egui::Shape::rect_filled(hover_rect, visuals.rounding, visuals.bg_fill),
         );
     }
 }
@@ -559,7 +577,7 @@ fn visibility_button_ui(
     re_ui: &re_ui::ReUi,
     ui: &mut egui::Ui,
     enabled: bool,
-    visible: &mut bool
+    visible: &mut bool,
 ) -> egui::Response {
     ui.set_enabled(enabled);
     re_ui
@@ -609,15 +627,22 @@ impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
     type Tab = Tab;
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        let Tab { space_view_id, space_view_kind, space_path } = tab;
+        let Tab {
+            space_view_id,
+            space_view_kind,
+            space_path,
+        } = tab;
         crate::profile_function!();
 
         match space_view_kind {
             SpaceViewKind::Data => {
-                let highlights = self.ctx
+                let highlights = self
+                    .ctx
                     .selection_state()
                     .highlights_for_space_view(*space_view_id, &self.viewport.space_views);
-                let space_view = self.viewport.space_views
+                let space_view = self
+                    .viewport
+                    .space_views
                     .get_mut(space_view_id)
                     .expect("Should have been populated beforehand");
 
@@ -635,15 +660,21 @@ impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         match tab.space_view_kind {
             SpaceViewKind::Data => {
-                let space_view = self.viewport.space_views
+                let space_view = self
+                    .viewport
+                    .space_views
                     .get_mut(&tab.space_view_id)
                     .expect("Should have been populated beforehand");
 
-                let mut text = egui::WidgetText::RichText(
-                    egui::RichText::new(space_view.display_name.clone())
-                );
+                let mut text = egui::WidgetText::RichText(egui::RichText::new(
+                    space_view.display_name.clone(),
+                ));
 
-                if self.ctx.selection().contains(&Item::SpaceView(tab.space_view_id)) {
+                if self
+                    .ctx
+                    .selection()
+                    .contains(&Item::SpaceView(tab.space_view_id))
+                {
                     // Show that it is selected:
                     let egui_ctx = &self.ctx.re_ui.egui_ctx;
                     let selection_bg_color = egui_ctx.style().visuals.selection.bg_fill;
@@ -660,7 +691,8 @@ impl<'a, 'b> egui_dock::TabViewer for TabViewer<'a, 'b> {
 
     fn on_tab_button(&mut self, tab: &mut Self::Tab, response: &egui::Response) {
         if response.clicked() {
-            self.ctx.set_single_selection(Item::SpaceView(tab.space_view_id));
+            self.ctx
+                .set_single_selection(Item::SpaceView(tab.space_view_id));
         }
     }
 }
@@ -687,7 +719,7 @@ fn space_view_options_ui(
     tab_bar_rect: egui::Rect,
     space_view_id: SpaceViewId,
     num_space_views: usize,
-    entities_to_skip: &[EntityPath]
+    entities_to_skip: &[EntityPath],
 ) {
     let tab_bar_rect = tab_bar_rect.shrink2(egui::vec2(4.0, 0.0)); // Add some side margin outside the frame
 
@@ -699,21 +731,21 @@ fn space_view_options_ui(
 
             if viewport.maximized == Some(space_view_id) {
                 // Show minimize-button:
-                if
-                    ctx.re_ui
-                        .small_icon_button(ui, &re_ui::icons::MINIMIZE)
-                        .on_hover_text("Restore - show all spaces")
-                        .clicked()
+                if ctx
+                    .re_ui
+                    .small_icon_button(ui, &re_ui::icons::MINIMIZE)
+                    .on_hover_text("Restore - show all spaces")
+                    .clicked()
                 {
                     viewport.maximized = None;
                 }
             } else if num_space_views > 1 {
                 // Show maximize-button:
-                if
-                    ctx.re_ui
-                        .small_icon_button(ui, &re_ui::icons::MAXIMIZE)
-                        .on_hover_text("Maximize Space View")
-                        .clicked()
+                if ctx
+                    .re_ui
+                    .small_icon_button(ui, &re_ui::icons::MAXIMIZE)
+                    .on_hover_text("Maximize Space View")
+                    .clicked()
                 {
                     viewport.maximized = Some(space_view_id);
                     ctx.set_single_selection(Item::SpaceView(space_view_id));
@@ -730,9 +762,9 @@ fn space_view_options_ui(
                 let entities = space_view.data_blueprint.entity_paths().clone();
                 let entities = entities.iter().filter(|ep| {
                     if let Some(last_part) = ep.iter().last() {
-                        last_part != &EntityPathPart::from("transform") &&
-                            last_part != &EntityPathPart::from("mono_cam") &&
-                            last_part != &EntityPathPart::from("color_cam")
+                        last_part != &EntityPathPart::from("transform")
+                            && (last_part != &EntityPathPart::from("mono_cam")
+                                || last_part != &EntityPathPart::from("color_cam"))
                     } else {
                         false
                     }
@@ -742,7 +774,8 @@ fn space_view_options_ui(
                         continue;
                     }
                     ui.horizontal(|ui| {
-                        let mut properties = space_view.data_blueprint
+                        let mut properties = space_view
+                            .data_blueprint
                             .data_blueprints_individual()
                             .get(entity_path);
                         blueprint_row_with_buttons(
@@ -756,19 +789,15 @@ fn space_view_options_ui(
                                 ctx.data_blueprint_button_to(ui, label, space_view.id, entity_path)
                             },
                             |re_ui, ui| {
-                                if
-                                    visibility_button_ui(
-                                        re_ui,
-                                        ui,
-                                        true,
-                                        &mut properties.visible
-                                    ).changed()
+                                if visibility_button_ui(re_ui, ui, true, &mut properties.visible)
+                                    .changed()
                                 {
-                                    space_view.data_blueprint
+                                    space_view
+                                        .data_blueprint
                                         .data_blueprints_individual()
                                         .set(entity_path.clone(), properties);
                                 }
-                            }
+                            },
                         );
                     });
                 }
@@ -784,8 +813,8 @@ fn space_view_options_ui(
                 egui::Shape::rect_filled(
                     rect,
                     0.0,
-                    re_ui::egui_dock_style(ui.style()).tab_bar_background_color
-                )
+                    re_ui::egui_dock_style(ui.style()).tab_bar_background_color,
+                ),
             );
         });
     });
@@ -795,7 +824,7 @@ fn space_view_ui(
     ctx: &mut ViewerContext<'_>,
     ui: &mut egui::Ui,
     space_view: &mut SpaceView,
-    space_view_highlights: &SpaceViewHighlights
+    space_view_highlights: &SpaceViewHighlights,
 ) {
     let Some(latest_at) = ctx.rec_cfg.time_ctrl.time_int() else {
         ui.centered_and_justified(|ui| {
@@ -817,11 +846,9 @@ fn focus_tab(tree: &mut egui_dock::Tree<Tab>, tab: &Tab) {
 }
 
 fn is_tree_valid(tree: &egui_dock::Tree<Tab>) -> bool {
-    tree.iter().all(|node| {
-        match node {
-            | egui_dock::Node::Vertical { rect: _, fraction }
-            | egui_dock::Node::Horizontal { rect: _, fraction } => fraction.is_finite(),
-            _ => true,
-        }
+    tree.iter().all(|node| match node {
+        egui_dock::Node::Vertical { rect: _, fraction }
+        | egui_dock::Node::Horizontal { rect: _, fraction } => fraction.is_finite(),
+        _ => true,
     })
 }

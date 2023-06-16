@@ -40,6 +40,7 @@ pub fn all_possible_space_views(
             total_msgs != 0
         })
         .collect::<BTreeMap<&EntityPathPart, &EntityTree>>();
+
     let candidate_space_paths = spaces_info
         .iter()
         .map(|info| &info.path)

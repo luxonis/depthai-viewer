@@ -70,22 +70,24 @@ pub enum CameraBoardSocket {
     CAM_H,
 }
 
-pub fn create_camera_board_socket(socket_name: &str) -> Option<CameraBoardSocket> {
-    match socket_name {
-        "AUTO" => Some(CameraBoardSocket::AUTO),
-        "RGB" => Some(CameraBoardSocket::RGB),
-        "LEFT" => Some(CameraBoardSocket::LEFT),
-        "RIGHT" => Some(CameraBoardSocket::RIGHT),
-        "CENTER" => Some(CameraBoardSocket::CENTER),
-        "CAM_A" => Some(CameraBoardSocket::CAM_A),
-        "CAM_B" => Some(CameraBoardSocket::CAM_B),
-        "CAM_C" => Some(CameraBoardSocket::CAM_C),
-        "CAM_D" => Some(CameraBoardSocket::CAM_D),
-        "CAM_E" => Some(CameraBoardSocket::CAM_E),
-        "CAM_F" => Some(CameraBoardSocket::CAM_F),
-        "CAM_G" => Some(CameraBoardSocket::CAM_G),
-        "CAM_H" => Some(CameraBoardSocket::CAM_H),
-        _ => None,
+impl CameraBoardSocket  {
+    pub fn from(socket: String) -> Option<Self> {
+        match socket.as_str() {
+            "AUTO" => Some(CameraBoardSocket::AUTO),
+            "RGB" => Some(CameraBoardSocket::RGB),
+            "LEFT" => Some(CameraBoardSocket::LEFT),
+            "RIGHT" => Some(CameraBoardSocket::RIGHT),
+            "CENTER" => Some(CameraBoardSocket::CENTER),
+            "CAM_A" => Some(CameraBoardSocket::CAM_A),
+            "CAM_B" => Some(CameraBoardSocket::CAM_B),
+            "CAM_C" => Some(CameraBoardSocket::CAM_C),
+            "CAM_D" => Some(CameraBoardSocket::CAM_D),
+            "CAM_E" => Some(CameraBoardSocket::CAM_E),
+            "CAM_F" => Some(CameraBoardSocket::CAM_F),
+            "CAM_G" => Some(CameraBoardSocket::CAM_G),
+            "CAM_H" => Some(CameraBoardSocket::CAM_H),
+            _ => None,
+        }
     }
 }
 
