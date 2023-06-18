@@ -17,10 +17,10 @@ from depthai_viewer._backend.device_configuration import (
 )
 from depthai_viewer._backend.messages import *
 from depthai_viewer._backend.packet_handler import (
-    AiQueueContext,
-    DepthQueueContext,
     PacketHandler,
-    QueueContext,
+    CameraCallbackArgs,
+    DepthCallbackArgs,
+    AiModelCallbackArgs,
 )
 from depthai_viewer._backend.store import Store
 from numpy.typing import NDArray
@@ -230,7 +230,7 @@ class Device:
                 return message
 
         self._cameras = []
-        self._packet_handler.clear_queues()
+        # self._packet_handler.clear_queues()
         self.use_encoding = self._oak_cam.device.getDeviceInfo().protocol == dai.XLinkProtocol.X_LINK_TCP_IP
         if self.use_encoding:
             print("Connected device is PoE: Using encoding...")
@@ -246,8 +246,13 @@ class Device:
                 name=cam.name.capitalize(),
             )
             if cam.stream_enabled:
-                self._packet_handler.add_queue(
-                    QueueContext(cam, self.use_encoding), self._oak_cam.create_queue(sdk_cam, max_size=5)
+                callback_args = CameraCallbackArgs(
+                    board_socket=cam.board_socket, image_kind=cam.kind, encoding=self.use_encoding
+                )
+                self._oak_cam.callback(
+                    sdk_cam,
+                    self._packet_handler.build_callback(callback_args),
+                    main_thread=True,
                 )
             self._cameras.append(sdk_cam)
 
@@ -284,9 +289,12 @@ class Device:
             if not aligned_camera:
                 return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
 
-            self._packet_handler.add_queue(
-                DepthQueueContext(config.depth.stereo_pair, aligned_camera),
-                self._oak_cam.create_queue(self._stereo),
+            self._oak_cam.callback(
+                self._stereo,
+                self._packet_handler.build_callback(
+                    DepthCallbackArgs(alignment_camera=aligned_camera, stereo_pair=config.depth.stereo_pair)
+                ),
+                main_thread=True,
             )
 
         if self._oak_cam.device.getConnectedIMU() != "NONE":
@@ -301,7 +309,7 @@ class Device:
             imu.config_imu(
                 sensors, report_rate=config.imu.report_rate, batch_report_threshold=config.imu.batch_report_threshold
             )
-            self._packet_handler.add_queue(QueueContext(), self._oak_cam.create_queue(imu))
+            # self._oak_cam.callback(imu, self._packet_handler.on_imu, main_thread=True)
         else:
             print("Connected cam doesn't have IMU, skipping IMU creation...")
 
@@ -321,8 +329,12 @@ class Device:
             if not camera:
                 return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
 
-            self._packet_handler.add_queue(
-                AiQueueContext(config.ai_model.path, labels, camera), self._oak_cam.create_queue(self._nnet)
+            self._oak_cam.callback(
+                self._nnet,
+                self._packet_handler.build_callback(
+                    AiModelCallbackArgs(model_name=config.ai_model.path, camera=camera, labels=labels)
+                ),
+                main_thread=True,
             )
         try:
             self._oak_cam.start(blocking=False)
@@ -353,4 +365,4 @@ class Device:
         self._oak_cam.poll()
         if self._xlink_statistics is not None:
             self._xlink_statistics.update()
-        self._packet_handler.update()
+        # self._packet_handler.update()
