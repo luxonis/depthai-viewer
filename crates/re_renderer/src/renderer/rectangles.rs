@@ -78,6 +78,7 @@ pub struct ColormappedTexture {
     pub texture: GpuTexture2D,
 
     pub encoding: Option<TextureEncoding>,
+
     /// Min/max range of the values in the texture.
     /// Used to normalize the input values (squash them to the 0-1 range).
     pub range: [f32; 2],
