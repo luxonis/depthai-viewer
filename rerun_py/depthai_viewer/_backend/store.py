@@ -1,9 +1,7 @@
-from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import List, Optional
 
 from depthai_viewer._backend.device_configuration import PipelineConfiguration
 from depthai_viewer._backend.topic import Topic
-from depthai_viewer._backend.messages import *
 
 
 class Store:

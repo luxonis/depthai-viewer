@@ -4,18 +4,21 @@ from queue import Empty as QueueEmptyException
 from typing import Optional
 
 import depthai_viewer as viewer
-from depthai_viewer._backend.config_api import start_api, Action
-from depthai_viewer._backend.device_configuration import (
-    DeviceProperties,
-)
-from depthai_viewer._backend.messages import *
-from depthai_viewer._backend.store import Store
+from depthai_viewer._backend.config_api import Action, start_api
 from depthai_viewer._backend.device import Device
+from depthai_viewer._backend.device_configuration import DeviceProperties
+from depthai_viewer._backend.messages import (
+    DeviceMessage,
+    ErrorMessage,
+    InfoMessage,
+    Message,
+    PipelineMessage,
+    SubscriptionsMessage,
+)
+from depthai_viewer._backend.store import Store
 
 viewer.init("Depthai Viewer")
 viewer.connect()
-
-import time
 
 
 class DepthaiViewerBack:

@@ -1,7 +1,8 @@
 import json
 from enum import Enum
-from depthai_viewer._backend.device_configuration import DeviceProperties, PipelineConfiguration
 from typing import Optional
+
+from depthai_viewer._backend.device_configuration import DeviceProperties, PipelineConfiguration
 
 
 class MessageType:

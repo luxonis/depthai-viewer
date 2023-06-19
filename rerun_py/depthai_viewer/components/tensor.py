@@ -7,6 +7,7 @@ from typing import Final, Iterable, Union, cast
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
+
 from depthai_viewer import bindings
 from depthai_viewer.components import (
     REGISTERED_COMPONENT_NAMES,
@@ -98,11 +99,8 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
             child=pa.array([True], type=pa.bool_()),
         )
 
-        mask_encoding = True if encoding is None else False
-
         # Note: the pa.array mask is backwards from expectations
         # Mask is True for elements which are not valid.
-        mask_meter = True if meter is None else False
         if meter is None:
             meter = pa.array([0.0], mask=[True], type=pa.float32())
         else:

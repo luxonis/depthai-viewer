@@ -5,7 +5,7 @@ import numpy.typing as npt
 
 from depthai_viewer import bindings
 from depthai_viewer.components.instance import InstanceArray
-from depthai_viewer.components.tensor import TensorArray, ImageEncoding
+from depthai_viewer.components.tensor import ImageEncoding, TensorArray
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.extension_components import _add_extension_components
 from depthai_viewer.log.log_decorator import log_decorator

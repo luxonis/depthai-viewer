@@ -279,9 +279,9 @@ impl Viewport {
     ) {
         crate::profile_function!();
 
-        for space_view_id in &self.get_space_views_to_delete(ctx, spaces_info) {
-            self.remove(space_view_id);
-        }
+        // for space_view_id in &self.get_space_views_to_delete(ctx, spaces_info) {
+        //     self.remove(space_view_id);
+        // }
 
         self.stats_panel_state.update(ctx);
 

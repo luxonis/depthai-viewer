@@ -1,12 +1,12 @@
-from enum import Enum
 from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
+
 from depthai_viewer import bindings
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.log_decorator import log_decorator
-from depthai_viewer.log.tensor import Tensor, _log_tensor, _to_numpy, ImageEncoding
+from depthai_viewer.log.tensor import ImageEncoding, Tensor, _log_tensor, _to_numpy
 
 __all__ = [
     "log_image",
@@ -226,6 +226,12 @@ def log_encoded_image(
         Path to the image in the space hierarchy.
     image:
         A [Tensor][rerun.log.tensor.Tensor] representing the image to log.
+    width:
+        The (RGB) width of the image.
+    height:
+        The (RGB) height of the image.
+    encoding:
+        The encoding of the image.
     ext:
         Optional dictionary of extension components. See [rerun.log_extension_components][]
     timeless:

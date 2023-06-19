@@ -1,29 +1,33 @@
 import itertools
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
+
+import depthai as dai
+import numpy as np
+from depthai_sdk import OakCamera
+from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
+from numpy.typing import NDArray
 
 import depthai_viewer as viewer
-from depthai_sdk import OakCamera
-from depthai_sdk.classes.packets import *
-from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
 from depthai_viewer._backend import classification_labels
 from depthai_viewer._backend.device_configuration import (
     CameraConfiguration,
     CameraFeatures,
+    DeviceProperties,
     ImuKind,
+    PipelineConfiguration,
     calculate_isp_scale,
     compare_dai_camera_configs,
     resolution_to_enum,
 )
-from depthai_viewer._backend.messages import *
+from depthai_viewer._backend.messages import ErrorMessage, InfoMessage, Message
 from depthai_viewer._backend.packet_handler import (
-    PacketHandler,
-    DepthCallbackArgs,
     AiModelCallbackArgs,
+    DepthCallbackArgs,
+    PacketHandler,
     SyncedCallbackArgs,
 )
 from depthai_viewer._backend.store import Store
-from numpy.typing import NDArray
 
 
 class XlinkStatistics:
@@ -361,7 +365,7 @@ class Device:
         if running:
             try:
                 self._oak.poll()
-            except RuntimeError as e:
+            except RuntimeError:
                 return ErrorMessage("Runtime error when polling the device. Check the terminal for more info.")
             self.calibration_data = self._oak.device.readCalibration()
             self.intrinsic_matrix = {}

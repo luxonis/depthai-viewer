@@ -1,9 +1,7 @@
-from queue import Empty, Queue
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
-import depthai_viewer as viewer
 import numpy as np
 from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
@@ -14,14 +12,15 @@ from depthai_sdk.classes.packets import (  # PointcloudPacket,
     TwoStagePacket,
     _Detection,
 )
-from depthai_viewer import bindings
+from numpy.typing import NDArray
+from pydantic import BaseModel
+from turbojpeg import TJFLAG_FASTDCT, TJFLAG_FASTUPSAMPLE, TurboJPEG
+
+import depthai_viewer as viewer
 from depthai_viewer._backend.device_configuration import CameraConfiguration
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-from numpy.typing import NDArray
-from pydantic import BaseModel
-from turbojpeg import TJFLAG_FASTDCT, TJFLAG_FASTUPSAMPLE, TurboJPEG
 
 
 class CallbackArgs(BaseModel):  # type: ignore[misc]

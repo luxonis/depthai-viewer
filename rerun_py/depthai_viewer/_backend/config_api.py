@@ -1,23 +1,25 @@
 import asyncio
+import atexit
 import json
 from enum import Enum
 from multiprocessing import Queue
 from queue import Empty as QueueEmptyException
 from signal import SIGINT, signal
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
 import depthai as dai
 import websockets
 from websockets.server import WebSocketServerProtocol
 
-from depthai_viewer._backend.device_configuration import (
-    DeviceProperties,
-    PipelineConfiguration,
+from depthai_viewer._backend.device_configuration import PipelineConfiguration
+from depthai_viewer._backend.messages import (
+    DevicesMessage,
+    ErrorMessage,
+    InfoMessage,
+    Message,
+    MessageType,
 )
 from depthai_viewer._backend.topic import Topic
-from depthai_viewer._backend.messages import *
-import atexit
-
 
 atexit.register(lambda: print("Exiting..."))
 signal(SIGINT, lambda *args, **kwargs: exit(0))
@@ -54,9 +56,7 @@ def dispatch_action(action: Action, **kwargs) -> Message:  # type: ignore[no-unt
 
 
 async def send_message(websocket: WebSocketServerProtocol, message: Message) -> None:
-    """
-    Sends a message to the frontend without the frontend sending a message first.
-    """
+    """Sends a message to the frontend without the frontend sending a message first."""
     if isinstance(message, InfoMessage) and not message.message:
         return
     await websocket.send(message.json())
@@ -64,10 +64,12 @@ async def send_message(websocket: WebSocketServerProtocol, message: Message) -> 
 
 async def ws_api(websocket: WebSocketServerProtocol) -> None:
     """
-    Websocket API receives messages from the frontend, dispatches them to the backend and sends the result back to the frontend.
+    Receives messages from the frontend, dispatches them to the backend and sends the result back to the frontend.
 
-    Received Messages include the wanted state of the backend, e.g.: A DeviceMessage received from the frontend includes the device the user wants to select.
-    The backend then tries to select the device and sends back a DeviceMessage with the selected device (selected device can be None if the selection failed).
+    Received Messages include the wanted state of the backend,
+    e.g.: A DeviceMessage received from the frontend includes the device the user wants to select.
+    The backend then tries to select the device and sends back a DeviceMessage
+    with the selected device (selected device can be None if the selection failed).
     """
     while True:
         raw_message = None
@@ -112,7 +114,9 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
             elif message_type == MessageType.DEVICES:
                 await send_message(
                     websocket,
-                    DevicesMessage([d.getMxId() for d in dai.Device.getAllAvailableDevices()]),  # type: ignore[call-arg]
+                    DevicesMessage(
+                        [d.getMxId() for d in dai.Device.getAllAvailableDevices()]
+                    ),  # type: ignore[call-arg]
                 )
 
             elif message_type == MessageType.DEVICE:
