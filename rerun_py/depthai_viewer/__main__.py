@@ -52,7 +52,8 @@ def create_venv_and_install_dependencies() -> str:
                     "-m",
                     "pip",
                     "install",
-                    "depthai_sdk==1.11.0",
+                    "depthai-sdk==1.11.0"
+                    # "git+https://github.com/luxonis/depthai@refactor_xout#subdirectory=depthai_sdk",
                 ],
                 check=True,
             )

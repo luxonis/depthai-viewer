@@ -45,7 +45,7 @@ class DepthaiViewerBack:
         print("Resetting...")
         if self._device:
             print("Closing device...")
-            self._device.close_oak_cam()
+            self._device.close_oak()
             self.set_device(None)
         self.store.reset()
         print("Done")
