@@ -80,7 +80,6 @@ time = { workspace = true, default-features = false, features = [
 ] }
 typenum = "1.15"
 uuid = { version = "1.1", features = ["serde", "v4", "js"] }
-openh264 = "0.4.1"
 
 # Optional dependencies:
 ecolor = { workspace = true, optional = true }
