@@ -5,7 +5,7 @@ from depthai_viewer._backend.topic import Topic
 
 
 class Store:
-    _pipeline_config: Optional[PipelineConfiguration] = PipelineConfiguration()
+    _pipeline_config: Optional[PipelineConfiguration] = None
     _subscriptions: List[Topic] = []
 
     def set_pipeline_config(self, pipeline_config: PipelineConfiguration) -> None:

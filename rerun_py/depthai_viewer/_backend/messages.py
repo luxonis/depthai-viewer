@@ -1,6 +1,6 @@
 import json
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 from depthai_viewer._backend.device_configuration import DeviceProperties, PipelineConfiguration
 
@@ -42,7 +42,7 @@ class ErrorMessage(Message):
 
 
 class DevicesMessage(Message):
-    def __init__(self, devices: list[str], message: Optional[str] = None):
+    def __init__(self, devices: List[str], message: Optional[str] = None):
         self.devices = devices
         self.message = message
 
@@ -65,7 +65,7 @@ class DeviceMessage(Message):
 
 
 class SubscriptionsMessage(Message):
-    def __init__(self, subscriptions: list[str], message: Optional[str] = None):
+    def __init__(self, subscriptions: List[str], message: Optional[str] = None):
         self.subscriptions = subscriptions
         self.message = message
 

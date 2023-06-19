@@ -102,6 +102,7 @@ class PacketHandler:
             if args.model_name == "age-gender-recognition-retail-0013":
                 callback = self._on_age_gender_packet
             return lambda packet: callback(packet, args)  # type: ignore[arg-type]
+        raise ValueError(f"Unknown callback args type: {type(args)}")
 
     def _on_camera_frame(self, packet: FramePacket, board_socket: dai.CameraBoardSocket) -> None:
         viewer.log_rigid3(f"{board_socket.name}/transform", child_from_parent=([0, 0, 0], self._ahrs.Q), xyz="RDF")
