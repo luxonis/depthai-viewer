@@ -75,7 +75,7 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
         shape = pa.array(shape_data, type=TensorType.storage_type["shape"].type)
 
         if array.dtype == np.uint8:
-            data_inner = pa.array([memoryview(array).tobytes()], type=pa.binary())
+            data_inner = pa.array([memoryview(array).tobytes()], type=pa.binary())  # type: ignore[arg-type]
         else:
             data_storage = pa.array(array.flatten())
             data_inner = pa.ListArray.from_arrays(pa.array([0, len(data_storage)]), data_storage)

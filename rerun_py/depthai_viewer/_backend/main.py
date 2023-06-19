@@ -84,22 +84,22 @@ class DepthaiViewerBack:
             print("No device selected, can't update pipeline!")
             return ErrorMessage("No device selected, can't update pipeline!")
         print("Updating pipeline...")
-        message = ErrorMessage("Couldn't update pipeline")
+        message: Message = ErrorMessage("Couldn't update pipeline")
         if self.store.pipeline_config is not None:
             message = self._device.update_pipeline(self.store.pipeline_config, runtime_only)
         if isinstance(message, InfoMessage):
             return PipelineMessage(self.store.pipeline_config)
         return message
 
-    def handle_action(self, action: str, **kwargs) -> Message:
+    def handle_action(self, action: Action, **kwargs) -> Message:  # type: ignore[no-untyped-def]
         if action == Action.UPDATE_PIPELINE:
             pipeline_config = kwargs.get("pipeline_config", None)
             if pipeline_config is not None:
                 old_pipeline_config = self.store.pipeline_config
-                self.store.set_pipeline_config(pipeline_config)
+                self.store.set_pipeline_config(pipeline_config)  # type: ignore[arg-type]
                 message = self.on_update_pipeline(kwargs.get("runtime_only"))  # type: ignore[arg-type]
                 if isinstance(message, ErrorMessage):
-                    self.store.set_pipeline_config(old_pipeline_config)
+                    self.store.set_pipeline_config(old_pipeline_config)  # type: ignore[arg-type]
                 return message
             else:
                 return ErrorMessage("Pipeline config not provided")

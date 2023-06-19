@@ -62,7 +62,7 @@ class PacketHandler:
         self.store = store
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
-        self._get_camera_intrinsics = intrinsics_getter
+        self.set_camera_intrinsics_getter(intrinsics_getter)
 
     def reset(self) -> None:
         self._ahrs = Mahony(frequency=100)
@@ -71,7 +71,7 @@ class PacketHandler:
     def set_camera_intrinsics_getter(
         self, camera_intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
     ) -> None:
-        self._get_camera_intrinsics = camera_intrinsics_getter
+        self._get_camera_intrinsics = camera_intrinsics_getter  # type: ignore[assignment, misc]
 
     def build_sync_callback(self, args: SyncedCallbackArgs) -> Callable[[Any], None]:
         return lambda packets: self._on_synced_packets(args, packets)
@@ -86,6 +86,8 @@ class PacketHandler:
                     sock = getattr(sock, split)
                 self._on_camera_frame(packet, sock)
             elif type(packet) is DepthPacket:
+                if args.depth_args is None:
+                    continue
                 self._on_stereo_frame(packet, args.depth_args)
 
     def build_callback(
@@ -106,7 +108,9 @@ class PacketHandler:
         h, w = packet.msg.getHeight(), packet.msg.getWidth()
         child_from_parent: NDArray[np.float32]
         try:
-            child_from_parent = self._get_camera_intrinsics(board_socket, w, h)
+            child_from_parent = self._get_camera_intrinsics(  # type: ignore[call-arg, misc, arg-type]
+                board_socket, w, h  # type: ignore[call-arg, misc, arg-type]
+            )
         except Exception:
             f_len = (w * h) ** 0.5
             child_from_parent = np.array([[f_len, 0, w / 2], [0, f_len, h / 2], [0, 0, 1]])

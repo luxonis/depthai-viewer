@@ -247,8 +247,6 @@ class Device:
         synced_outputs = []
         synced_callback_args = SyncedCallbackArgs()
 
-        has_depth = config.depth is not None
-
         is_poe = self._oak.device.getDeviceInfo().protocol == dai.XLinkProtocol.X_LINK_TCP_IP
         print("Usb speed: ", self._oak.device.getUsbSpeed())
         is_usb2 = self._oak.device.getUsbSpeed() == dai.UsbSpeed.HIGH
@@ -267,7 +265,7 @@ class Device:
                 name=cam.name.capitalize(),
             )
             if cam.stream_enabled:
-                if has_depth and (
+                if config.depth and (
                     cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
                 ):
                     synced_outputs.append(sdk_cam.out.main)
@@ -278,7 +276,7 @@ class Device:
                     )
             self._cameras.append(sdk_cam)
 
-        if has_depth:
+        if config.depth:
             print("Creating depth")
             stereo_pair = config.depth.stereo_pair
             left_cam = self._get_component_by_socket(stereo_pair[0])
@@ -369,7 +367,7 @@ class Device:
                 return ErrorMessage("Runtime error when polling the device. Check the terminal for more info.")
             self.calibration_data = self._oak.device.readCalibration()
             self.intrinsic_matrix = {}
-        return InfoMessage("Pipeline started" if running else ErrorMessage("Couldn't start pipeline"))
+        return InfoMessage("Pipeline started") if running else ErrorMessage("Couldn't start pipeline")
 
     def update(self) -> None:
         if self._oak is None:

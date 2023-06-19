@@ -85,7 +85,7 @@ def _log_tensor(
     meaning: bindings.TensorDataMeaning = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
-    encoding: ImageEncoding = None,
+    encoding: Optional[ImageEncoding] = None,
 ) -> None:
     """Log a general tensor, perhaps with named dimensions."""
 

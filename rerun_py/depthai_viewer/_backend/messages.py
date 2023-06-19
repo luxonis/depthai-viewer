@@ -25,7 +25,7 @@ class ErrorAction(Enum):
 class Message:
     message: Optional[str] = None
 
-    def __init__(self):
+    def __init__(self) -> None:
         raise NotImplementedError
 
     def json(self) -> str:

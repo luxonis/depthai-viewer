@@ -78,8 +78,7 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
         except asyncio.TimeoutError:
             pass
         except websockets.exceptions.ConnectionClosed:
-            message = dispatch_action(Action.RESET)  # type: ignore[assignment]
-            if isinstance(message, ErrorMessage):
+            if isinstance(dispatch_action(Action.RESET), ErrorMessage):
                 raise Exception("Couldn't reset backend after websocket disconnect!")
             return
 

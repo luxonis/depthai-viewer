@@ -6,14 +6,29 @@ from typing import Optional
 import depthai_viewer_bindings as bindings  # type: ignore[attr-defined]
 
 from depthai_viewer import _backend
+from depthai_viewer.components.tensor import ImageEncoding
 from depthai_viewer.log import log_cleared
-from depthai_viewer.log.annotation import AnnotationInfo, ClassDescription, log_annotation_context
+from depthai_viewer.log.annotation import (
+    AnnotationInfo,
+    ClassDescription,
+    log_annotation_context,
+)
 from depthai_viewer.log.arrow import log_arrow
 from depthai_viewer.log.bounding_box import log_obb
 from depthai_viewer.log.camera import log_pinhole
 from depthai_viewer.log.extension_components import log_extension_components
-from depthai_viewer.log.file import ImageFormat, MeshFormat, log_image_file, log_mesh_file
-from depthai_viewer.log.image import log_depth_image, log_encoded_image, log_image, log_segmentation_image
+from depthai_viewer.log.file import (
+    ImageFormat,
+    MeshFormat,
+    log_image_file,
+    log_mesh_file,
+)
+from depthai_viewer.log.image import (
+    log_depth_image,
+    log_encoded_image,
+    log_image,
+    log_segmentation_image,
+)
 from depthai_viewer.log.imu import log_imu
 from depthai_viewer.log.lines import log_line_segments, log_line_strip, log_path
 from depthai_viewer.log.mesh import log_mesh, log_meshes
@@ -21,9 +36,13 @@ from depthai_viewer.log.pipeline_graph import log_pipeline_graph
 from depthai_viewer.log.points import log_point, log_points
 from depthai_viewer.log.rects import RectFormat, log_rect, log_rects
 from depthai_viewer.log.scalar import log_scalar
-from depthai_viewer.log.tensor import ImageEncoding, log_tensor
+from depthai_viewer.log.tensor import log_tensor
 from depthai_viewer.log.text import LoggingHandler, LogLevel, log_text_entry
-from depthai_viewer.log.transform import log_rigid3, log_unknown_transform, log_view_coordinates
+from depthai_viewer.log.transform import (
+    log_rigid3,
+    log_unknown_transform,
+    log_view_coordinates,
+)
 from depthai_viewer.log.xlink_stats import log_xlink_stats
 from depthai_viewer.recording import MemoryRecording
 from depthai_viewer.script_helpers import script_add_args, script_setup, script_teardown

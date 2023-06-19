@@ -19,7 +19,7 @@ class Store:
         self._subscriptions = []
 
     @property
-    def pipeline_config(self) -> PipelineConfiguration:
+    def pipeline_config(self) -> Optional[PipelineConfiguration]:
         return self._pipeline_config
 
     @property
