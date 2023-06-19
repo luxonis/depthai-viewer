@@ -1,6 +1,6 @@
 import json
 from enum import Enum
-from typing import Optional, List
+from typing import List, Optional
 
 from depthai_viewer._backend.device_configuration import DeviceProperties, PipelineConfiguration
 
