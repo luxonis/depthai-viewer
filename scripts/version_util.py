@@ -22,7 +22,7 @@ import semver
 
 # A regex to match the version number in Cargo.toml as SemVer, e.g., 1.2.3-alpha.0
 CARGO_VERSION_REGEX: Final = r"^version\s*=\s*\"(.+)\"$"
-VERSION_TAG_REGEX: Final = r"^v(?P<version>([0-9]+)\.([0-9]+)\.([0-9]+))$"
+VERSION_TAG_REGEX: Final = r"^v(?P<version>([0-9]+)\.([0-9]+)\.([0-9]+)(?:-(alpha|beta)(?:\.([0-9]+))?)?)$"
 
 
 def get_cargo_version(cargo_toml: str) -> semver.VersionInfo:
