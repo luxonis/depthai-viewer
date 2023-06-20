@@ -290,7 +290,6 @@ impl Viewport {
         for space_view in self.space_views.values_mut() {
             space_view.on_frame_start(ctx, spaces_info);
         }
-
         for space_view_candidate in default_created_space_views(ctx, spaces_info) {
             if !self
                 .has_been_user_edited
