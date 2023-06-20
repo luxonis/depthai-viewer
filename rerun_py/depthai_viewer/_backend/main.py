@@ -132,7 +132,13 @@ class DepthaiViewerBack:
                 pass
 
             if self._device:
-                self._device.update()
+                try:
+                    self._device.update()
+                except Exception as e:
+                    print("Error while updating device:", e)
+                    self.send_message_queue.put(ErrorMessage("Depthai error: " + str(e)))
+                    self.on_reset()
+                    continue
                 if self._device.is_closed():
                     self.on_reset()
                     self.send_message_queue.put(ErrorMessage("Device disconnected"))

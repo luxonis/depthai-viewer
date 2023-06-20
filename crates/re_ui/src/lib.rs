@@ -152,6 +152,7 @@ impl ReUi {
         label: &str,
         selected_text: String,
         left_to_right: bool,
+        wrap: bool,
         menu_contents: impl FnOnce(&mut egui::Ui) -> R,
     ) {
         let align = egui::Align::Center;
@@ -165,17 +166,29 @@ impl ReUi {
             if left_to_right {
                 ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
             }
-            ui.add_sized(
-                [Self::box_width(), Self::box_height() + 1.0],
-                |ui: &mut egui::Ui| {
+            if wrap {
+                ui.add_sized(
+                    [Self::box_width(), Self::box_height() + 1.0],
+                    |ui: &mut egui::Ui| {
+                        egui::ComboBox::from_id_source(label)
+                            .selected_text(selected_text)
+                            .width(Self::box_width())
+                            .wrap(true)
+                            .show_ui(ui, menu_contents)
+                            .response
+                    },
+                );
+            } else {
+                ui.add(|ui: &mut egui::Ui| {
                     egui::ComboBox::from_id_source(label)
                         .selected_text(selected_text)
                         .width(Self::box_width())
                         .wrap(true)
                         .show_ui(ui, menu_contents)
                         .response
-                },
-            );
+                });
+            }
+
             if !left_to_right {
                 ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
             }

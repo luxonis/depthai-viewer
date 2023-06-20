@@ -113,9 +113,7 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
             elif message_type == MessageType.DEVICES:
                 await send_message(
                     websocket,
-                    DevicesMessage(
-                        [d.getMxId() for d in dai.Device.getAllAvailableDevices()]
-                    ),  # type: ignore[call-arg]
+                    DevicesMessage(dai.Device.getAllAvailableDevices()),  # type: ignore[call-arg]
                 )
 
             elif message_type == MessageType.DEVICE:

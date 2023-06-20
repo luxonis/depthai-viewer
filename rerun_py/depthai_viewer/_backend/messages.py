@@ -3,6 +3,7 @@ from enum import Enum
 from typing import List, Optional
 
 from depthai_viewer._backend.device_configuration import DeviceProperties, PipelineConfiguration
+import depthai as dai
 
 
 class MessageType:
@@ -42,8 +43,15 @@ class ErrorMessage(Message):
 
 
 class DevicesMessage(Message):
-    def __init__(self, devices: List[str], message: Optional[str] = None):
-        self.devices = devices
+    def __init__(self, devices: List[dai.DeviceInfo], message: Optional[str] = None):
+        self.devices = [
+            {
+                "mxid": d.getMxId(),
+                "connection": "PoE" if d.protocol == dai.XLinkProtocol.X_LINK_TCP_IP else "Usb",
+                "name": d.name,
+            }
+            for d in devices
+        ]
         self.message = message
 
     def json(self) -> str:

@@ -4,22 +4,28 @@ from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
+import depthai_viewer as viewer
 import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
-from numpy.typing import NDArray
-
-import depthai_viewer as viewer
+from depthai_sdk.components.camera_helper import (
+    colorResolutions,
+    getClosestIspScale,
+    monoResolutions,
+)
 from depthai_viewer._backend import classification_labels
 from depthai_viewer._backend.device_configuration import (
     CameraConfiguration,
     CameraFeatures,
+    DeviceInfo,
     DeviceProperties,
     ImuKind,
     PipelineConfiguration,
+    XLinkConnection,
     calculate_isp_scale,
     compare_dai_camera_configs,
-    resolution_to_enum,
+    get_size_from_resolution,
+    size_to_resolution,
 )
 from depthai_viewer._backend.messages import ErrorMessage, InfoMessage, Message
 from depthai_viewer._backend.packet_handler import (
@@ -29,6 +35,7 @@ from depthai_viewer._backend.packet_handler import (
     SyncedCallbackArgs,
 )
 from depthai_viewer._backend.store import Store
+from numpy.typing import NDArray
 
 
 class XlinkStatistics:
@@ -151,7 +158,15 @@ class Device:
         connected_cam_features = self._oak.device.getConnectedCameraFeatures()
         imu = self._oak.device.getConnectedIMU()
         imu = ImuKind.NINE_AXIS if "BNO" in imu else None if imu == "NONE" else ImuKind.SIX_AXIS
-        device_properties = DeviceProperties(id=self.id, imu=imu)
+        device_info = self._oak.device.getDeviceInfo()
+        device_info = DeviceInfo(
+            name=device_info.name,
+            connection=XLinkConnection.POE
+            if device_info.protocol == dai.XLinkProtocol.X_LINK_TCP_IP
+            else XLinkConnection.USB,
+            mxid=device_info.mxid,
+        )
+        device_properties = DeviceProperties(id=self.id, imu=imu, info=device_info)
         try:
             calib = self._oak.device.readCalibration2()
             left_cam = calib.getStereoLeftCameraId()
@@ -159,17 +174,28 @@ class Device:
             device_properties.default_stereo_pair = (left_cam, right_cam)
         except RuntimeError:
             pass
+
+        ordered_resolutions = list(sorted(size_to_resolution.keys(), key=lambda res: res[0] * res[1]))
         for cam in connected_cam_features:
             prioritized_type = cam.supportedTypes[0]
+            biggest_width, biggest_height = [
+                (conf.width, conf.height) for conf in cam.configs[::-1] if conf.type == prioritized_type
+            ][
+                0
+            ]  # Only support the prioritized type for now
+
+            all_supported_resolutions = [
+                size_to_resolution[(w, h)]
+                for w, h in ordered_resolutions
+                if (w * h) <= (biggest_height * biggest_width)
+            ]
+
+            # Fill in lower resolutions that can be achieved with ISP scaling
             device_properties.cameras.append(
                 CameraFeatures(
                     board_socket=cam.socket,
                     max_fps=60,
-                    resolutions=[
-                        resolution_to_enum[(conf.width, conf.height)]
-                        for conf in cam.configs
-                        if conf.type == prioritized_type  # Only support the prioritized type for now
-                    ],
+                    resolutions=all_supported_resolutions,
                     supported_types=cam.supportedTypes,
                     stereo_pairs=self._get_possible_stereo_pairs_for_cam(cam, connected_cam_features),
                     name=cam.name.capitalize(),
@@ -266,15 +292,48 @@ class Device:
         elif is_usb2:
             print("Device is connected in USB2 mode, camera streams will be JPEG encoded...")
         self.use_encoding = is_poe or is_usb2
+
+        connected_camera_features = self._oak.device.getConnectedCameraFeatures()
         for cam in config.cameras:
             print("Creating camera: ", cam)
+
+            camera_features = next(filter(lambda feat: feat.socket == cam.board_socket, connected_camera_features))
+
+            # When the resolution is too small, the ISP needs to scale it down
+            res_x, res_y = get_size_from_resolution(cam.resolution)
+
+            does_sensor_support_resolution = any(
+                [
+                    config.width == res_x and config.height == res_y
+                    for config in camera_features.configs
+                    if config.type == camera_features.supportedTypes[0]
+                ]
+            )
+
+            # In case of ISP scaling, don't change the sensor resolution in the pipeline config
+            # to keep it logical for the user in the UI
+            sensor_resolution = cam.resolution
+            if not does_sensor_support_resolution:
+                smallest_supported_resolution = [
+                    config for config in camera_features.configs if config.type == camera_features.supportedTypes[0]
+                ][0]
+                sensor_resolution = size_to_resolution[
+                    smallest_supported_resolution.width, smallest_supported_resolution.height
+                ]
+
             sdk_cam = self._oak.create_camera(
                 cam.board_socket,
-                cam.resolution.as_sdk_resolution(),
+                sensor_resolution.as_sdk_resolution(),
                 cam.fps,
                 encode=self.use_encoding,
                 name=cam.name.capitalize(),
             )
+            if not does_sensor_support_resolution:
+                sdk_cam.config_color_camera(
+                    isp_scale=getClosestIspScale(
+                        (smallest_supported_resolution.width, smallest_supported_resolution.height), res_x
+                    )
+                )
 
             is_used_by_depth = config.depth is not None and (
                 cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
@@ -283,13 +342,7 @@ class Device:
             cam.stream_enabled |= is_used_by_depth or is_used_by_ai
 
             if cam.stream_enabled:
-                if is_used_by_depth:
-                    synced_outputs.append(sdk_cam.out.main)
-                else:
-                    self._oak.callback(
-                        sdk_cam,
-                        self._packet_handler.build_callback(cam.board_socket),
-                    )
+                synced_outputs.append(sdk_cam.out.main)
             self._cameras.append(sdk_cam)
 
         if config.depth:

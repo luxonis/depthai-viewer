@@ -114,7 +114,9 @@ class PacketHandler:
         raise ValueError(f"Unknown callback args type: {type(args)}")
 
     def _on_camera_frame(self, packet: FramePacket, board_socket: dai.CameraBoardSocket) -> None:
-        viewer.log_rigid3(f"{board_socket.name}/transform", child_from_parent=([0, 0, 0], self._ahrs.Q), xyz="RDF")
+        viewer.log_rigid3(
+            f"{board_socket.name}/transform", child_from_parent=([0, 0, 0], [1, 0, 0, 0]), xyz="RDF"
+        )  # TODO(filip): Enable the user to lock the camera rotation in the UI
 
         img_frame = packet.frame if packet.msg.getType() == dai.RawImgFrame.Type.RAW8 else packet.msg.getData()
         h, w = packet.msg.getHeight(), packet.msg.getWidth()
@@ -192,7 +194,7 @@ class PacketHandler:
         colors = []
         labels = []
         for detection in packet.detections:
-            rects.append(self._rect_from_detection(detection))
+            rects.append(self._rect_from_detection(detection, packet.frame.shape[0], packet.frame.shape[1]))
             colors.append([0, 255, 0])
             label: str = detection.label
             # Open model zoo models output label index
@@ -214,16 +216,18 @@ class PacketHandler:
             cam = cam_kind_from_sensor_kind(args.camera.kind)
             viewer.log_rect(
                 f"{args.camera.board_socket.name}/transform/{cam}/Detection",
-                self._rect_from_detection(det),
+                self._rect_from_detection(det, packet.frame.shape[0], packet.frame.shape[1]),
                 rect_format=RectFormat.XYXY,
                 color=color,
                 label=label,
             )
 
-    def _rect_from_detection(self, detection: _Detection) -> List[int]:
+    def _rect_from_detection(self, detection: _Detection, max_height: int, max_width: int) -> List[int]:
         return [
-            *detection.bottom_right,
-            *detection.top_left,
+            max(min(detection.bottom_right[0], max_width), 0),
+            max(min(detection.bottom_right[1], max_height), 0),
+            max(min(detection.top_left[0], max_width), 0),
+            max(min(detection.top_left[1], max_height), 0),
         ]
 
 

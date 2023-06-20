@@ -82,7 +82,7 @@ type RuntimeOnly = bool;
 #[derive(Serialize, Deserialize, fmt::Debug)]
 pub enum WsMessageData {
     Subscriptions(Vec<depthai::ChannelId>),
-    Devices(Vec<depthai::DeviceId>),
+    Devices(Vec<depthai::DeviceInfo>),
     DeviceProperties(depthai::DeviceProperties),
     Pipeline((depthai::DeviceConfig, RuntimeOnly)),
     Error(depthai::Error),

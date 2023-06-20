@@ -85,7 +85,7 @@ class DepthConfiguration(BaseModel):  # type: ignore[misc]
 
 
 class AiModelConfiguration(BaseModel):  # type: ignore[misc]
-    display_name: str = "Yolo V8"
+    display_name: str = "MobileNet SSD"
     path: str = "mobilenet-ssd"
     camera: dai.CameraBoardSocket
 
@@ -115,16 +115,15 @@ class CameraSensorResolution(Enum):
     THE_480_P: str = "THE_480_P"
     THE_720_P: str = "THE_720_P"
     THE_800_P: str = "THE_800_P"
+    THE_5_MP: str = "THE_5_MP"
+    THE_1440X1080: str = "THE_1440X1080"
     THE_1080_P: str = "THE_1080_P"
     THE_1200_P: str = "THE_1200_P"
+    THE_4_K: str = "THE_4_K"
+    THE_4000X3000: str = "THE_4000X3000"
     THE_12_MP: str = "THE_12_MP"
     THE_13_MP: str = "THE_13_MP"
-    THE_1440X1080: str = "THE_1440X1080"
-    THE_4000X3000: str = "THE_4000X3000"
-    THE_48_MP: str = "THE_48_MP"
-    THE_4_K: str = "THE_4_K"
     THE_5312X6000: str = "THE_5312X6000"
-    THE_5_MP: str = "THE_5_MP"
 
     def dict(self, *args, **kwargs) -> str:  # type: ignore[no-untyped-def]
         return self.value
@@ -224,6 +223,17 @@ class PipelineConfiguration(BaseModel):  # type: ignore[misc]
     imu: ImuConfiguration = ImuConfiguration()
 
 
+class XLinkConnection(Enum):
+    USB = "Usb"
+    POE = "PoE"
+
+
+class DeviceInfo(BaseModel):
+    name: str = ""
+    connection: XLinkConnection = XLinkConnection.USB
+    mxid: str = ""
+
+
 class DeviceProperties(BaseModel):  # type: ignore[misc]
     id: str
     cameras: List[CameraFeatures] = []
@@ -232,6 +242,7 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
         Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
     ] = []  # Which cameras can be paired for stereo
     default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
+    info: DeviceInfo = DeviceInfo()
 
     class Config:
         arbitrary_types_allowed = True
@@ -251,20 +262,36 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
             "cameras": [cam.dict() for cam in self.cameras],
             "imu": self.imu,
             "stereo_pairs": [(left.name, right.name) for left, right in self.stereo_pairs],
+            "info": {
+                "name": self.info.name,
+                "connection": self.info.connection.value,
+                "mxid": self.info.mxid,
+            },
         }
 
 
-resolution_to_enum = {
+size_to_resolution = {
     (640, 400): CameraSensorResolution.THE_400_P,
+    (640, 480): CameraSensorResolution.THE_480_P,  # OV7251
     (1280, 720): CameraSensorResolution.THE_720_P,
-    (1280, 800): CameraSensorResolution.THE_800_P,
-    (1920, 1080): CameraSensorResolution.THE_1080_P,
-    (1920, 1200): CameraSensorResolution.THE_1200_P,
-    (3840, 2160): CameraSensorResolution.THE_4_K,
-    (4056, 3040): CameraSensorResolution.THE_12_MP,
+    (1280, 800): CameraSensorResolution.THE_800_P,  # OV9782
+    (2592, 1944): CameraSensorResolution.THE_5_MP,  # OV5645
     (1440, 1080): CameraSensorResolution.THE_1440X1080,
-    (5312, 6000): CameraSensorResolution.THE_5312X6000,
+    (1920, 1080): CameraSensorResolution.THE_1080_P,
+    (1920, 1200): CameraSensorResolution.THE_1200_P,  # AR0234
+    (3840, 2160): CameraSensorResolution.THE_4_K,
+    (4000, 3000): CameraSensorResolution.THE_4000X3000,  # IMX582 with binning enabled
+    (4056, 3040): CameraSensorResolution.THE_12_MP,  # IMX378, IMX477, IMX577
+    (4208, 3120): CameraSensorResolution.THE_13_MP,  # AR214
+    (5312, 6000): CameraSensorResolution.THE_5312X6000,  # IMX582 cropped
 }
+
+
+def get_size_from_resolution(resolution: CameraSensorResolution) -> Tuple[int, int]:
+    for size, res in size_to_resolution.items():
+        if res == resolution:
+            return size
+    raise ValueError(f"Unknown resolution {resolution}")
 
 
 def compare_dai_camera_configs(cam1: dai.CameraSensorConfig, cam2: dai.CameraSensorConfig) -> bool:
