@@ -336,7 +336,7 @@ impl From<&DeviceProperties> for DeviceConfig {
             .iter()
             .map(|cam| CameraConfig {
                 name: cam.name.clone(),
-                fps: 30, // TODO(filip): Do performance improvements to allow higher fps
+                fps: 30,
                 resolution: *cam.resolutions
                     .iter()
                     .filter(|res| {
@@ -479,7 +479,7 @@ pub struct AiModel {
 
 impl Default for AiModel {
     fn default() -> Self {
-        default_neural_networks()[1].clone()
+        default_neural_networks()[2].clone()
     }
 }
 

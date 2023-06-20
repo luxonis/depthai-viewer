@@ -5,14 +5,14 @@ use itertools::Itertools;
 use nohash_hasher::IntSet;
 use re_arrow_store::{DataStore, LatestAtQuery, Timeline};
 use re_data_store::{log_db::EntityDb, query_latest_single, ComponentName, EntityPath, EntityTree};
-use re_log_types::{component_types::Tensor, Component, EntityPathPart};
+use re_log_types::{component_types::{Tensor, TensorDataMeaning}, Component, EntityPathPart};
 
 use crate::{
     misc::{space_info::SpaceInfoCollection, ViewerContext},
     ui::{view_category::categorize_entity_path, ViewCategory},
 };
 
-use super::{view_category::ViewCategorySet, SpaceView};
+use super::{view_category::ViewCategorySet, view_spatial::SpatialNavigationMode, SpaceView};
 
 /// List out all space views we allow the user to create.
 pub fn all_possible_space_views(
@@ -139,7 +139,36 @@ pub fn default_created_space_views(
     spaces_info: &SpaceInfoCollection,
 ) -> Vec<SpaceView> {
     let candidates = all_possible_space_views(ctx, spaces_info);
-    default_created_space_views_from_candidates(ctx, &ctx.log_db.entity_db, candidates)
+    let default_space_views = default_created_space_views_from_candidates(ctx, &ctx.log_db.entity_db, candidates);
+    if !ctx.depthai_state.selected_device.id.is_empty() {
+        return default_depthai_space_views(ctx, default_space_views);
+    }
+    default_space_views
+}
+
+fn default_depthai_space_views(
+    ctx: &ViewerContext<'_>,
+    default_created_views: Vec<SpaceView>,
+) -> Vec<SpaceView> {
+    // Remove 3D views that don't have a Depth tensor in them,
+    default_created_views.iter().filter(|space_view| {
+        if space_view.space_path.len() == 1 { // These are CAM_A, CAM_B, ..., basically the root spaces.
+            // Check if there is a depth tensor in the space view.
+            let query = LatestAtQuery::new(Timeline::log_time(), re_arrow_store::TimeInt::MAX);
+            let entity_db = &ctx.log_db.entity_db;
+            for entity_path in space_view.data_blueprint.entity_paths() {
+                if let Ok(entity_view) = re_query::query_entity_with_primary::<Tensor>(&entity_db.data_store, &query, entity_path, &[]) {
+                    for tensor in entity_view.iter_primary_flattened() {
+                        if tensor.meaning() == TensorDataMeaning::Depth {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false; // No depth tensor was found inside of this 3D view.
+        }
+        true
+    }).cloned().collect::<Vec<_>>()
 }
 
 fn default_created_space_views_from_candidates(
@@ -209,8 +238,8 @@ fn default_created_space_views_from_candidates(
                 ) {
                     for tensor in entity_view.iter_primary_flattened() {
                         if tensor.is_shaped_like_an_image() {
-                            debug_assert!(matches!(tensor.shape.len(), 2 | 3));
-                            let dim = (tensor.shape[0].size, tensor.shape[1].size);
+                            debug_assert!(matches!(tensor.real_shape().len(), 2 | 3));
+                            let dim = (tensor.real_shape().as_slice()[0].size, tensor.real_shape().as_slice()[1].size);
                             images_by_size
                                 .entry(dim)
                                 .or_default()

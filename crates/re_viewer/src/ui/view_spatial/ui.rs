@@ -270,6 +270,11 @@ impl ViewSpatialState {
                                     }
                                 }
                             }
+                            if let Some(what_image) = ent_path.iter().last() {
+                                if what_image == &EntityPathPart::from("Depth") {
+                                    return; // Doesn't make sense to project depth tensor...
+                                }
+                            }
                             let Some(tensor) = query_latest_single::<Tensor>(
                                 &ctx.log_db.entity_db,
                                 ent_path,

@@ -14,7 +14,10 @@ use re_log_types::{
 use crate::{
     depthai::depthai,
     misc::{space_info::SpaceInfoCollection, Item, SpaceViewHighlights, ViewerContext},
-    ui::{space_view_heuristics::default_created_space_views, stats_panel::StatsPanel},
+    ui::{
+        space_view_heuristics::{default_created_space_views},
+        stats_panel::StatsPanel,
+    },
 };
 
 use super::{
@@ -70,10 +73,10 @@ impl Viewport {
         crate::profile_function!();
 
         let mut blueprint = Self::default();
-        for space_view in all_possible_space_views(ctx, spaces_info)
-        {
-            println!("All possible: {:?}", space_view.space_path);
-            blueprint.add_space_view(space_view);
+        for space_view in default_created_space_views(ctx, spaces_info) {
+            if blueprint.should_auto_add_space_view(&space_view) {
+                blueprint.add_space_view(space_view);
+            }
         }
         blueprint
     }
@@ -279,15 +282,18 @@ impl Viewport {
     ) {
         crate::profile_function!();
 
-        // for space_view_id in &self.get_space_views_to_delete(ctx, spaces_info) {
-        //     self.remove(space_view_id);
-        // }
+        if !ctx.depthai_state.selected_device.id.is_empty() {
+            for space_view_id in &self.get_space_views_to_delete(ctx, spaces_info) {
+                self.remove(space_view_id);
+            }
+        }
 
         self.stats_panel_state.update(ctx);
 
         for space_view in self.space_views.values_mut() {
             space_view.on_frame_start(ctx, spaces_info);
         }
+
         for space_view_candidate in default_created_space_views(ctx, spaces_info) {
             if !self
                 .has_been_user_edited
@@ -422,14 +428,17 @@ impl Viewport {
                     if let Some(space_view) = self.space_views.get_mut(&space_view_id) {
                         let mut is3d = false;
                         let mut has_depth = false;
-                        let mut image_to_hide = None;
                         space_view.data_blueprint.visit_group_entities_recursively(
                             space_view.data_blueprint.root_handle(),
                             &mut (|entity_path| {
                                 if is3d && has_depth {
                                     if let Some(last_part) = entity_path.iter().last() {
                                         if last_part == &EntityPathPart::from("Image") {
-                                            image_to_hide = Some(entity_path.clone());
+                                            entities_to_skip.push(entity_path.clone());
+                                        } else if last_part == &EntityPathPart::from("Detection") {
+                                            entities_to_skip.push(entity_path.clone());
+                                        } else if last_part == &EntityPathPart::from("Detections") {
+                                            entities_to_skip.push(entity_path.clone());
                                         }
                                     }
                                 }
@@ -441,19 +450,13 @@ impl Viewport {
                                 }
                             }),
                         );
-                        if let Some(image_to_hide) = image_to_hide {
-                            entities_to_skip.push(image_to_hide.clone());
-                            let mut props = space_view
-                                .data_blueprint
-                                .data_blueprints_individual()
-                                .get(&image_to_hide);
+                        for entity in &entities_to_skip {
+                            let mut props = space_view.data_blueprint.data_blueprints_individual().get(entity);
                             props.visible = false;
-                            space_view
-                                .data_blueprint
-                                .data_blueprints_individual()
-                                .set(image_to_hide.clone(), props);
+                            space_view.data_blueprint.data_blueprints_individual().set(entity.clone(), props);
                         }
                     }
+
                     space_view_options_ui(
                         ctx,
                         ui,

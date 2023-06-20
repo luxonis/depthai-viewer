@@ -1,4 +1,5 @@
 import itertools
+from queue import Queue
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -67,6 +68,9 @@ class Device:
     _stereo: StereoComponent = None
     _nnet: NNComponent = None
     _xlink_statistics: Optional[XlinkStatistics] = None
+    _sys_info_q: Optional[Queue] = None
+
+    _pipeline_start_t: Optional[float] = None
 
     # _profiler = cProfile.Profile()
 
@@ -226,9 +230,14 @@ class Device:
             return None
         return camera[0]
 
-    def update_pipeline(self, config: PipelineConfiguration, runtime_only: bool) -> Message:
+    def update_pipeline(self, runtime_only: bool) -> Message:
         if self._oak is None:
             return ErrorMessage("No device selected, can't update pipeline!")
+
+        config = self.store.pipeline_config
+        if config is None:
+            return ErrorMessage("No pipeline config, can't update pipeline!")
+
         if self._oak.device.isPipelineRunning():
             if runtime_only:
                 if config.depth is not None:
@@ -244,6 +253,9 @@ class Device:
         self._cameras = []
         self._stereo = None
         self._packet_handler.reset()
+        self._sys_info_q = None
+        self._pipeline_start_t = None
+
         synced_outputs = []
         synced_callback_args = SyncedCallbackArgs()
 
@@ -264,10 +276,15 @@ class Device:
                 encode=self.use_encoding,
                 name=cam.name.capitalize(),
             )
+
+            is_used_by_depth = not config.depth is None and (
+                cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
+            )
+            is_used_by_ai = not config.ai_model is None and cam.board_socket == config.ai_model.camera
+            cam.stream_enabled |= is_used_by_depth or is_used_by_ai
+
             if cam.stream_enabled:
-                if config.depth and (
-                    cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
-                ):
+                if is_used_by_depth:
                     synced_outputs.append(sdk_cam.out.main)
                 else:
                     self._oak.callback(
@@ -292,7 +309,6 @@ class Device:
                 right_cam.config_color_camera(isp_scale=calculate_isp_scale(right_cam.node.getResolutionWidth()))
             self._stereo = self._oak.create_stereo(left=left_cam, right=right_cam, name="depth")
 
-            # We used to be able to pass in the board socket to align to, but this was removed in depthai 1.10.0
             align_component = self._get_component_by_socket(config.depth.align)
             if not align_component:
                 return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
@@ -353,6 +369,13 @@ class Device:
             )
         if synced_outputs:
             self._oak.sync(synced_outputs, self._packet_handler.build_sync_callback(synced_callback_args))
+
+        sys_logger_xlink = self._oak.pipeline.createXLinkOut()
+        logger = self._oak.pipeline.createSystemLogger()
+        logger.setRate(0.1)
+        sys_logger_xlink.setStreamName("sys_logger")
+        logger.out.link(sys_logger_xlink.input)
+
         try:
             self._oak.start(blocking=False)
         except RuntimeError as e:
@@ -361,6 +384,9 @@ class Device:
 
         running = self._oak.running()
         if running:
+            self._pipeline_start_t = time.time()
+            self._sys_info_q = self._oak.device.getOutputQueue("sys_logger", 1, False)
+            self.store.set_pipeline_config(config)  # We might have modified the config, so store it
             try:
                 self._oak.poll()
             except RuntimeError:
@@ -378,9 +404,66 @@ class Device:
         if self._xlink_statistics is not None:
             self._xlink_statistics.update()
 
+        if self._sys_info_q is None:
+            return
+        sys_info = self._sys_info_q.tryGet()  # type: ignore[attr-defined]
+        if sys_info is not None and self._pipeline_start_t is not None:
+            print("----------------------------------------")
+            print(f"[{int(time.time() - self._pipeline_start_t)}s] System information")
+            print("----------------------------------------")
+            print_system_information(sys_info)
         # if time.time() - self.start > 10:
         #     print("Dumping profiling data")
         #     self._profiler.dump_stats("profile.prof")
         #     self._profiler.disable()
         #     self._profiler.enable()
         #     self.start = time.time()
+
+
+def print_system_information(info: dai.SystemInformation) -> None:
+    print(
+        "Ddr used / total - %.2f / %.2f MiB"
+        % (
+            info.ddrMemoryUsage.used / (1024.0 * 1024.0),
+            info.ddrMemoryUsage.total / (1024.0 * 1024.0),
+        )
+    )
+    print(
+        "Cmx used / total - %.2f / %.2f MiB"
+        % (
+            info.cmxMemoryUsage.used / (1024.0 * 1024.0),
+            info.cmxMemoryUsage.total / (1024.0 * 1024.0),
+        )
+    )
+    print(
+        "LeonCss heap used / total - %.2f / %.2f MiB"
+        % (
+            info.leonCssMemoryUsage.used / (1024.0 * 1024.0),
+            info.leonCssMemoryUsage.total / (1024.0 * 1024.0),
+        )
+    )
+    print(
+        "LeonMss heap used / total - %.2f / %.2f MiB"
+        % (
+            info.leonMssMemoryUsage.used / (1024.0 * 1024.0),
+            info.leonMssMemoryUsage.total / (1024.0 * 1024.0),
+        )
+    )
+    t = info.chipTemperature
+    print(
+        "Chip temperature - average: %.2f, css: %.2f, mss: %.2f, upa: %.2f, dss: %.2f"
+        % (
+            t.average,
+            t.css,
+            t.mss,
+            t.upa,
+            t.dss,
+        )
+    )
+    print(
+        "Cpu usage - Leon CSS: %.2f %%, Leon MSS: %.2f %%"
+        % (
+            info.leonCssCpuUsage.average * 100,
+            info.leonMssCpuUsage.average * 100,
+        )
+    )

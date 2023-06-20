@@ -106,7 +106,15 @@ class PacketHandler:
 
     def _on_camera_frame(self, packet: FramePacket, board_socket: dai.CameraBoardSocket) -> None:
         viewer.log_rigid3(f"{board_socket.name}/transform", child_from_parent=([0, 0, 0], self._ahrs.Q), xyz="RDF")
+
+        img_frame = packet.frame if packet.msg.getType() == dai.RawImgFrame.Type.RAW8 else packet.msg.getData()
         h, w = packet.msg.getHeight(), packet.msg.getWidth()
+        if packet.msg.getType() == dai.ImgFrame.Type.BITSTREAM:
+            img_frame = cv2.cvtColor(
+                self._jpeg_decoder.decode(img_frame, flags=TJFLAG_FASTUPSAMPLE | TJFLAG_FASTDCT), cv2.COLOR_BGR2RGBA
+            )
+            h, w = img_frame.shape[:2]
+
         child_from_parent: NDArray[np.float32]
         try:
             child_from_parent = self._get_camera_intrinsics(  # type: ignore[call-arg, misc, arg-type]
@@ -122,12 +130,7 @@ class PacketHandler:
             width=w,
             height=h,
         )
-        img_frame = packet.frame if packet.msg.getType() == dai.RawImgFrame.Type.RAW8 else packet.msg.getData()
         entity_path = f"{board_socket.name}/transform/{cam}/Image"
-        if packet.msg.getType() == dai.ImgFrame.Type.BITSTREAM:
-            img_frame = cv2.cvtColor(
-                self._jpeg_decoder.decode(img_frame, flags=TJFLAG_FASTUPSAMPLE | TJFLAG_FASTDCT), cv2.COLOR_BGR2RGB
-            )
 
         if packet.msg.getType() == dai.RawImgFrame.Type.NV12:
             viewer.log_encoded_image(

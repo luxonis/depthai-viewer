@@ -44,6 +44,8 @@ pub struct SpaceMakeInfo {
     pub kind: SpaceViewKind,
 }
 
+
+#[derive(Clone)]
 pub(crate) enum LayoutSplit {
     LeftRight(Box<LayoutSplit>, f32, Box<LayoutSplit>),
     TopBottom(Box<LayoutSplit>, f32, Box<LayoutSplit>),
@@ -338,21 +340,21 @@ fn create_inner_viewport_layout(
     let mono_split = if monos_2d.is_empty() && monos_3d.is_empty() {
         LayoutSplit::Leaf(vec![])
     } else if monos_2d.is_empty() && !monos_3d.is_empty() {
-        mono_split_3d
+        mono_split_3d.clone()
     } else if !monos_2d.is_empty() && monos_3d.is_empty() {
         mono_split_2d
     } else {
-        LayoutSplit::TopBottom(mono_split_3d.into(), 0.5, mono_split_2d.into())
+        LayoutSplit::TopBottom(mono_split_3d.clone().into(), 0.5, mono_split_2d.into())
     };
 
     let color_split = if colors_2d.is_empty() && colors_3d.is_empty() {
         LayoutSplit::Leaf(vec![])
     } else if colors_2d.is_empty() && !colors_3d.is_empty() {
-        color_split_3d
+        color_split_3d.clone()
     } else if !colors_2d.is_empty() && colors_3d.is_empty() {
-        color_split_2d
+        color_split_2d.clone()
     } else {
-        LayoutSplit::TopBottom(color_split_3d.into(), 0.5, color_split_2d.into())
+        LayoutSplit::TopBottom(color_split_3d.clone().into(), 0.5, color_split_2d.clone().into())
     };
 
     if color_split.is_empty() && mono_split.is_empty() {
@@ -362,7 +364,15 @@ fn create_inner_viewport_layout(
     } else if !color_split.is_empty() && mono_split.is_empty() {
         color_split
     } else {
-        LayoutSplit::LeftRight(color_split.into(), 0.5, mono_split.into())
+        // If there is only one 3d view, we want to make it as big as possible
+        let ratio = if color_split_3d.is_empty() && !mono_split_3d.is_empty() {
+            0.2
+        } else if !color_split_3d.is_empty() && mono_split_3d.is_empty() {
+            0.8
+        } else {
+            0.5
+        };
+        LayoutSplit::LeftRight(color_split.into(), ratio, mono_split.into())
     }
 }
 
@@ -382,11 +392,6 @@ pub(crate) fn default_tree_from_space_views(
     space_views: &HashMap<SpaceViewId, SpaceView>,
     is_maximized: bool,
 ) -> egui_dock::Tree<Tab> {
-    // TODO(filip): Implement sensible auto layout when space views changes.
-    // Something like:
-    // - Get the tabs that need to be added or removed
-    // - Removal is easy, just remove the tab
-    // - Addition should try to layout like currently 3d, 2d views. New views just appear in the top left corner i guess.
     let mut tree = egui_dock::Tree::new(Vec::new());
 
     let spaces = space_views

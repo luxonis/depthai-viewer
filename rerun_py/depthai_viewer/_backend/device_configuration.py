@@ -86,7 +86,7 @@ class DepthConfiguration(BaseModel):  # type: ignore[misc]
 
 class AiModelConfiguration(BaseModel):  # type: ignore[misc]
     display_name: str = "Yolo V8"
-    path: str = "yolov8n_coco_640x352"
+    path: str = "mobilenet-ssd"
     camera: dai.CameraBoardSocket
 
     class Config:
