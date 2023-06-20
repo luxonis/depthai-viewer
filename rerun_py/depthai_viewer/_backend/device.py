@@ -1,6 +1,6 @@
 import itertools
-from queue import Queue
 import time
+from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
@@ -68,8 +68,7 @@ class Device:
     _stereo: StereoComponent = None
     _nnet: NNComponent = None
     _xlink_statistics: Optional[XlinkStatistics] = None
-    _sys_info_q: Optional[Queue] = None
-
+    _sys_info_q: Optional[Queue] = None  # type: ignore[type-arg]
     _pipeline_start_t: Optional[float] = None
 
     # _profiler = cProfile.Profile()
@@ -277,10 +276,10 @@ class Device:
                 name=cam.name.capitalize(),
             )
 
-            is_used_by_depth = not config.depth is None and (
+            is_used_by_depth = config.depth is not None and (
                 cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
             )
-            is_used_by_ai = not config.ai_model is None and cam.board_socket == config.ai_model.camera
+            is_used_by_ai = config.ai_model is not None and cam.board_socket == config.ai_model.camera
             cam.stream_enabled |= is_used_by_depth or is_used_by_ai
 
             if cam.stream_enabled:
@@ -361,12 +360,11 @@ class Device:
             if not camera:
                 return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
 
-            self._oak.callback(
-                self._nnet,
-                self._packet_handler.build_callback(
-                    AiModelCallbackArgs(model_name=config.ai_model.path, camera=camera, labels=labels)
-                ),
+            synced_callback_args.ai_args = AiModelCallbackArgs(
+                model_name=config.ai_model.path, camera=camera, labels=labels
             )
+            synced_outputs.append(self._nnet.out.main)
+
         if synced_outputs:
             self._oak.sync(synced_outputs, self._packet_handler.build_sync_callback(synced_callback_args))
 

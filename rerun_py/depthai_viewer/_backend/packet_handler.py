@@ -46,6 +46,7 @@ class AiModelCallbackArgs(CallbackArgs):  # type: ignore[misc]
 
 class SyncedCallbackArgs(BaseModel):  # type: ignore[misc]
     depth_args: Optional[DepthCallbackArgs] = None
+    ai_args: Optional[AiModelCallbackArgs] = None
 
 
 class PacketHandler:
@@ -89,6 +90,14 @@ class PacketHandler:
                 if args.depth_args is None:
                     continue
                 self._on_stereo_frame(packet, args.depth_args)
+            elif type(packet) is DetectionPacket:
+                if args.ai_args is None:
+                    continue
+                self._on_detections(packet, args.ai_args)
+            elif type(packet) is TwoStagePacket:
+                if args.ai_args is None:
+                    continue
+                self._on_age_gender_packet(packet, args.ai_args)
 
     def build_callback(
         self, args: Union[dai.CameraBoardSocket, DepthCallbackArgs, AiModelCallbackArgs]

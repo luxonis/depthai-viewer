@@ -432,8 +432,7 @@ fn colormap_props_ui(
                 ) else {
                     return;
                 };
-
-                if tensor.is_shaped_like_an_image()
+                if tensor.meaning() != TensorDataMeaning::Depth &&  tensor.is_shaped_like_an_image()
                     && ui
                         .selectable_label(current.as_ref() == Some(ent_path), ent_path.to_string())
                         .clicked()

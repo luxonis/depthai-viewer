@@ -14,10 +14,7 @@ use re_log_types::{
 use crate::{
     depthai::depthai,
     misc::{space_info::SpaceInfoCollection, Item, SpaceViewHighlights, ViewerContext},
-    ui::{
-        space_view_heuristics::{default_created_space_views},
-        stats_panel::StatsPanel,
-    },
+    ui::{space_view_heuristics::default_created_space_views, stats_panel::StatsPanel},
 };
 
 use super::{
@@ -451,9 +448,15 @@ impl Viewport {
                             }),
                         );
                         for entity in &entities_to_skip {
-                            let mut props = space_view.data_blueprint.data_blueprints_individual().get(entity);
+                            let mut props = space_view
+                                .data_blueprint
+                                .data_blueprints_individual()
+                                .get(entity);
                             props.visible = false;
-                            space_view.data_blueprint.data_blueprints_individual().set(entity.clone(), props);
+                            space_view
+                                .data_blueprint
+                                .data_blueprints_individual()
+                                .set(entity.clone(), props);
                         }
                     }
 
@@ -753,13 +756,13 @@ fn space_view_options_ui(
                     ctx.set_single_selection(Item::SpaceView(space_view_id));
                 }
             }
-            let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
-                return;
-            };
 
             let icon_image = ctx.re_ui.icon_image(&re_ui::icons::GEAR);
             let texture_id = icon_image.texture_id(ui.ctx());
             ui.menu_image_button(texture_id, re_ui::ReUi::small_icon_size(), |ui| {
+                let Some(space_view) = viewport.space_views.get_mut(&space_view_id) else {
+                    return;
+                };
                 ui.style_mut().wrap = Some(false);
                 let entities = space_view.data_blueprint.entity_paths().clone();
                 let entities = entities.iter().filter(|ep| {
@@ -805,8 +808,41 @@ fn space_view_options_ui(
                 }
             });
 
+            let Some(space_view) = viewport.space_views.get(&space_view_id).cloned() else {
+                return;
+            };
+
+
+            if ctx
+                .re_ui
+                .small_icon_button(ui, &re_ui::icons::ADD)
+                .clicked()
+            {
+                // Create a new space view that is identical to this one
+                let new_sv = SpaceView::new(
+                    ctx,
+                    space_view.category,
+                    &space_view.space_path,
+                    space_view.data_blueprint.entity_paths().iter().cloned().collect_vec().as_slice()
+                );
+                let id = new_sv.id.clone();
+                viewport.add_space_view(new_sv);
+                viewport.has_been_user_edited
+                    .insert(viewport.space_views[&id].space_path.clone(), true);
+            }
+
+            if ctx
+                .re_ui
+                .small_icon_button(ui, &re_ui::icons::REMOVE)
+                .clicked()
+            {
+                viewport.has_been_user_edited
+                .insert(viewport.space_views[&space_view_id].space_path.clone(), true);
+                viewport.remove(&space_view_id);
+            }
+
             // Show help last, since not all space views have help text
-            help_text_ui(ui, space_view);
+            help_text_ui(ui, &space_view);
 
             // Put a frame so that the buttons cover any labels they intersect with:
             let rect = ui.min_rect().expand2(egui::vec2(1.0, -2.0));
