@@ -1,11 +1,14 @@
-use std::collections::BTreeMap;
+use std::{borrow::BorrowMut, collections::BTreeMap};
 
 use ahash::HashMap;
 use itertools::Itertools;
 use nohash_hasher::IntSet;
 use re_arrow_store::{DataStore, LatestAtQuery, Timeline};
 use re_data_store::{log_db::EntityDb, query_latest_single, ComponentName, EntityPath, EntityTree};
-use re_log_types::{component_types::{Tensor, TensorDataMeaning}, Component, EntityPathPart};
+use re_log_types::{
+    component_types::{Tensor, TensorDataMeaning},
+    Component, EntityPathPart,
+};
 
 use crate::{
     misc::{space_info::SpaceInfoCollection, ViewerContext},
@@ -139,7 +142,8 @@ pub fn default_created_space_views(
     spaces_info: &SpaceInfoCollection,
 ) -> Vec<SpaceView> {
     let candidates = all_possible_space_views(ctx, spaces_info);
-    let default_space_views = default_created_space_views_from_candidates(ctx, &ctx.log_db.entity_db, candidates);
+    let default_space_views =
+        default_created_space_views_from_candidates(ctx, &ctx.log_db.entity_db, candidates);
     if !ctx.depthai_state.selected_device.id.is_empty() {
         return default_depthai_space_views(ctx, default_space_views);
     }
@@ -151,24 +155,107 @@ fn default_depthai_space_views(
     default_created_views: Vec<SpaceView>,
 ) -> Vec<SpaceView> {
     // Remove 3D views that don't have a Depth tensor in them,
-    default_created_views.iter().filter(|space_view| {
-        if space_view.space_path.len() == 1 { // These are CAM_A, CAM_B, ..., basically the root spaces.
-            // Check if there is a depth tensor in the space view.
-            let query = LatestAtQuery::new(Timeline::log_time(), re_arrow_store::TimeInt::MAX);
-            let entity_db = &ctx.log_db.entity_db;
-            for entity_path in space_view.data_blueprint.entity_paths() {
-                if let Ok(entity_view) = re_query::query_entity_with_primary::<Tensor>(&entity_db.data_store, &query, entity_path, &[]) {
-                    for tensor in entity_view.iter_primary_flattened() {
-                        if tensor.meaning() == TensorDataMeaning::Depth {
-                            return true;
+    let mut cam_with_depth = None;
+    let mut space_views = default_created_views
+        .into_iter()
+        .filter_map(|mut space_view| {
+            // filter_map, so space_view is moved into the closure.
+            if space_view.space_path.len() == 1 {
+                // These are CAM_A, CAM_B, ..., basically the root spaces.
+                // Check if there is a depth tensor in the space view.
+                let query = LatestAtQuery::new(Timeline::log_time(), re_arrow_store::TimeInt::MAX);
+                let entity_db = &ctx.log_db.entity_db;
+                for entity_path in space_view.data_blueprint.entity_paths() {
+                    if let Ok(entity_view) = re_query::query_entity_with_primary::<Tensor>(
+                        &entity_db.data_store,
+                        &query,
+                        entity_path,
+                        &[],
+                    ) {
+                        for tensor in entity_view.iter_primary_flattened() {
+                            if tensor.meaning() == TensorDataMeaning::Depth {
+                                cam_with_depth = space_view.space_path.iter().last().cloned();
+                                // We also wan't to remove the Image and Detections from the 3D space view!
+                                let entity_paths = space_view.data_blueprint.entity_paths().clone();
+                                let entities_to_remove = entity_paths.iter().filter(|ep| {
+                                    ep.last() == Some(&EntityPathPart::Name("Image".into()))
+                                        || ep.last()
+                                            == Some(&EntityPathPart::Name("Detections".into()))
+                                        || ep.last()
+                                            == Some(&EntityPathPart::Name("Detection".into()))
+                                });
+                                for entity in entities_to_remove {
+                                    let mut props = space_view
+                                        .data_blueprint
+                                        .data_blueprints_individual()
+                                        .get(&entity);
+                                    props.visible = false;
+                                    space_view
+                                        .data_blueprint
+                                        .data_blueprints_individual()
+                                        .set(entity.clone(), props);
+                                }
+                                return Some(space_view);
+                            }
                         }
                     }
                 }
+                return None; // No depth tensor was found inside of this 3D view.
             }
-            return false; // No depth tensor was found inside of this 3D view.
+            Some(space_view)
+        })
+        .collect::<Vec<_>>();
+
+    // If a depth tensor is found, we want to find the 2D space view that has the Image + Depth tensor.
+    // We then wan't to create two separate 2D space views, one for the image and one for the depth.
+    // But we only want to hide the depth (or image), not remove it from the space view.
+    if let Some(depth_2d) = space_views
+        .iter_mut()
+        .find(|space_view| space_view.space_path.as_slice().first() == cam_with_depth.as_ref())
+    {
+        if let Some(image_entity) = depth_2d
+            .data_blueprint
+            .entity_paths()
+            .iter()
+            .find(|entity_path| entity_path.last() == Some(&EntityPathPart::Name("Image".into())))
+            .cloned()
+        {
+            let mut duplicate = depth_2d.duplicate(ctx);
+            // Change depth 2d to only show depth.
+            let mut depth_2d_props = depth_2d
+                .data_blueprint
+                .data_blueprints_individual()
+                .get(&image_entity);
+            depth_2d_props.visible = false;
+            depth_2d
+                .data_blueprint
+                .data_blueprints_individual()
+                .set(image_entity, depth_2d_props);
+
+            // Change duplicate to only show image.
+            if let Some(depth_entity) = depth_2d
+                .data_blueprint
+                .entity_paths()
+                .iter()
+                .find(|entity_path| {
+                    entity_path.last() == Some(&EntityPathPart::Name("Depth".into()))
+                })
+                .cloned()
+            {
+                let mut duplicate_props = duplicate
+                    .data_blueprint
+                    .data_blueprints_individual()
+                    .get(&depth_entity);
+                duplicate_props.visible = false;
+                duplicate
+                    .data_blueprint
+                    .data_blueprints_individual()
+                    .set(depth_entity, duplicate_props);
+            }
+            space_views.push(duplicate);
         }
-        true
-    }).cloned().collect::<Vec<_>>()
+    }
+    space_views
 }
 
 fn default_created_space_views_from_candidates(
@@ -239,7 +326,10 @@ fn default_created_space_views_from_candidates(
                     for tensor in entity_view.iter_primary_flattened() {
                         if tensor.is_shaped_like_an_image() {
                             debug_assert!(matches!(tensor.real_shape().len(), 2 | 3));
-                            let dim = (tensor.real_shape().as_slice()[0].size, tensor.real_shape().as_slice()[1].size);
+                            let dim = (
+                                tensor.real_shape().as_slice()[0].size,
+                                tensor.real_shape().as_slice()[1].size,
+                            );
                             images_by_size
                                 .entry(dim)
                                 .or_default()

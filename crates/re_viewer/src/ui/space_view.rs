@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use re_arrow_store::Timeline;
 use re_data_store::{EntityPath, EntityPropertyMap, EntityTree, InstancePath, TimeInt};
 use re_log_types::EntityPathPart;
@@ -142,6 +143,11 @@ impl SpaceView {
             entities_determined_by_user: false,
             is_depthai_spaceview,
         }
+    }
+
+
+    pub fn duplicate(&self, ctx: &ViewerContext<'_>) -> Self {
+        Self::new(ctx, self.category, &self.space_path, self.data_blueprint.entity_paths().iter().cloned().collect_vec().as_slice())
     }
 
     pub fn on_frame_start(

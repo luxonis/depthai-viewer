@@ -44,7 +44,6 @@ pub struct SpaceMakeInfo {
     pub kind: SpaceViewKind,
 }
 
-
 #[derive(Clone)]
 pub(crate) enum LayoutSplit {
     LeftRight(Box<LayoutSplit>, f32, Box<LayoutSplit>),
@@ -217,10 +216,79 @@ fn find_top_left_leaf(tree: &egui_dock::Tree<Tab>) -> NodeIndex {
 //     (n_splits, right)
 // }
 
+fn split_2d(
+    all_2d: Vec<SpaceMakeInfo>,
+    space_views: &HashMap<SpaceViewId, SpaceView>,
+) -> LayoutSplit {
+    // Try to find 2d views with visible depth and create a left right split
+    // Otherwise just create a leaf
+    if all_2d.is_empty() {
+        LayoutSplit::Leaf(vec![])
+    } else {
+        // Find all 2d views with visible depth
+        let depths = all_2d
+            .iter()
+            .filter(|space| {
+                if let Some(space_view) = space_views.get(&space.id) {
+                    if let Some(depth_entity) = space_view
+                        .data_blueprint
+                        .entity_paths()
+                        .clone()
+                        .iter()
+                        .find(|entity_path| {
+                            entity_path.last() == Some(&EntityPathPart::Name("Depth".into()))
+                        })
+                    {
+                        space_view
+                            .data_blueprint
+                            .entity_properties()
+                            .get(depth_entity)
+                            .visible
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
+            .map(|space| space.id)
+            .collect_vec();
+
+        if depths.is_empty() {
+            // This is likely the initial mono layout, split it vertically
+            // to get a nice quad layout
+            if all_2d.len() == 2 {
+                return LayoutSplit::TopBottom(
+                    LayoutSplit::Leaf(vec![all_2d[0].clone()]).into(),
+                    0.5,
+                    LayoutSplit::Leaf(vec![all_2d[1].clone()]).into(),
+                );
+            }
+            LayoutSplit::Leaf(all_2d)
+        } else {
+            let mut left_split = Vec::new();
+            let mut right_split = Vec::new();
+            for space in all_2d {
+                if depths.contains(&space.id) {
+                    right_split.push(space);
+                } else {
+                    left_split.push(space);
+                }
+            }
+            LayoutSplit::LeftRight(
+                LayoutSplit::Leaf(left_split.into()).into(),
+                0.5,
+                LayoutSplit::Leaf(right_split.into()).into(),
+            )
+        }
+    }
+}
+
 /// Layout `CAM_A` `CAM_B` | `CAM_C` with 3d views on top and 2d views on the bottom in the same group. (only one 2d and one 3d view visible from the start)
 fn create_inner_viewport_layout(
     viewport_size: egui::Vec2,
     spaces: &Vec<SpaceMakeInfo>,
+    space_views: &HashMap<SpaceViewId, SpaceView>,
 ) -> LayoutSplit {
     let mut groups: HashMap<EntityPathPart, (Vec<SpaceMakeInfo>, Vec<SpaceMakeInfo>)> =
         HashMap::default();
@@ -332,9 +400,9 @@ fn create_inner_viewport_layout(
         .cloned()
         .collect_vec();
 
-    let color_split_2d = LayoutSplit::Leaf(colors_2d.clone().into());
+    let color_split_2d = split_2d(colors_2d.clone(), space_views);
     let color_split_3d = LayoutSplit::Leaf(colors_3d.clone().into());
-    let mono_split_2d = LayoutSplit::Leaf(monos_2d.clone().into());
+    let mono_split_2d = split_2d(monos_2d.clone(), space_views);
     let mono_split_3d = LayoutSplit::Leaf(monos_3d.clone().into());
 
     let mono_split = if monos_2d.is_empty() && monos_3d.is_empty() {
@@ -354,7 +422,11 @@ fn create_inner_viewport_layout(
     } else if !colors_2d.is_empty() && colors_3d.is_empty() {
         color_split_2d.clone()
     } else {
-        LayoutSplit::TopBottom(color_split_3d.clone().into(), 0.5, color_split_2d.clone().into())
+        LayoutSplit::TopBottom(
+            color_split_3d.clone().into(),
+            0.5,
+            color_split_2d.clone().into(),
+        )
     };
 
     if color_split.is_empty() && mono_split.is_empty() {
@@ -455,7 +527,7 @@ pub(crate) fn default_tree_from_space_views(
                 }
             } else {
                 LayoutSplit::LeftRight(
-                    create_inner_viewport_layout(viewport_size, &spaces).into(),
+                    create_inner_viewport_layout(viewport_size, &spaces, space_views).into(),
                     0.7,
                     right_panel_split().into(),
                 )

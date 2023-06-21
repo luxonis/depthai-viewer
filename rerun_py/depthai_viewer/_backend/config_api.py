@@ -92,7 +92,6 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
             if not message_type:
                 print("Missing message type")
                 continue
-            print("Got message: ", message)
 
             if message_type == MessageType.SUBSCRIPTIONS:
                 data = message.get("data", {})

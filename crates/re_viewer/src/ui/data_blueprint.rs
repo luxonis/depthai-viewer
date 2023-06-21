@@ -149,6 +149,11 @@ impl DataBlueprintTree {
         &mut self.data_blueprints.individual
     }
 
+    /// Returns multiple individual entity properties as immutable. The hierarchy was not applied to this.
+    pub fn entity_properties(&self) -> &EntityPropertyMap {
+        &self.data_blueprints.individual
+    }
+
     pub fn contains_entity(&self, path: &EntityPath) -> bool {
         self.entity_paths.contains(path)
     }

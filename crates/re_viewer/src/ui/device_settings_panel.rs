@@ -361,7 +361,7 @@ impl DeviceSettingsPanel {
                                             ctx.re_ui.labeled_dragvalue(
                                                 ui,
                                                 egui::Id::from("LR Threshold"),
-                                                Some(50.0),
+                                                Some(100.0),
                                                 "LR Threshold",
                                                 &mut depth.lrc_threshold,
                                                 0..=10,
@@ -379,7 +379,7 @@ impl DeviceSettingsPanel {
                                             ctx.re_ui.labeled_dragvalue(
                                                 ui,
                                                 egui::Id::from("Sigma"),
-                                                Some(50.0),
+                                                Some(100.0),
                                                 "Sigma",
                                                 &mut depth.sigma,
                                                 0..=65535,
@@ -387,7 +387,7 @@ impl DeviceSettingsPanel {
                                             ctx.re_ui.labeled_dragvalue(
                                                 ui,
                                                 egui::Id::from("Confidence"),
-                                                Some(50.0),
+                                                Some(100.0),
                                                 "Confidence",
                                                 &mut depth.confidence,
                                                 0..=255,

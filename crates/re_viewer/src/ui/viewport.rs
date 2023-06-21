@@ -62,6 +62,8 @@ pub struct Viewport {
     stats_panel_state: StatsPanelState,
 
     previous_frame_tree: Option<egui_dock::Tree<Tab>>,
+
+    previous_frame_default_created_sapace_views: Vec<EntityPath>, // Space paths from previous frame's call to default_created_space_views
 }
 
 impl Viewport {
@@ -71,9 +73,7 @@ impl Viewport {
 
         let mut blueprint = Self::default();
         for space_view in default_created_space_views(ctx, spaces_info) {
-            if blueprint.should_auto_add_space_view(&space_view) {
-                blueprint.add_space_view(space_view);
-            }
+            blueprint.add_space_view(space_view);
         }
         blueprint
     }
@@ -97,6 +97,7 @@ impl Viewport {
             device_settings_panel: _,
             stats_panel_state: _,
             previous_frame_tree: _,
+            previous_frame_default_created_sapace_views: _,
         } = self;
 
         if let Some(window) = space_view_entity_window {
@@ -272,6 +273,12 @@ impl Viewport {
         space_views_to_delete
     }
 
+    fn reset_space_views(&mut self) {
+        self.space_views.clear();
+        self.visible.clear();
+        self.trees.clear();
+    }
+
     pub fn on_frame_start(
         &mut self,
         ctx: &mut ViewerContext<'_>,
@@ -290,20 +297,36 @@ impl Viewport {
         for space_view in self.space_views.values_mut() {
             space_view.on_frame_start(ctx, spaces_info);
         }
-        for space_view_candidate in default_created_space_views(ctx, spaces_info) {
-            if !self
-                .has_been_user_edited
-                .get(&space_view_candidate.space_path)
-                .unwrap_or(&false)
-                && self.should_auto_add_space_view(&space_view_candidate)
-            {
-                self.add_space_view(space_view_candidate);
+
+        // Maybe it's a hack but it works: Remember previous default_created_space_views and compare them to the current ones
+        // If there is a diff then reset the space clear the space_views and add the new ones
+        // This is done to avoid out of hand creation of space views that just have entities with different visibilities (eg. when we hide Image in 3D depth view)
+        let mut defaults = default_created_space_views(ctx, spaces_info);
+        if !defaults.iter().all(|space_view| {
+            self.previous_frame_default_created_sapace_views
+                .contains(&space_view.space_path)
+        }) {
+            self.reset_space_views();
+            for space_view_candidate in &mut defaults {
+                if !self
+                    .has_been_user_edited
+                    .get(&space_view_candidate.space_path)
+                    .unwrap_or(&false)
+                    && self.should_auto_add_space_view(space_view_candidate)
+                {
+                    self.add_space_view(space_view_candidate.clone());
+                }
             }
         }
+        self.previous_frame_default_created_sapace_views = defaults
+            .iter()
+            .map(|space_view| space_view.space_path.clone())
+            .collect_vec();
     }
 
-    fn should_auto_add_space_view(&self, space_view_candidate: &SpaceView) -> bool {
-        for existing_view in self.space_views.values() {
+    fn should_auto_add_space_view(&mut self, space_view_candidate: &mut SpaceView) -> bool {
+        crate::profile_function!();
+        for existing_view in self.space_views.values_mut() {
             if existing_view.space_path == space_view_candidate.space_path {
                 if existing_view.entities_determined_by_user {
                     // Since the user edited a space view with the same space path, we can't be sure our new one isn't redundant.
@@ -311,17 +334,33 @@ impl Viewport {
                     return false;
                 }
 
-                if space_view_candidate
-                    .data_blueprint
-                    .entity_paths()
-                    .is_subset(existing_view.data_blueprint.entity_paths())
-                {
-                    // This space view wouldn't add anything we haven't already
-                    return false;
+                let candidate_entity_paths =
+                    space_view_candidate.data_blueprint.entity_paths().clone();
+                if candidate_entity_paths.is_subset(existing_view.data_blueprint.entity_paths()) {
+                    // Check if the entity paths have the same visibilities
+                    // Only add if the visibilities are different
+                    let candidate_vis = candidate_entity_paths.iter().sorted().map(|ep| {
+                        space_view_candidate
+                            .data_blueprint
+                            .data_blueprints_individual()
+                            .get(ep)
+                            .visible
+                    });
+
+                    let existing_entity_paths = existing_view.data_blueprint.entity_paths().clone();
+                    let existing_vis = existing_entity_paths.iter().sorted().map(|ep| {
+                        existing_view
+                            .data_blueprint
+                            .data_blueprints_individual()
+                            .get(ep)
+                            .visible
+                    });
+
+                    let all_same = candidate_vis.zip(existing_vis).all(|(a, b)| a == b);
+                    return !all_same;
                 }
             }
         }
-
         true
     }
 
@@ -420,43 +459,17 @@ impl Viewport {
         {
             match space_view_kind {
                 SpaceViewKind::Data | SpaceViewKind::Stats => {
-                    let mut entities_to_skip = Vec::new();
+                    let entities_to_skip = Vec::new();
                     if let Some(space_view) = self.space_views.get_mut(&space_view_id) {
                         let mut is3d = false;
-                        let mut has_depth = false;
                         space_view.data_blueprint.visit_group_entities_recursively(
                             space_view.data_blueprint.root_handle(),
                             &mut (|entity_path| {
-                                if is3d && has_depth {
-                                    if let Some(last_part) = entity_path.iter().last() {
-                                        if last_part == &EntityPathPart::from("Image") {
-                                            entities_to_skip.push(entity_path.clone());
-                                        } else if last_part == &EntityPathPart::from("Detection") {
-                                            entities_to_skip.push(entity_path.clone());
-                                        } else if last_part == &EntityPathPart::from("Detections") {
-                                            entities_to_skip.push(entity_path.clone());
-                                        }
-                                    }
-                                }
                                 is3d |= entity_path.len() == 2
                                     && entity_path.iter().last().unwrap()
                                         == &EntityPathPart::from("transform");
-                                if let Some(last_part) = entity_path.iter().last() {
-                                    has_depth |= last_part == &EntityPathPart::from("Depth");
-                                }
                             }),
                         );
-                        for entity in &entities_to_skip {
-                            let mut props = space_view
-                                .data_blueprint
-                                .data_blueprints_individual()
-                                .get(entity);
-                            props.visible = false;
-                            space_view
-                                .data_blueprint
-                                .data_blueprints_individual()
-                                .set(entity.clone(), props);
-                        }
                     }
 
                     space_view_options_ui(
@@ -811,22 +824,17 @@ fn space_view_options_ui(
                 return;
             };
 
-
             if ctx
                 .re_ui
                 .small_icon_button(ui, &re_ui::icons::ADD)
                 .clicked()
             {
                 // Create a new space view that is identical to this one
-                let new_sv = SpaceView::new(
-                    ctx,
-                    space_view.category,
-                    &space_view.space_path,
-                    space_view.data_blueprint.entity_paths().iter().cloned().collect_vec().as_slice()
-                );
+                let new_sv = space_view.duplicate(ctx);
                 let id = new_sv.id.clone();
                 viewport.add_space_view(new_sv);
-                viewport.has_been_user_edited
+                viewport
+                    .has_been_user_edited
                     .insert(viewport.space_views[&id].space_path.clone(), true);
             }
 
@@ -835,8 +843,10 @@ fn space_view_options_ui(
                 .small_icon_button(ui, &re_ui::icons::REMOVE)
                 .clicked()
             {
-                viewport.has_been_user_edited
-                .insert(viewport.space_views[&space_view_id].space_path.clone(), true);
+                viewport.has_been_user_edited.insert(
+                    viewport.space_views[&space_view_id].space_path.clone(),
+                    true,
+                );
                 viewport.remove(&space_view_id);
             }
 
