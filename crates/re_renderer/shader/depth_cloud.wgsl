@@ -256,12 +256,13 @@ fn fs_main_picking_layer(in: VertexOut) -> @location(0) UVec4 {
 
 @fragment
 fn fs_main_outline_mask(in: VertexOut) -> @location(0) UVec2 {
+    discard; // TODO(filip): This outline looks really bad... It would be neat to have it tho - implement better
     // Output is an integer target, can't use coverage therefore.
     // But we still want to discard fragments where coverage is low.
     // Since the outline extends a bit, a very low cut off tends to look better.
-    let coverage = sphere_quad_coverage(in.pos_in_world, in.point_radius, in.point_pos_in_world);
-    if coverage < 1.0 {
-        discard;
-    }
-    return depth_cloud_info.outline_mask_id;
+    // let coverage = sphere_quad_coverage(in.pos_in_world, in.point_radius, in.point_pos_in_world);
+    // if coverage < 1.0 {
+    //     discard;
+    // }
+    // return depth_cloud_info.outline_mask_id;
 }
