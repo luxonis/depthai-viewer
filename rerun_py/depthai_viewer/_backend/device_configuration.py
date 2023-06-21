@@ -228,7 +228,7 @@ class XLinkConnection(Enum):
     POE = "PoE"
 
 
-class DeviceInfo(BaseModel):
+class DeviceInfo(BaseModel):  # type: ignore[misc]
     name: str = ""
     connection: XLinkConnection = XLinkConnection.USB
     mxid: str = ""
