@@ -1,5 +1,16 @@
 # Depthai Viewer changelog
 
+## 0.1.0
+Depthai Viewer official Beta release on pypi!
+
+- Performance improvements
+- Better Auto Layouts
+- Tweaks to UI for a better UX
+
+## 0.0.8-alpha.0
+
+- Pre-release
+
 ## 0.0.7
 
 - Install depthai_sdk from artifactory

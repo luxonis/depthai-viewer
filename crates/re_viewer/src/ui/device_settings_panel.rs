@@ -197,7 +197,7 @@ impl DeviceSettingsPanel {
                 );
                 ctx.re_ui.labeled_dragvalue(
                     ui,
-                    egui::Id::from("fps"),
+                    egui::Id::from("fps"), // TODO(filip): using "fps" as id causes all fps sliders to be linked - This is a bug, but also kind of a feature
                     None,
                     "FPS",
                     &mut camera_config.fps,

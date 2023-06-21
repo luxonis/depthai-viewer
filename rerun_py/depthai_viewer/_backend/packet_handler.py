@@ -14,7 +14,6 @@ from depthai_sdk.classes.packets import (  # PointcloudPacket,
 )
 from numpy.typing import NDArray
 from pydantic import BaseModel
-from turbojpeg import TJFLAG_FASTDCT, TJFLAG_FASTUPSAMPLE, TurboJPEG
 
 import depthai_viewer as viewer
 from depthai_viewer._backend.device_configuration import CameraConfiguration
@@ -53,7 +52,6 @@ class PacketHandler:
     store: Store
     _ahrs: Mahony
     _get_camera_intrinsics: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
-    _jpeg_decoder: TurboJPEG = TurboJPEG()
 
     def __init__(
         self, store: Store, intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
@@ -121,9 +119,7 @@ class PacketHandler:
         img_frame = packet.frame if packet.msg.getType() == dai.RawImgFrame.Type.RAW8 else packet.msg.getData()
         h, w = packet.msg.getHeight(), packet.msg.getWidth()
         if packet.msg.getType() == dai.ImgFrame.Type.BITSTREAM:
-            img_frame = cv2.cvtColor(
-                self._jpeg_decoder.decode(img_frame, flags=TJFLAG_FASTUPSAMPLE | TJFLAG_FASTDCT), cv2.COLOR_BGR2RGBA
-            )
+            img_frame = cv2.cvtColor(cv2.imdecode(img_frame, cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB)
             h, w = img_frame.shape[:2]
 
         child_from_parent: NDArray[np.float32]

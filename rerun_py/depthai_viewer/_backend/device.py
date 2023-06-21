@@ -4,15 +4,15 @@ from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
-import depthai_viewer as viewer
 import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
 from depthai_sdk.components.camera_helper import (
-    colorResolutions,
     getClosestIspScale,
-    monoResolutions,
 )
+from numpy.typing import NDArray
+
+import depthai_viewer as viewer
 from depthai_viewer._backend import classification_labels
 from depthai_viewer._backend.device_configuration import (
     CameraConfiguration,
@@ -40,7 +40,6 @@ from depthai_viewer._backend.packet_handler import (
     SyncedCallbackArgs,
 )
 from depthai_viewer._backend.store import Store
-from numpy.typing import NDArray
 
 
 class XlinkStatistics:

@@ -7,15 +7,13 @@ from depthai_viewer._backend.topic import Topic
 
 
 class Store:
-    """
-    This class is used to store common data that is used by the backend.
-    """
+    """Used to store common data that is used by the backend."""
 
     _pipeline_config: Optional[PipelineConfiguration] = None
     _subscriptions: List[Topic] = []
     _send_message_queue: Queue  # type: ignore[type-arg]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._send_message_queue = Queue()
 
     def set_pipeline_config(self, pipeline_config: PipelineConfiguration) -> None:
