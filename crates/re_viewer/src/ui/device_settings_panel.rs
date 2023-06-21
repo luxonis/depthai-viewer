@@ -197,6 +197,8 @@ impl DeviceSettingsPanel {
                 );
                 ctx.re_ui.labeled_dragvalue(
                     ui,
+                    egui::Id::from("fps"),
+                    None,
                     "FPS",
                     &mut camera_config.fps,
                     0..=camera_features.max_fps,
@@ -358,6 +360,8 @@ impl DeviceSettingsPanel {
                                             );
                                             ctx.re_ui.labeled_dragvalue(
                                                 ui,
+                                                egui::Id::from("LR Threshold"),
+                                                Some(50.0),
                                                 "LR Threshold",
                                                 &mut depth.lrc_threshold,
                                                 0..=10,
@@ -374,12 +378,16 @@ impl DeviceSettingsPanel {
                                             );
                                             ctx.re_ui.labeled_dragvalue(
                                                 ui,
+                                                egui::Id::from("Sigma"),
+                                                Some(50.0),
                                                 "Sigma",
                                                 &mut depth.sigma,
                                                 0..=65535,
                                             );
                                             ctx.re_ui.labeled_dragvalue(
                                                 ui,
+                                                egui::Id::from("Confidence"),
+                                                Some(50.0),
                                                 "Confidence",
                                                 &mut depth.confidence,
                                                 0..=255,

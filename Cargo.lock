@@ -4293,6 +4293,7 @@ dependencies = [
  "egui_dock",
  "egui_extras",
  "image",
+ "instant",
  "parking_lot 0.12.1",
  "re_log",
  "serde",

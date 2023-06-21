@@ -13,10 +13,12 @@ pub use command::Command;
 pub use command_palette::CommandPalette;
 pub use design_tokens::DesignTokens;
 pub use icons::Icon;
+use instant::Instant;
 pub use static_image_cache::StaticImageCache;
+use std::cell::RefCell;
 use std::ops::RangeInclusive;
+use std::rc::Rc;
 pub use toggle_switch::toggle_switch;
-
 // ---------------------------------------------------------------------------
 
 /// If true, we fill the entire window, except for the close/maximize/minimize buttons in the top-left.
@@ -49,13 +51,20 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use egui::{pos2, Align2, Color32, Mesh, NumExt, Rect, Shape, Vec2};
+use egui::{epaint::ahash::HashMap, pos2, Align2, Color32, Mesh, NumExt, Rect, Shape, Vec2};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScrollAreaDirection {
     Vertical,
     Horizontal,
     Both,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct DelayedDragState {
+    pub last_update: Instant,
+    pub delay_ms: f32,
+    pub value: i64,
 }
 
 #[derive(Clone)]
@@ -66,6 +75,9 @@ pub struct ReUi {
     pub design_tokens: DesignTokens,
 
     pub static_image_cache: Arc<Mutex<StaticImageCache>>,
+
+    /// Inner state of dragvalues where we want to delay setting the value by a bit
+    delayed_drag_values: Rc<RefCell<HashMap<egui::Id, DelayedDragState>>>,
 }
 
 impl ReUi {
@@ -75,6 +87,7 @@ impl ReUi {
             egui_ctx: egui_ctx.clone(),
             design_tokens: DesignTokens::load_and_apply(egui_ctx),
             static_image_cache: Arc::new(Mutex::new(StaticImageCache::default())),
+            delayed_drag_values: Default::default(),
         }
     }
 
@@ -246,9 +259,20 @@ impl ReUi {
         });
     }
 
+    /// Creates a labeled drag value box, where the label is to the left and the drag box is to the right.
+    ///
+    /// Arguments:
+    /// * `ui`: The egui ui
+    /// * `id`: A unique id, used to store the state of the drag value box
+    /// * `delay`: Optional delay in milliseconds before the value get's updated
+    /// * `label`: The label to the left of the drag value box
+    /// * `value`: Where the value is stored
+    /// * `range`: The range of the value
     pub fn labeled_dragvalue<Num: egui::emath::Numeric>(
         &self,
         ui: &mut egui::Ui,
+        id: egui::Id,
+        delay: Option<f32>, // Delay in milliseconds before the value get's updated
         label: &str,
         value: &mut Num,
         range: RangeInclusive<Num>,
@@ -256,15 +280,29 @@ impl ReUi {
     where
         Num: egui::emath::Numeric,
     {
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let response = ui.add_sized(
-                [Self::box_width(), Self::box_height()],
-                egui::DragValue::new(value).clamp_range(range),
-            );
-            ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
-            response
-        })
-        .inner
+        let mut borrow_map = self.delayed_drag_values.borrow_mut();
+        let state = borrow_map.entry(id).or_insert(DelayedDragState {
+            delay_ms: delay.unwrap_or(0.0),
+            last_update: instant::Instant::now(),
+            value: value.to_f64() as i64, // TODO(filip): The hell, I'm pretty sure there is a macro that implements to_i64 for Numeric
+        });
+        let response = ui
+            .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let response = ui.add_sized(
+                    [Self::box_width(), Self::box_height()],
+                    egui::DragValue::new(&mut state.value).clamp_range(range),
+                );
+                ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+                response
+            })
+            .inner;
+        if response.changed() {
+            state.last_update = instant::Instant::now();
+        }
+        if state.delay_ms < state.last_update.elapsed().as_millis() as f32 {
+            *value = Num::from_f64(state.value as f64);
+        }
+        response
     }
 
     pub fn labeled_toggle_switch(&self, ui: &mut egui::Ui, label: &str, value: &mut bool) {
