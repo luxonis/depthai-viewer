@@ -13,6 +13,7 @@ class MessageType:
     DEVICE = "DeviceProperties"  # Get or set device
     ERROR = "Error"  # Error message
     INFO = "Info"  # Info message
+    WARNING = "Warning"  # Warning message
 
 
 class ErrorAction(Enum):
@@ -31,6 +32,14 @@ class Message:
 
     def json(self) -> str:
         raise NotImplementedError
+
+
+class WarningMessage(Message):
+    def __init__(self, message: str):
+        self.message = message
+
+    def json(self) -> str:
+        return json.dumps({"type": MessageType.WARNING, "data": {"message": self.message}})
 
 
 class ErrorMessage(Message):

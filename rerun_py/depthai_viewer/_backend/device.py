@@ -27,7 +27,12 @@ from depthai_viewer._backend.device_configuration import (
     get_size_from_resolution,
     size_to_resolution,
 )
-from depthai_viewer._backend.messages import ErrorMessage, InfoMessage, Message
+from depthai_viewer._backend.messages import (
+    ErrorMessage,
+    InfoMessage,
+    Message,
+    WarningMessage,
+)
 from depthai_viewer._backend.packet_handler import (
     AiModelCallbackArgs,
     DepthCallbackArgs,
@@ -288,8 +293,14 @@ class Device:
         print("Usb speed: ", self._oak.device.getUsbSpeed())
         is_usb2 = self._oak.device.getUsbSpeed() == dai.UsbSpeed.HIGH
         if is_poe:
+            self.store.send_message_to_frontend(
+                WarningMessage("Device is connected via PoE. This may cause performance issues.")
+            )
             print("Connected to a PoE device, camera streams will be JPEG encoded...")
         elif is_usb2:
+            self.store.send_message_to_frontend(
+                WarningMessage("Device is connected in USB2 mode. This may cause performance issues.")
+            )
             print("Device is connected in USB2 mode, camera streams will be JPEG encoded...")
         self.use_encoding = is_poe or is_usb2
 

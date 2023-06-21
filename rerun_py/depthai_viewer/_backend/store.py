@@ -1,12 +1,22 @@
+from multiprocessing import Queue
 from typing import List, Optional
 
 from depthai_viewer._backend.device_configuration import PipelineConfiguration
+from depthai_viewer._backend.messages import Message
 from depthai_viewer._backend.topic import Topic
 
 
 class Store:
+    """
+    This class is used to store common data that is used by the backend.
+    """
+
     _pipeline_config: Optional[PipelineConfiguration] = None
     _subscriptions: List[Topic] = []
+    _send_message_queue: Queue  # type: ignore[type-arg]
+
+    def __init__(self):
+        self._send_message_queue = Queue()
 
     def set_pipeline_config(self, pipeline_config: PipelineConfiguration) -> None:
         self._pipeline_config = pipeline_config
@@ -25,3 +35,6 @@ class Store:
     @property
     def subscriptions(self) -> List[Topic]:
         return self._subscriptions
+
+    def send_message_to_frontend(self, message: Message) -> None:
+        self._send_message_queue.put(message)

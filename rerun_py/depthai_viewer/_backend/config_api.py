@@ -130,6 +130,7 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
         message_to_send = None
         try:
             message_to_send = send_message_queue.get(timeout=0.01)
+            print("Got message to send: ", message_to_send)
         except QueueEmptyException:
             pass
         if message_to_send:

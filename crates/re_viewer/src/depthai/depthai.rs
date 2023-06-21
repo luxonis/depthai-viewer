@@ -446,7 +446,7 @@ pub enum ErrorAction {
     FullReset,
 }
 
-// TODO(filip): Move to a more appropriate place, refactor depthai.rs in general
+// ---------------- TODO(filip): Move to a more appropriate place, refactor depthai.rs in general ----------------
 #[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, fmt::Debug)]
 pub struct Error {
     pub action: ErrorAction,
@@ -466,6 +466,13 @@ impl Default for Error {
 pub struct Info {
     pub message: String,
 }
+
+#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, fmt::Debug, Default)]
+pub struct Warning {
+    pub message: String,
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, fmt::Debug)]
 pub struct AiModel {
@@ -762,6 +769,12 @@ impl State {
                         return;
                     }
                     re_log::info!("{}", info.message);
+                }
+                WsMessageData::Warning(warning) => {
+                    if warning.message.is_empty() {
+                        return;
+                    }
+                    re_log::warn!("{}", warning.message);
                 }
             }
         }
