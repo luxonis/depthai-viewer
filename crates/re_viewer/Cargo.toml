@@ -124,6 +124,7 @@ arboard = { version = "3.2", default-features = false, features = [
 pyo3 = { version = "0.18.0", features = ["auto-initialize"] }
 pyo3-asyncio = { version = "0.18", features = ["attributes", "tokio-runtime"] }
 async-std = "1.9"
+sentry = "0.31.5"
 
 puffin_http = "0.11"
 puffin.workspace = true

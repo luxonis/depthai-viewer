@@ -3,7 +3,10 @@ from multiprocessing import Queue
 from queue import Empty as QueueEmptyException
 from typing import Optional
 
+import sentry_sdk
+
 import depthai_viewer as viewer
+from depthai_viewer import version as depthai_viewer_version
 from depthai_viewer._backend.config_api import Action, start_api
 from depthai_viewer._backend.device import Device
 from depthai_viewer._backend.device_configuration import DeviceProperties
@@ -19,6 +22,15 @@ from depthai_viewer._backend.store import Store
 
 viewer.init("Depthai Viewer")
 viewer.connect()
+
+sentry_sdk.init(
+    dsn="https://bb23d43cf3914af5956157b888342b02@o1095304.ingest.sentry.io/4505075212353536",
+    # Set traces_sample_rate to 1.0 to capture 100%
+    # of transactions for performance monitoring.
+    # We recommend adjusting this value in production.
+    traces_sample_rate=1.0,
+    release=f"depthai-viewer@{depthai_viewer_version()}",
+)
 
 
 class DepthaiViewerBack:

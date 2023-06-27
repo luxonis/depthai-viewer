@@ -7,3 +7,4 @@ depthai==2.22.0.0
 websockets
 pydantic
 deprecated
+sentry-sdk

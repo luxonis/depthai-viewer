@@ -148,6 +148,11 @@ impl App {
         rx: Receiver<LogMsg>,
         shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
+        // Setup Sentry
+        let _guard = sentry::init(("https://bb23d43cf3914af5956157b888342b02@o1095304.ingest.sentry.io/4505075212353536", sentry::ClientOptions {
+            release: sentry::release_name!(),
+            ..Default::default()
+        }));
         let (logger, text_log_rx) = re_log::ChannelLogger::new(re_log::LevelFilter::Info);
         if re_log::add_boxed_logger(Box::new(logger)).is_err() {
             // This can happen when `rerun` crate users call `spawn`. TODO(emilk): make `spawn` spawn a new process.
