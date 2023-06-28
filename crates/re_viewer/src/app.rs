@@ -14,6 +14,7 @@ use re_log_types::{ApplicationId, LogMsg, RecordingId};
 use re_renderer::WgpuResourcePoolStatistics;
 use re_smart_channel::Receiver;
 use re_ui::{toasts, Command};
+use sentry;
 
 use crate::{
     app_icon::setup_app_icon,
