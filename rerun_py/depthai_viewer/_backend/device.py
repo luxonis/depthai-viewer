@@ -330,30 +330,29 @@ class Device:
                 sensor_resolution = size_to_resolution[
                     smallest_supported_resolution.width, smallest_supported_resolution.height
                 ]
-
-            sdk_cam = self._oak.create_camera(
-                cam.board_socket,
-                sensor_resolution.as_sdk_resolution(),
-                cam.fps,
-                encode=self.use_encoding,
-                name=cam.name.capitalize(),
-            )
-            if not does_sensor_support_resolution:
-                sdk_cam.config_color_camera(
-                    isp_scale=getClosestIspScale(
-                        (smallest_supported_resolution.width, smallest_supported_resolution.height), res_x
-                    )
-                )
-
             is_used_by_depth = config.depth is not None and (
                 cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
             )
             is_used_by_ai = config.ai_model is not None and cam.board_socket == config.ai_model.camera
             cam.stream_enabled |= is_used_by_depth or is_used_by_ai
 
+            # Only create a camera node if it is used by stereo or AI.
             if cam.stream_enabled:
+                sdk_cam = self._oak.create_camera(
+                    cam.board_socket,
+                    sensor_resolution.as_sdk_resolution(),
+                    cam.fps,
+                    encode=self.use_encoding,
+                    name=cam.name.capitalize(),
+                )
+                if not does_sensor_support_resolution:
+                    sdk_cam.config_color_camera(
+                        isp_scale=getClosestIspScale(
+                            (smallest_supported_resolution.width, smallest_supported_resolution.height), res_x
+                        )
+                    )
                 synced_outputs.append(sdk_cam.out.main)
-            self._cameras.append(sdk_cam)
+                self._cameras.append(sdk_cam)
 
         if config.depth:
             print("Creating depth")
