@@ -41,6 +41,7 @@ class AiModelCallbackArgs(CallbackArgs):  # type: ignore[misc]
 
     class Config:
         arbitrary_types_allowed = True
+        protected_namespaces = ()
 
 
 class SyncedCallbackArgs(BaseModel):  # type: ignore[misc]
