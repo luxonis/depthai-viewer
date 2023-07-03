@@ -1,6 +1,14 @@
 # Depthai Viewer changelog
 
+## 0.1.1
+
+- Fixes Metal shader compilation on MacOS
+- Performance improvement - only create a camera node when a camera is actually needed in any way.
+- Added sentry.io error reporting
+- Update Windows and MacOS app icons
+
 ## 0.1.0
+
 Depthai Viewer official Beta release on pypi!
 
 - Performance improvements
