@@ -16,7 +16,7 @@ default = ["extension-module", "native_viewer"]
 
 ## The features we turn on when building the `depthai-viewer` PyPi package
 ## for <https://pypi.org/project/depthai-viewer/>.
-pypi = ["extension-module", "native_viewer", "web_viewer"]
+pypi = ["extension-module", "native_viewer"]
 
 ## We need to enable the `pyo3/extension-module` when building the SDK,
 ## but we cannot enable it when building tests and benchmarks, so we
