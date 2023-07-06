@@ -294,8 +294,8 @@ impl From<&DeviceProperties> for Option<DepthConfig> {
         if let Some((cam_a, cam_b)) = props.default_stereo_pair {
             config.stereo_pair = (cam_a, cam_b);
         } else {
-            let stereo_pair = cam_with_stereo_pair.stereo_pairs[0];
-            config.stereo_pair = (cam_with_stereo_pair.board_socket, stereo_pair);
+            // Better to not configure depth if there's no default stereo pair - let the user do it if they really want to...
+            return None;
         }
         config.align =
             if let Some(color_cam) = props.cameras.iter().find(|cam| cam.is_color_camera()) {

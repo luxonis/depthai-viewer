@@ -267,6 +267,9 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
                 "connection": self.info.connection.value,
                 "mxid": self.info.mxid,
             },
+            "default_stereo_pair": (self.default_stereo_pair[0].name, self.default_stereo_pair[1].name)
+            if self.default_stereo_pair
+            else None,
         }
 
 
