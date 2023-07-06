@@ -1,7 +1,6 @@
 # Depthai Viewer changelog
 
-
-## 0.1.2
+ssssssssssssssssss## 0.1.2
 - Fix stereo depth creation for OAK-D-Pro-W 97, and potentially others
 
 ## 0.1.1
