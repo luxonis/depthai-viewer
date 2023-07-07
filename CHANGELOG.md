@@ -1,6 +1,10 @@
 # Depthai Viewer changelog
 
-ssssssssssssssssss## 0.1.2
+
+## 0.1.3
+- Fix default_stereo_pairs for OAK-1 MAX
+
+## 0.1.2
 - Fix stereo depth creation for OAK-D-Pro-W 97, and potentially others
 
 ## 0.1.1

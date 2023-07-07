@@ -68,6 +68,8 @@ pub enum CameraBoardSocket {
     CAM_F,
     CAM_G,
     CAM_H,
+    CAM_I,
+    CAM_J,
 }
 
 impl CameraBoardSocket {

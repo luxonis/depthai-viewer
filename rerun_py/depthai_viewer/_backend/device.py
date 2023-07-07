@@ -175,7 +175,12 @@ class Device:
             calib = self._oak.device.readCalibration2()
             left_cam = calib.getStereoLeftCameraId()
             right_cam = calib.getStereoRightCameraId()
-            device_properties.default_stereo_pair = (left_cam, right_cam)
+            # A calibration can be present but the stereo pair sockets can be invalid
+            # dai.CameraBoardSocket.???: 255
+            if left_cam.value == 255 or right_cam.value == 255:
+                device_properties.default_stereo_pair = None
+            else:
+                device_properties.default_stereo_pair = (left_cam, right_cam)
         except RuntimeError:
             pass
 
@@ -210,6 +215,7 @@ class Device:
                 [(cam.board_socket, pair) for pair in cam.stereo_pairs] for cam in device_properties.cameras
             )
         )
+        print("Device properties: ", device_properties.default_stereo_pair)
         return device_properties
 
     def close_oak(self) -> None:
