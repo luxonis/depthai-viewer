@@ -88,6 +88,8 @@ impl CameraBoardSocket {
             "CAM_F" => Some(CameraBoardSocket::CAM_F),
             "CAM_G" => Some(CameraBoardSocket::CAM_G),
             "CAM_H" => Some(CameraBoardSocket::CAM_H),
+            "CAM_I" => Some(CameraBoardSocket::CAM_I),
+            "CAM_J" => Some(CameraBoardSocket::CAM_J),
             _ => None,
         }
     }
