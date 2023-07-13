@@ -93,7 +93,4 @@ def create_venv_and_install_dependencies() -> str:
 
 if __name__ == '__main__':
     venv_site_packages = create_venv_and_install_dependencies()
-    python_exe = sys.executable
-    # Call the bindings.main using the Python executable in the venv
-    unregister_shutdown()
-    sys.exit(bindings.main(sys.argv, python_exe, venv_site_packages))
+    subprocess.run(["rm", "-rf", venv_site_packages])

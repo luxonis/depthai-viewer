@@ -490,7 +490,7 @@ impl App {
             re_log::debug!("Tried to start a dependency installer wile another dependency installer is already running!");
             return;
         }
-        self.dependency_installer = Some(DependencyInstaller::new());
+        self.dependency_installer = Some(DependencyInstaller::new(self.backend_environment.clone()));
     }
 }
 

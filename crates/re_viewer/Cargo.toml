@@ -69,6 +69,8 @@ re_analytics = { workspace = true, optional = true }
 
 
 # External
+tempdir = "0.3.7"
+subprocess = "0.2.9"
 dcv-color-primitives = "0.5.3"
 ahash.workspace = true
 anyhow.workspace = true
