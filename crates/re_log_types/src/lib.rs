@@ -273,7 +273,7 @@ impl std::fmt::Display for PythonVersion {
 }
 
 type SysExePath = String;
-type VenvSitePackages = String;
+type VenvSitePackages = Option<String>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

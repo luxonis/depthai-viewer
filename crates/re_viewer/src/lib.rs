@@ -71,7 +71,7 @@ macro_rules! profile_scope {
 
 // ---------------------------------------------------------------------------
 type SysExePath = String;
-type VenvSitePackages = String;
+type VenvSitePackages = Option<String>;
 
 /// Where is this App running in?
 #[derive(Clone, Debug, PartialEq, Eq)]

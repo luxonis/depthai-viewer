@@ -18,7 +18,7 @@ use sentry;
 
 use crate::{
     app_icon::setup_app_icon,
-    depthai::depthai,
+    depthai::{depthai, dependency_installer::DependencyInstaller},
     misc::{AppOptions, Caches, RecordingConfig, ViewerContext},
     ui::{data_ui::ComponentUiRegistry, Blueprint},
     viewer_analytics::ViewerAnalytics,
@@ -54,7 +54,13 @@ pub struct StartupOptions {
 #[derive(Clone, Default)]
 pub struct BackendEnvironment {
     pub python_path: String,
-    pub venv_site_packages: String,
+    pub venv_site_packages: Option<String>,
+}
+
+impl BackendEnvironment {
+    pub fn are_requirements_installed(&self) -> bool {
+        return self.venv_site_packages.is_some();
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -110,21 +116,26 @@ pub struct App {
     icon_status: AppIconStatus,
 
     #[cfg(not(target_arch = "wasm32"))]
-    backend_environment: Option<BackendEnvironment>,
+    backend_environment: BackendEnvironment,
 
     #[cfg(not(target_arch = "wasm32"))]
     backend_handle: Option<std::process::Child>,
+
+    #[cfg(not(target_arch = "wasm32"))]
+    dependency_installer: Option<DependencyInstaller>,
 }
 
 impl App {
     #[cfg(not(target_arch = "wasm32"))]
-    fn spawn_backend(environment: &Option<BackendEnvironment>) -> Option<std::process::Child> {
-        let Some(environment) = environment else {
-            panic!("Backend environment is missing, exiting...");
+    fn spawn_backend(environment: &BackendEnvironment) -> Option<std::process::Child> {
+        // It is necessary to install the requirements before starting the backend
+        let Some(site_packages_directory) = environment.venv_site_packages.clone() else {
+            return None;
         };
+
         let backend_handle = match std::process::Command::new(environment.python_path.clone())
             .args(["-m", "depthai_viewer._backend.main"])
-            .env("PYTHONPATH", environment.venv_site_packages.clone())
+            .env("PYTHONPATH", site_packages_directory)
             .spawn()
         {
             Ok(child) => {
@@ -150,10 +161,13 @@ impl App {
         shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
         // Setup Sentry
-        let _guard = sentry::init(("https://bb23d43cf3914af5956157b888342b02@o1095304.ingest.sentry.io/4505075212353536", sentry::ClientOptions {
-            release: sentry::release_name!(),
-            ..Default::default()
-        }));
+        let _guard = sentry::init((
+            "https://bb23d43cf3914af5956157b888342b02@o1095304.ingest.sentry.io/4505075212353536",
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                ..Default::default()
+            },
+        ));
         let (logger, text_log_rx) = re_log::ChannelLogger::new(re_log::LevelFilter::Info);
         if re_log::add_boxed_logger(Box::new(logger)).is_err() {
             // This can happen when `rerun` crate users call `spawn`. TODO(emilk): make `spawn` spawn a new process.
@@ -175,11 +189,13 @@ impl App {
 
         #[cfg(not(target_arch = "wasm32"))]
         let backend_environment = match app_env {
-            AppEnvironment::PythonSdk(_, py_path, venv_site_packages) => Some(BackendEnvironment {
+            AppEnvironment::PythonSdk(_, py_path, venv_site_packages) => BackendEnvironment {
                 python_path: py_path.clone(),
                 venv_site_packages: venv_site_packages.clone(),
-            }),
-            _ => None,
+            },
+            _ => panic!(
+                "Backend environment is missing, depthai-viewer only supports the python SDK"
+            ),
         };
 
         Self {
@@ -213,6 +229,8 @@ impl App {
             backend_environment: backend_environment.clone(),
             #[cfg(not(target_arch = "wasm32"))]
             backend_handle: App::spawn_backend(&backend_environment),
+            #[cfg(not(target_arch = "wasm32"))]
+            dependency_installer: None
         }
     }
 
@@ -464,6 +482,16 @@ impl App {
                 );
             });
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Creates a new DependencyInstaller that will handle dependency installation over many frames.
+    fn install_dependencies(&mut self) {
+        if self.dependency_installer.is_some() {
+            re_log::debug!("Tried to start a dependency installer wile another dependency installer is already running!");
+            return;
+        }
+        self.dependency_installer = Some(DependencyInstaller::new());
+    }
 }
 
 impl eframe::App for App {
@@ -489,8 +517,15 @@ impl eframe::App for App {
     fn update(&mut self, egui_ctx: &egui::Context, frame: &mut eframe::Frame) {
         let frame_start = Instant::now();
         self.state.depthai_state.update(); // Always update depthai state
+
         #[cfg(not(target_arch = "wasm32"))]
         {
+            if let Some(dependency_installer) = &mut self.dependency_installer {
+                if let Some(installation_result) = dependency_installer.get_result() {
+
+                }
+                dependency_installer.update(egui_ctx);
+            }
             match &mut self.backend_handle {
                 Some(handle) => match handle.try_wait() {
                     Ok(status) => {
@@ -503,7 +538,16 @@ impl eframe::App for App {
                     }
                     Err(_) => {}
                 },
-                None => self.backend_handle = App::spawn_backend(&self.backend_environment),
+                None => {
+                    if self.backend_environment.are_requirements_installed() {
+                        self.backend_handle = App::spawn_backend(&self.backend_environment);
+                    } else {
+                        re_log::debug!(
+                            "Backend requirements not installed, starting dependency installer!"
+                        );
+                    }
+                    self.install_dependencies();
+                }
             };
         }
 

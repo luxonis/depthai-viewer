@@ -156,7 +156,7 @@ enum AnalyticsCommands {
 }
 
 type SysExePath = String;
-type VenvSitePackages = String;
+type VenvSitePackages = Option<String>;
 
 /// Where are we calling [`run`] from?
 #[derive(Clone, Debug, PartialEq, Eq)]

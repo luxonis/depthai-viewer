@@ -113,7 +113,7 @@ impl PythonSession {
         sys_exe: SysExePath,
     ) {
         self.recording_meta_data.recording_source =
-            re_log_types::RecordingSource::PythonSdk(python_version, sys_exe, String::new());
+            re_log_types::RecordingSource::PythonSdk(python_version, sys_exe, Some(String::new()));
     }
 
     /// Check if logging is enabled on this `Session`.
