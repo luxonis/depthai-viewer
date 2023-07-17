@@ -18,7 +18,7 @@ use sentry;
 
 use crate::{
     app_icon::setup_app_icon,
-    depthai::{depthai, dependency_installer::DependencyInstaller},
+    depthai::{dependency_installer::DependencyInstaller, depthai},
     misc::{AppOptions, Caches, RecordingConfig, ViewerContext},
     ui::{data_ui::ComponentUiRegistry, Blueprint},
     viewer_analytics::ViewerAnalytics,
@@ -71,7 +71,7 @@ const MIN_ZOOM_FACTOR: f32 = 0.2;
 const MAX_ZOOM_FACTOR: f32 = 4.0;
 
 /// The Rerun viewer as an [`eframe`] application.
-pub struct App {
+pub struct App<'a> {
     build_info: re_build_info::BuildInfo,
     startup_options: StartupOptions,
     ram_limit_warner: re_memory::RamLimitWarner,
@@ -122,10 +122,10 @@ pub struct App {
     backend_handle: Option<std::process::Child>,
 
     #[cfg(not(target_arch = "wasm32"))]
-    dependency_installer: Option<DependencyInstaller>,
+    dependency_installer: Option<DependencyInstaller<'a>>,
 }
 
-impl App {
+impl<'a> App<'a> {
     #[cfg(not(target_arch = "wasm32"))]
     fn spawn_backend(environment: &BackendEnvironment) -> Option<std::process::Child> {
         // It is necessary to install the requirements before starting the backend
@@ -230,7 +230,7 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             backend_handle: App::spawn_backend(&backend_environment),
             #[cfg(not(target_arch = "wasm32"))]
-            dependency_installer: None
+            dependency_installer: None,
         }
     }
 
@@ -490,11 +490,11 @@ impl App {
             re_log::debug!("Tried to start a dependency installer wile another dependency installer is already running!");
             return;
         }
-        self.dependency_installer = Some(DependencyInstaller::new(self.backend_environment.clone()));
+        self.dependency_installer = Some(DependencyInstaller::new(&mut self.backend_environment));
     }
 }
 
-impl eframe::App for App {
+impl<'a> eframe::App for App<'a> {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         [0.0; 4] // transparent so we can get rounded corners when doing [`re_ui::CUSTOM_WINDOW_DECORATIONS`]
     }
@@ -521,9 +521,7 @@ impl eframe::App for App {
         #[cfg(not(target_arch = "wasm32"))]
         {
             if let Some(dependency_installer) = &mut self.dependency_installer {
-                if let Some(installation_result) = dependency_installer.get_result() {
-
-                }
+                if let Some(installation_result) = dependency_installer.get_result() {}
                 dependency_installer.update(egui_ctx);
             }
             match &mut self.backend_handle {
@@ -791,7 +789,7 @@ fn wait_screen_ui(ui: &mut egui::Ui, rx: &Receiver<LogMsg>) {
     });
 }
 
-impl App {
+impl<'a> App {
     /// Show recent text log messages to the user as toast notifications.
     fn show_text_logs_as_notifications(&mut self) {
         crate::profile_function!();

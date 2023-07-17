@@ -4,6 +4,7 @@ import signal
 import subprocess
 import sys
 import traceback
+import json
 
 from depthai_viewer import bindings, unregister_shutdown
 from depthai_viewer import version as depthai_viewer_version  # type: ignore[attr-defined]
@@ -41,6 +42,7 @@ def create_venv_and_install_dependencies() -> str:
         if sys.platform == "win32"
         else os.path.join(venv_dir, "bin", "python")
     )
+    venv_packages_dir = ""
     try:
         original_sigint_handler = signal.getsignal(signal.SIGINT)
         # Create venv if it doesn't exist
@@ -81,16 +83,19 @@ def create_venv_and_install_dependencies() -> str:
 
         # Restore original SIGINT handler
         signal.signal(signal.SIGINT, original_sigint_handler)
-        return os.path.normpath(venv_packages_dir)
 
     except Exception as e:
         print(f"Error occurred during the creation of the virtual environment or installation of dependencies: {e}")
         print(traceback.format_exc())
         delete_partially_created_venv(venv_dir)
         exit(1)
-
-
+    finally:
+        # Dump a struct reporting the success or failure of the installation
+        status_dump = json.dumps({
+            "success": os.path.exists(venv_dir),
+            "venv_dir": venv_dir,
+        })
+        print(f"Status Dump: {status_dump}")
 
 if __name__ == '__main__':
-    venv_site_packages = create_venv_and_install_dependencies()
-    subprocess.run(["rm", "-rf", venv_site_packages])
+    create_venv_and_install_dependencies()
