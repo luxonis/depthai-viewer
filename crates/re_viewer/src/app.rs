@@ -71,7 +71,7 @@ const MIN_ZOOM_FACTOR: f32 = 0.2;
 const MAX_ZOOM_FACTOR: f32 = 4.0;
 
 /// The Rerun viewer as an [`eframe`] application.
-pub struct App<'a> {
+pub struct App {
     build_info: re_build_info::BuildInfo,
     startup_options: StartupOptions,
     ram_limit_warner: re_memory::RamLimitWarner,
@@ -122,10 +122,10 @@ pub struct App<'a> {
     backend_handle: Option<std::process::Child>,
 
     #[cfg(not(target_arch = "wasm32"))]
-    dependency_installer: Option<DependencyInstaller<'a>>,
+    dependency_installer: Option<DependencyInstaller>,
 }
 
-impl<'a> App<'a> {
+impl App {
     #[cfg(not(target_arch = "wasm32"))]
     fn spawn_backend(environment: &BackendEnvironment) -> Option<std::process::Child> {
         // It is necessary to install the requirements before starting the backend
@@ -490,11 +490,12 @@ impl<'a> App<'a> {
             re_log::debug!("Tried to start a dependency installer wile another dependency installer is already running!");
             return;
         }
-        self.dependency_installer = Some(DependencyInstaller::new(&mut self.backend_environment));
+        self.dependency_installer =
+            Some(DependencyInstaller::new(self.backend_environment.clone()));
     }
 }
 
-impl<'a> eframe::App for App<'a> {
+impl eframe::App for App {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         [0.0; 4] // transparent so we can get rounded corners when doing [`re_ui::CUSTOM_WINDOW_DECORATIONS`]
     }
@@ -520,8 +521,22 @@ impl<'a> eframe::App for App<'a> {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
+            if let Some(_) = self.dependency_installer.as_ref().and_then(|dependency_installer| {
+                if let Some(installed_env) = dependency_installer.try_get_installed_environment() {
+                    self.backend_environment = installed_env;
+                    Some(())
+                } else {
+                    None
+                }
+            }) {
+                self.dependency_installer = None;
+            }
             if let Some(dependency_installer) = &mut self.dependency_installer {
-                if let Some(installation_result) = dependency_installer.get_result() {}
+                if let Some(installed_environment) =
+                    dependency_installer.try_get_installed_environment()
+                {
+                    self.backend_environment = installed_environment;
+                }
                 dependency_installer.update(egui_ctx);
             }
             match &mut self.backend_handle {
@@ -543,8 +558,8 @@ impl<'a> eframe::App for App<'a> {
                         re_log::debug!(
                             "Backend requirements not installed, starting dependency installer!"
                         );
+                        self.install_dependencies();
                     }
-                    self.install_dependencies();
                 }
             };
         }
@@ -789,7 +804,7 @@ fn wait_screen_ui(ui: &mut egui::Ui, rx: &Receiver<LogMsg>) {
     });
 }
 
-impl<'a> App {
+impl App {
     /// Show recent text log messages to the user as toast notifications.
     fn show_text_logs_as_notifications(&mut self) {
         crate::profile_function!();

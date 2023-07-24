@@ -16,8 +16,10 @@ def main() -> None:
     unregister_shutdown()
     # The viewer will take care of installing the requirements if site_packages_directory is None
     site_packages_directory = None
-    if os.path.exists(venv_dir):
-        site_packages_directory = get_site_packages(venv_dir)
+    try:
+        site_packages_directory = get_site_packages()
+    except Exception:
+        pass
     sys.exit(bindings.main(sys.argv, python_exe, site_packages_directory))
 
 

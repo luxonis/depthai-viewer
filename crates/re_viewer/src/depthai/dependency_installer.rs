@@ -6,14 +6,10 @@ use tokio::task;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StatusDump {
-    success: bool,
-    venv_path: String,
+    venv_site_packages: String,
 }
 
 use crate::app::BackendEnvironment;
-
-#[derive(Clone, Debug)]
-pub struct DependencyInstallerResult {}
 
 /// The installer process which is run in a separate thread
 /// Runs install_requirements.py and captures stdout and stderr
@@ -64,6 +60,7 @@ impl InstallerProcess {
             self.update();
             if let Some(exit_status) = self.get_exit_status() {
                 println!("Got exit status: {:?}", exit_status);
+                println!("Log output: {}", self.log_output);
                 if exit_status.success() {
                     return Ok(());
                 } else {
@@ -92,7 +89,6 @@ impl InstallerProcess {
     }
 
     pub fn update(&mut self) {
-        println!("Updating installer process");
         if let Ok(process) = &mut self.process {
             if let Some(exit_status) = process.poll() {
                 re_log::debug!("Installer process exited with {:?}", exit_status);
@@ -103,7 +99,6 @@ impl InstallerProcess {
             if let Some(out_f) = &mut process.stdout {
                 match out_f.read(&mut tmp_buf) {
                     std::io::Result::Ok(n_read) => {
-                        println!("Read {} bytes from stdout", n_read);
                         if let Ok(utf8) = std::str::from_utf8(&tmp_buf[..n_read]) {
                             self.log_output.push_str(utf8);
                             self.stdio_tx.send(utf8.to_string());
@@ -120,22 +115,24 @@ impl InstallerProcess {
     }
 }
 
-pub struct DependencyInstaller<'a> {
-    result: Option<DependencyInstallerResult>,
+pub struct DependencyInstaller {
+    installed_environment: Option<BackendEnvironment>,
     process: task::JoinHandle<Result<(), InstallerProcessError>>,
     stdio_rx: crossbeam_channel::Receiver<String>,
+    stdio_tx: crossbeam_channel::Sender<String>,
     stdio: String,
-    backend_environment: &'a mut BackendEnvironment,
+    backend_environment: BackendEnvironment,
 }
 
-impl<'a> DependencyInstaller<'a> {
-    pub fn new(environment: &mut BackendEnvironment) -> Self {
+impl DependencyInstaller {
+    pub fn new(environment: BackendEnvironment) -> Self {
         let (stdio_tx, stdio_rx) = crossbeam_channel::unbounded();
-        let process = InstallerProcess::spawn(environment.clone(), stdio_tx);
+        let process = InstallerProcess::spawn(environment.clone(), stdio_tx.clone());
         Self {
-            result: None,
+            installed_environment: None,
             process,
             stdio_rx,
+            stdio_tx,
             stdio: String::with_capacity(4096),
             backend_environment: environment,
         }
@@ -154,28 +151,33 @@ impl<'a> DependencyInstaller<'a> {
                     TextEdit::multiline(&mut self.stdio).show(ui)
                 });
             } else {
-                let Some(status_dump_index) = self.stdio.find("Status dump:") else {
-                    panic!("Failed to find status dump in dependency installer stdout!");
-                };
-                let status_dump = &self.stdio[status_dump_index..];
-
-                // match self.process.await? {
-                //     Ok(_) => ui.label("Dependencies installed!"),
-                //     Err(err) => {
-                //         ui.label("Error installing dependencies");
-                //         if ui.button("Retry").clicked() {
-                //             self.process = Self::create_installer_process(
-                //                 self.environment.python_path.clone(),
-                //             );
-                //         }
-                //     }
-                // }
-                ui.label("Error installing dependencies");
+                // On successful install, a status dump is printed to stdout
+                match self.stdio.find("Status Dump: ") {
+                    Some(mut status_dump_index) => {
+                        status_dump_index += "Status Dump: ".len();
+                        let status_dump: StatusDump =
+                            serde_json::from_str(&self.stdio[status_dump_index..].trim()).unwrap();
+                        self.installed_environment = Some(BackendEnvironment {
+                            python_path: self.backend_environment.python_path.clone(),
+                            venv_site_packages: Some(status_dump.venv_site_packages.clone()),
+                        });
+                    }
+                    None => {
+                        ui.label("Error installing dependencies");
+                        if ui.button("Retry").clicked() {
+                            self.process = InstallerProcess::spawn(
+                                self.backend_environment.clone(),
+                                self.stdio_tx.clone(),
+                            );
+                        }
+                    }
+                }
             }
         });
     }
 
-    pub fn get_result(&self) -> Option<DependencyInstallerResult> {
-        self.result.clone()
+    /// Get the installed environment if it was successfully installed, otherwise always None
+    pub fn try_get_installed_environment(&self) -> Option<BackendEnvironment> {
+        self.installed_environment.clone()
     }
 }
