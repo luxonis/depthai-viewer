@@ -147,9 +147,13 @@ impl DependencyInstaller {
 
             if !self.process.is_finished() {
                 ui.label("Installing dependencies...");
-                ui.collapsing("Details", |ui| {
-                    TextEdit::multiline(&mut self.stdio).show(ui)
-                });
+                egui::ScrollArea::vertical()
+                    .max_height(200.0)
+                    .max_width(400.0)
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.label(&self.stdio);
+                    });
             } else {
                 // On successful install, a status dump is printed to stdout
                 match self.stdio.find("Status Dump: ") {

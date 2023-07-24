@@ -6,6 +6,7 @@ import sys
 import traceback
 import json
 import struct
+from typing import Any, Dict
 
 from depthai_viewer import bindings, unregister_shutdown
 from depthai_viewer import version as depthai_viewer_version  # type: ignore[attr-defined]
@@ -13,10 +14,9 @@ from depthai_viewer import version as depthai_viewer_version  # type: ignore[att
 script_path = os.path.dirname(os.path.abspath(__file__))
 venv_dir = os.path.join(script_path, "venv-" + depthai_viewer_version())
 venv_python = (
-    os.path.join(venv_dir, "Scripts", "python")
-    if sys.platform == "win32"
-    else os.path.join(venv_dir, "bin", "python")
+    os.path.join(venv_dir, "Scripts", "python") if sys.platform == "win32" else os.path.join(venv_dir, "bin", "python")
 )
+
 
 def delete_partially_created_venv(path: str) -> None:
     try:
@@ -35,22 +35,47 @@ def sigint_mid_venv_install_handler(signum, frame) -> None:  # type: ignore[no-u
 def get_site_packages() -> str:
     """Get the site packages directory of the virtual environment. Throws an exception if the site packages could not be fetched."""
     return subprocess.run(
-            [venv_python, "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'], end='')"],
-            capture_output=True,
-            text=True,
-            check=True,
+        [venv_python, "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'], end='')"],
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
+
+
+def download_blobs() -> None:
+    from depthai_sdk.components.nn_helper import getSupportedModels
+    import blobconverter
+
+    models = [
+        "yolov8n_coco_640x352",
+        "mobilenet-ssd",
+        "face-detection-retail-0004",
+        "age-gender-recognition-retail-0013",
+    ]
+    sdk_models = getSupportedModels(printModels=False)
+    zoo_models = blobconverter.zoo_list()
+    for model in models:
+        zoo_type = None
+        if model in sdk_models:
+            model_config_file = sdk_models[model] / "config.json"
+            config = json.load(open(model_config_file))
+            if "model" in config:
+                model_config: Dict[str, Any] = config["model"]
+                if "model_name" in model_config:
+                    zoo_type = model_config.get("zoo", "intel")
+        blobconverter.from_zoo(model, zoo_type=zoo_type, shaves=6)
+
 
 def dependencies_installed() -> bool:
     return os.path.exists(venv_dir)
 
-def create_venv_and_install_dependencies() -> str:
 
+def create_venv_and_install_dependencies() -> None:
     venv_packages_dir = ""
     try:
         original_sigint_handler = signal.getsignal(signal.SIGINT)
         # Create venv if it doesn't exist
-        if not os.path.exists(venv_dir):
+        if not dependencies_installed():
             # In case of Ctrl+C during the venv creation, delete the partially created venv
             signal.signal(signal.SIGINT, sigint_mid_venv_install_handler)
             print("Creating virtual environment...")
@@ -85,6 +110,13 @@ def create_venv_and_install_dependencies() -> str:
             print(f"Removing old venv: {item}")
             shutil.rmtree(os.path.join(venv_dir, "..", item))
 
+        # Download blobs
+        subprocess.run(
+            [sys.executable, "-c", "from depthai_viewer.install_requirements import download_blobs; download_blobs()"],
+            check=True,
+            env={"PYTHONPATH": venv_packages_dir},
+        )
+
         # Restore original SIGINT handler
         signal.signal(signal.SIGINT, original_sigint_handler)
 
@@ -93,11 +125,14 @@ def create_venv_and_install_dependencies() -> str:
         print(traceback.format_exc())
         delete_partially_created_venv(venv_dir)
     finally:
-        status_dump = json.dumps({
-            "venv_site_packages": venv_packages_dir,
-        })
+        status_dump = json.dumps(
+            {
+                "venv_site_packages": venv_packages_dir,
+            }
+        )
         if dependencies_installed():
             print(f"Status Dump: {status_dump}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     create_venv_and_install_dependencies()

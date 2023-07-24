@@ -337,7 +337,7 @@ impl App {
             Command::Quit => {
                 self.state.depthai_state.shutdown();
                 if let Some(backend_handle) = &mut self.backend_handle {
-                    backend_handle.kill().expect("Failed to kill backend");
+                    let _ = backend_handle.kill();
                 }
                 _frame.close();
             }
@@ -504,7 +504,7 @@ impl eframe::App for App {
     fn on_close_event(&mut self) -> bool {
         self.state.depthai_state.shutdown();
         if let Some(backend_handle) = &mut self.backend_handle {
-            backend_handle.kill();
+            let _ = backend_handle.kill();
         }
         true
     }
@@ -543,7 +543,7 @@ impl eframe::App for App {
                 Some(handle) => match handle.try_wait() {
                     Ok(status) => {
                         if status.is_some() {
-                            handle.kill();
+                            let _ = handle.kill(); // It will only Err in case the process is already dead (which is what we want anyway)
                             self.state.depthai_state.reset();
                             re_log::debug!("Backend process has exited, restarting!");
                             self.backend_handle = App::spawn_backend(&self.backend_environment);
@@ -585,7 +585,7 @@ impl eframe::App for App {
             #[cfg(not(target_arch = "wasm32"))]
             {
                 if let Some(backend_handle) = &mut self.backend_handle {
-                    backend_handle.kill();
+                    let _ = backend_handle.kill();
                 }
                 frame.close();
             }
