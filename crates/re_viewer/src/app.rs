@@ -521,14 +521,20 @@ impl eframe::App for App {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if let Some(_) = self.dependency_installer.as_ref().and_then(|dependency_installer| {
-                if let Some(installed_env) = dependency_installer.try_get_installed_environment() {
-                    self.backend_environment = installed_env;
-                    Some(())
-                } else {
-                    None
-                }
-            }) {
+            if let Some(_) = self
+                .dependency_installer
+                .as_ref()
+                .and_then(|dependency_installer| {
+                    if let Some(installed_env) =
+                        dependency_installer.try_get_installed_environment()
+                    {
+                        self.backend_environment = installed_env;
+                        Some(())
+                    } else {
+                        None
+                    }
+                })
+            {
                 self.dependency_installer = None;
             }
             if let Some(dependency_installer) = &mut self.dependency_installer {
@@ -537,7 +543,7 @@ impl eframe::App for App {
                 {
                     self.backend_environment = installed_environment;
                 }
-                dependency_installer.update(egui_ctx);
+                dependency_installer.update();
             }
             match &mut self.backend_handle {
                 Some(handle) => match handle.try_wait() {
@@ -561,13 +567,6 @@ impl eframe::App for App {
                         self.install_dependencies();
                     }
                 }
-            };
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            if self.backend_handle.is_none() {
-                self.backend_handle = App::spawn_backend(&self.backend_environment);
             };
         }
 
@@ -647,6 +646,7 @@ impl eframe::App for App {
             // Add some margin so that we can later paint an outline around it all.
             main_panel_frame.inner_margin = 1.0.into();
         }
+
         egui::CentralPanel::default()
             .frame(main_panel_frame)
             .show(egui_ctx, |ui| {
@@ -669,6 +669,14 @@ impl eframe::App for App {
                     .blueprints
                     .entry(selected_app_id)
                     .or_insert_with(|| Blueprint::new(egui_ctx));
+               
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if let Some(dependency_installer) = &mut self.dependency_installer {
+                        dependency_installer.show(&self.re_ui, ui);
+                    }
+                }
+
 
                 recording_config_entry(
                     &mut self.state.recording_configs,

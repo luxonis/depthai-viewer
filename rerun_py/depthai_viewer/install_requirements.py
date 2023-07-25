@@ -53,7 +53,6 @@ def download_blobs() -> None:
         "age-gender-recognition-retail-0013",
     ]
     sdk_models = getSupportedModels(printModels=False)
-    zoo_models = blobconverter.zoo_list()
     for model in models:
         zoo_type = None
         if model in sdk_models:

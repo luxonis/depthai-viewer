@@ -138,46 +138,54 @@ impl DependencyInstaller {
         }
     }
 
-    pub fn update(&mut self, ctx: &egui::Context) {
-        egui::Window::new("Dependency Installer").show(ctx, |ui| {
-            // Receive stdout from the installer process
-            while let Ok(stdout) = self.stdio_rx.try_recv() {
-                self.stdio.push_str(&stdout);
-            }
-
-            if !self.process.is_finished() {
-                ui.label("Installing dependencies...");
-                egui::ScrollArea::vertical()
-                    .max_height(200.0)
-                    .max_width(400.0)
-                    .stick_to_bottom(true)
-                    .show(ui, |ui| {
-                        ui.label(&self.stdio);
-                    });
-            } else {
-                // On successful install, a status dump is printed to stdout
-                match self.stdio.find("Status Dump: ") {
-                    Some(mut status_dump_index) => {
-                        status_dump_index += "Status Dump: ".len();
-                        let status_dump: StatusDump =
-                            serde_json::from_str(&self.stdio[status_dump_index..].trim()).unwrap();
-                        self.installed_environment = Some(BackendEnvironment {
-                            python_path: self.backend_environment.python_path.clone(),
-                            venv_site_packages: Some(status_dump.venv_site_packages.clone()),
+    pub fn show(&mut self, re_ui: &re_ui::ReUi, ui: &mut egui::Ui) {
+        egui::Window::new("Dependency Installer").show(ui.ctx(), |ui| {
+            ui.scope(|ui| {
+                let mut style = ui.style_mut().clone();
+                style.visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
+                ui.set_style(style);
+                if !self.process.is_finished() {
+                    ui.label("Installing dependencies...");
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .max_width(400.0)
+                        .stick_to_bottom(true)
+                        .show(ui, |ui| {
+                            ui.label(&self.stdio);
                         });
-                    }
-                    None => {
-                        ui.label("Error installing dependencies");
-                        if ui.button("Retry").clicked() {
-                            self.process = InstallerProcess::spawn(
-                                self.backend_environment.clone(),
-                                self.stdio_tx.clone(),
-                            );
+                } else {
+                    // On successful install, a status dump is printed to stdout
+                    match self.stdio.find("Status Dump: ") {
+                        Some(mut status_dump_index) => {
+                            status_dump_index += "Status Dump: ".len();
+                            let status_dump: StatusDump =
+                                serde_json::from_str(&self.stdio[status_dump_index..].trim())
+                                    .unwrap();
+                            self.installed_environment = Some(BackendEnvironment {
+                                python_path: self.backend_environment.python_path.clone(),
+                                venv_site_packages: Some(status_dump.venv_site_packages.clone()),
+                            });
+                        }
+                        None => {
+                            ui.label("Error installing dependencies");
+                            if ui.button("Retry").clicked() {
+                                self.process = InstallerProcess::spawn(
+                                    self.backend_environment.clone(),
+                                    self.stdio_tx.clone(),
+                                );
+                            }
                         }
                     }
                 }
-            }
+            });
         });
+    }
+
+    pub fn update(&mut self) {
+        // Receive stdout from the installer process
+        while let Ok(stdout) = self.stdio_rx.try_recv() {
+            self.stdio.push_str(&stdout);
+        }
     }
 
     /// Get the installed environment if it was successfully installed, otherwise always None
