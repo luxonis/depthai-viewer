@@ -95,3 +95,8 @@ pub const SPACE_VIEW_HISTOGRAM: Icon = Icon::new(
 );
 
 pub const CONTAINER: Icon = Icon::new("container", include_bytes!("../data/icons/container.png"));
+
+pub const DEPTHAI_ICON: Icon = Icon::new(
+    "depthai_icon",
+    include_bytes!("../data/icons/depthai_icon.png"),
+);

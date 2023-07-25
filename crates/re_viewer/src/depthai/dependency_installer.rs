@@ -1,4 +1,4 @@
-use egui::TextEdit;
+use instant::Instant;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use subprocess::{ExitStatus, Popen, PopenConfig, PopenError, Redirection};
@@ -115,6 +115,49 @@ impl InstallerProcess {
     }
 }
 
+pub struct PulsatingIcon {
+    icon: re_ui::Icon,
+    pulsating: bool,
+    pulsating_timer: Instant,
+}
+
+impl PulsatingIcon {
+    pub fn new(icon: re_ui::Icon) -> Self {
+        Self {
+            icon,
+            pulsating: false,
+            pulsating_timer: Instant::now(),
+        }
+    }
+
+    pub fn start_pulsating(&mut self) {
+        self.pulsating = true;
+        self.pulsating_timer = Instant::now();
+    }
+
+    pub fn stop_pulsating(&mut self) {
+        self.pulsating = false;
+    }
+
+    pub fn show(&mut self, re_ui: &re_ui::ReUi, ui: &mut egui::Ui) {
+        let elapsed = self.pulsating_timer.elapsed().as_secs_f32();
+        let mut progress = if elapsed < 1.0 {
+            elapsed
+        } else {
+            2.0 - elapsed
+        } + 0.2; // Never go fully transparent
+        progress = progress.clamp(0.0, 1.0);
+        let progress = (progress * 255.0) as u8;
+
+        if self.pulsating_timer.elapsed() > instant::Duration::from_secs(2) {
+            self.pulsating_timer = Instant::now();
+        }
+        let tint = egui::Color32::from_rgba_premultiplied(progress, progress, progress, progress);
+        let icon_image = re_ui.icon_image(&self.icon);
+        ui.add(egui::Image::new(icon_image.texture_id(ui.ctx()), [124.0, 124.0]).tint(tint));
+    }
+}
+
 pub struct DependencyInstaller {
     installed_environment: Option<BackendEnvironment>,
     process: task::JoinHandle<Result<(), InstallerProcessError>>,
@@ -122,12 +165,15 @@ pub struct DependencyInstaller {
     stdio_tx: crossbeam_channel::Sender<String>,
     stdio: String,
     backend_environment: BackendEnvironment,
+    pulsating_dai_icon: PulsatingIcon,
 }
 
 impl DependencyInstaller {
     pub fn new(environment: BackendEnvironment) -> Self {
         let (stdio_tx, stdio_rx) = crossbeam_channel::unbounded();
         let process = InstallerProcess::spawn(environment.clone(), stdio_tx.clone());
+        let mut pulsating_dai_icon = PulsatingIcon::new(re_ui::icons::DEPTHAI_ICON);
+        pulsating_dai_icon.start_pulsating();
         Self {
             installed_environment: None,
             process,
@@ -135,38 +181,28 @@ impl DependencyInstaller {
             stdio_tx,
             stdio: String::with_capacity(4096),
             backend_environment: environment,
+            pulsating_dai_icon,
         }
     }
 
     pub fn show(&mut self, re_ui: &re_ui::ReUi, ui: &mut egui::Ui) {
-        egui::Window::new("Dependency Installer").show(ui.ctx(), |ui| {
-            ui.scope(|ui| {
-                let mut style = ui.style_mut().clone();
-                style.visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
-                ui.set_style(style);
-                if !self.process.is_finished() {
-                    ui.label("Installing dependencies...");
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .max_width(400.0)
-                        .stick_to_bottom(true)
-                        .show(ui, |ui| {
-                            ui.label(&self.stdio);
-                        });
-                } else {
-                    // On successful install, a status dump is printed to stdout
-                    match self.stdio.find("Status Dump: ") {
-                        Some(mut status_dump_index) => {
-                            status_dump_index += "Status Dump: ".len();
-                            let status_dump: StatusDump =
-                                serde_json::from_str(&self.stdio[status_dump_index..].trim())
-                                    .unwrap();
-                            self.installed_environment = Some(BackendEnvironment {
-                                python_path: self.backend_environment.python_path.clone(),
-                                venv_site_packages: Some(status_dump.venv_site_packages.clone()),
-                            });
-                        }
-                        None => {
+        let frame = egui::Frame::default()
+            .fill(egui::Color32::WHITE)
+            .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
+            .inner_margin(1.0)
+            .rounding(15.0);
+
+        egui::Window::new("Dependency Installer")
+            .title_bar(false)
+            .frame(frame)
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size([400.0, 300.0])
+            .show(ui.ctx(), |ui| {
+                ui.vertical(|ui| {
+                    self.pulsating_dai_icon.show(re_ui, ui);
+                    if !self.dependencies_installed() {
+                        if self.process.is_finished() {
                             ui.label("Error installing dependencies");
                             if ui.button("Retry").clicked() {
                                 self.process = InstallerProcess::spawn(
@@ -174,17 +210,48 @@ impl DependencyInstaller {
                                     self.stdio_tx.clone(),
                                 );
                             }
+                        } else {
+                            ui.label("Installing dependencies...");
                         }
+                    } else {
+                        ui.label("Dependencies installed successfully!");
                     }
-                }
+                    ui.collapsing("Details", |ui| {
+                        egui::ScrollArea::both()
+                            .max_width(400.0)
+                            .max_height(200.0)
+                            .stick_to_bottom(true)
+                            .show(ui, |ui| {
+                                ui.label(&self.stdio);
+                            });
+                    })
+                });
             });
-        });
+    }
+
+    fn dependencies_installed(&self) -> bool {
+        self.installed_environment.is_some()
     }
 
     pub fn update(&mut self) {
         // Receive stdout from the installer process
         while let Ok(stdout) = self.stdio_rx.try_recv() {
             self.stdio.push_str(&stdout);
+        }
+
+        if self.process.is_finished() {
+            match self.stdio.find("Status Dump: ") {
+                Some(mut status_dump_index) => {
+                    status_dump_index += "Status Dump: ".len();
+                    let status_dump: StatusDump =
+                        serde_json::from_str(&self.stdio[status_dump_index..].trim()).unwrap();
+                    self.installed_environment = Some(BackendEnvironment {
+                        python_path: self.backend_environment.python_path.clone(),
+                        venv_site_packages: Some(status_dump.venv_site_packages.clone()),
+                    });
+                }
+                None => {}
+            }
         }
     }
 
