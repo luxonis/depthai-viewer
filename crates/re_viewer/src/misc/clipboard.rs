@@ -16,7 +16,7 @@ impl Clipboard {
             if let Err(err) = clipboard.set_text(text) {
                 re_log::error!("Failed to copy image to clipboard: {err}",);
             } else {
-                re_log::info!("Image copied to clipboard");
+                re_log::info!("Text copied to clipboard");
             }
         }
     }

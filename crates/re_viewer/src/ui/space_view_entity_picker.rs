@@ -61,6 +61,7 @@ impl SpaceViewEntityPicker {
                     ui,
                     re_ui::ScrollAreaDirection::Vertical,
                     [false; 2],
+                    false,
                     |ui| {
                         add_entities_ui(ctx, ui, space_view);
                     },

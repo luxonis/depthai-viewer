@@ -20,8 +20,12 @@ pub(crate) struct SelectionPanel {}
 
 impl SelectionPanel {
     pub fn show_panel(ctx: &mut ViewerContext<'_>, ui: &mut egui::Ui, viewport: &mut Viewport) {
-        ctx.re_ui
-            .styled_scrollbar(ui, re_ui::ScrollAreaDirection::Both, [true; 2], |ui| {
+        ctx.re_ui.styled_scrollbar(
+            ui,
+            re_ui::ScrollAreaDirection::Both,
+            [true; 2],
+            false,
+            |ui| {
                 egui::Frame {
                     inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
                     ..Default::default()
@@ -29,7 +33,8 @@ impl SelectionPanel {
                 .show(ui, |ui| {
                     Self::contents(ui, ctx, viewport);
                 });
-            })
+            },
+        )
     }
 
     fn contents(ui: &mut egui::Ui, ctx: &mut ViewerContext<'_>, viewport: &mut Viewport) {
@@ -432,7 +437,8 @@ fn colormap_props_ui(
                 ) else {
                     return;
                 };
-                if tensor.meaning() != TensorDataMeaning::Depth &&  tensor.is_shaped_like_an_image()
+                if tensor.meaning() != TensorDataMeaning::Depth
+                    && tensor.is_shaped_like_an_image()
                     && ui
                         .selectable_label(current.as_ref() == Some(ent_path), ent_path.to_string())
                         .clicked()

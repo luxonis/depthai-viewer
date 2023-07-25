@@ -109,6 +109,7 @@ pub(crate) fn view_text(
             ui,
             re_ui::ScrollAreaDirection::Horizontal,
             [false; 2],
+            false,
             |ui| {
                 crate::profile_scope!("render table");
                 table_ui(ctx, ui, state, &scene.text_entries, scroll_to_row);

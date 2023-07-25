@@ -229,6 +229,7 @@ impl ReUi {
         ui: &mut egui::Ui,
         direction: ScrollAreaDirection,
         auto_shrink: [bool; 2],
+        stick_to_bottom: bool,
         contents: impl FnOnce(&mut egui::Ui) -> R,
     ) {
         // Set a more visible scroll bar color
@@ -247,6 +248,7 @@ impl ReUi {
             ScrollAreaDirection::Both => egui::ScrollArea::both(),
         }
         .auto_shrink(auto_shrink)
+        .stick_to_bottom(stick_to_bottom)
         .show(ui, |ui| {
             // Reset styling
             let mut style = ui.style_mut().clone();

@@ -214,8 +214,12 @@ impl DeviceSettingsPanel {
         let primary_700 = ctx.re_ui.design_tokens.primary_700;
         let connected_cameras = ctx.depthai_state.get_connected_cameras().clone();
 
-        ctx.re_ui
-            .styled_scrollbar(ui, re_ui::ScrollAreaDirection::Vertical, [false; 2], |ui| {
+        ctx.re_ui.styled_scrollbar(
+            ui,
+            re_ui::ScrollAreaDirection::Vertical,
+            [false; 2],
+            false,
+            |ui| {
                 (egui::Frame {
                     fill: ctx.re_ui.design_tokens.gray_50,
                     inner_margin: egui::Margin::symmetric(30.0, 21.0),
@@ -484,7 +488,8 @@ impl DeviceSettingsPanel {
                         ui.allocate_space(ui.available_size());
                     });
                 });
-            });
+            },
+        );
         // Set a more visible scroll bar color
     }
 }

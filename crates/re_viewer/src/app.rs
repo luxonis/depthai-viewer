@@ -650,6 +650,14 @@ impl eframe::App for App {
         egui::CentralPanel::default()
             .frame(main_panel_frame)
             .show(egui_ctx, |ui| {
+                ui.set_enabled(true);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if let Some(dependency_installer) = &mut self.dependency_installer {
+                        dependency_installer.show(&self.re_ui, ui);
+                        ui.set_enabled(false);
+                    }
+                }
                 paint_background_fill(ui);
 
                 warning_panel(&self.re_ui, ui, frame);
@@ -669,14 +677,6 @@ impl eframe::App for App {
                     .blueprints
                     .entry(selected_app_id)
                     .or_insert_with(|| Blueprint::new(egui_ctx));
-               
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    if let Some(dependency_installer) = &mut self.dependency_installer {
-                        dependency_installer.show(&self.re_ui, ui);
-                    }
-                }
-
 
                 recording_config_entry(
                     &mut self.state.recording_configs,

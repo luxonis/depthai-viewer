@@ -140,15 +140,16 @@ impl PulsatingIcon {
     }
 
     pub fn show(&mut self, re_ui: &re_ui::ReUi, ui: &mut egui::Ui) {
-        let elapsed = self.pulsating_timer.elapsed().as_secs_f32();
-        let mut progress = if elapsed < 1.0 {
-            elapsed
-        } else {
-            2.0 - elapsed
-        } + 0.2; // Never go fully transparent
-        progress = progress.clamp(0.0, 1.0);
-        let progress = (progress * 255.0) as u8;
-
+        let mut progress = 255;
+        if self.pulsating {
+            let elapsed = self.pulsating_timer.elapsed().as_secs_f32();
+            let progress_f32 = if elapsed < 1.0 {
+                elapsed
+            } else {
+                2.0 - elapsed
+            } + 0.2; // Never go fully transparent
+            progress = (progress_f32.clamp(0.0, 1.0) * 255.0) as u8;
+        }
         if self.pulsating_timer.elapsed() > instant::Duration::from_secs(2) {
             self.pulsating_timer = Instant::now();
         }
@@ -166,6 +167,7 @@ pub struct DependencyInstaller {
     stdio: String,
     backend_environment: BackendEnvironment,
     pulsating_dai_icon: PulsatingIcon,
+    installation_acknowledged: bool,
 }
 
 impl DependencyInstaller {
@@ -181,6 +183,7 @@ impl DependencyInstaller {
             stdio_tx,
             stdio: String::with_capacity(4096),
             backend_environment: environment,
+            installation_acknowledged: false,
             pulsating_dai_icon,
         }
     }
@@ -189,42 +192,88 @@ impl DependencyInstaller {
         let frame = egui::Frame::default()
             .fill(egui::Color32::WHITE)
             .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
-            .inner_margin(1.0)
-            .rounding(15.0);
+            .inner_margin(egui::Margin::symmetric(16.0, 0.0))
+            .rounding(8.0);
 
         egui::Window::new("Dependency Installer")
             .title_bar(false)
             .frame(frame)
             .collapsible(false)
-            .resizable(false)
-            .fixed_size([400.0, 300.0])
+            .resizable(true)
+            .default_height(600.0)
             .show(ui.ctx(), |ui| {
-                ui.vertical(|ui| {
-                    self.pulsating_dai_icon.show(re_ui, ui);
-                    if !self.dependencies_installed() {
-                        if self.process.is_finished() {
-                            ui.label("Error installing dependencies");
-                            if ui.button("Retry").clicked() {
-                                self.process = InstallerProcess::spawn(
-                                    self.backend_environment.clone(),
-                                    self.stdio_tx.clone(),
+                let frame = egui::Frame::default().inner_margin(egui::Margin {
+                    top: 24.0,
+                    bottom: 4.0,
+                    ..0.0.into()
+                });
+                egui::TopBottomPanel::top("header")
+                    .frame(frame)
+                    .show_separator_line(false)
+                    .show_inside(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            self.pulsating_dai_icon.show(re_ui, ui);
+                            if !self.dependencies_installed() {
+                                if self.process.is_finished() {
+                                    ui.label("Error installing dependencies");
+                                    self.pulsating_dai_icon.stop_pulsating();
+                                    if ui.button("Retry").clicked() {
+                                        self.pulsating_dai_icon.start_pulsating();
+                                        self.process = InstallerProcess::spawn(
+                                            self.backend_environment.clone(),
+                                            self.stdio_tx.clone(),
+                                        );
+                                    }
+                                } else {
+                                    ui.label("Installing dependencies...");
+                                }
+                            } else {
+                                ui.label(
+                                    egui::RichText::new("Dependencies installed successfully!")
+                                        .color(re_ui.design_tokens.success_400),
                                 );
+                                self.pulsating_dai_icon.stop_pulsating();
+                                if ui.button("Ok").clicked() {
+                                    self.installation_acknowledged = true;
+                                }
                             }
-                        } else {
-                            ui.label("Installing dependencies...");
-                        }
-                    } else {
-                        ui.label("Dependencies installed successfully!");
-                    }
-                    ui.collapsing("Details", |ui| {
-                        egui::ScrollArea::both()
-                            .max_width(400.0)
-                            .max_height(200.0)
-                            .stick_to_bottom(true)
-                            .show(ui, |ui| {
-                                ui.label(&self.stdio);
+                        });
+                    });
+
+                let frame = egui::Frame::default().inner_margin(0.0);
+                // Needed to contain the central panel within the window. Why? I don't know.
+                egui::TopBottomPanel::bottom("invisible")
+                    .frame(frame)
+                    .show_separator_line(false)
+                    .show_inside(ui, |_| ());
+
+                let frame = egui::Frame::default()
+                    .fill(egui::Color32::WHITE)
+                    .rounding(4.0)
+                    .stroke(egui::Stroke::new(1.0, re_ui.design_tokens.gray_400))
+                    .inner_margin(egui::Margin::same(12.0));
+
+                egui::CollapsingHeader::new("Details").show_unindented(ui, |ui| {
+                    egui::CentralPanel::default()
+                        .frame(frame)
+                        .show_inside(ui, |ui| {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                                if re_ui.small_icon_button(ui, &re_ui::icons::COPY).clicked() {
+                                    crate::misc::Clipboard::with(|clipboard| {
+                                        clipboard.set_text(self.stdio.clone());
+                                    });
+                                }
                             });
-                    })
+                            re_ui.styled_scrollbar(
+                                ui,
+                                re_ui::ScrollAreaDirection::Both,
+                                [false; 2],
+                                true,
+                                |ui| {
+                                    ui.label(&self.stdio);
+                                },
+                            );
+                        });
                 });
             });
     }
@@ -255,8 +304,11 @@ impl DependencyInstaller {
         }
     }
 
-    /// Get the installed environment if it was successfully installed, otherwise always None
+    /// Get the installed environment if it was successfully installed and the user pressed OK, otherwise always None
     pub fn try_get_installed_environment(&self) -> Option<BackendEnvironment> {
-        self.installed_environment.clone()
+        if self.installation_acknowledged {
+            return self.installed_environment.clone();
+        }
+        None
     }
 }

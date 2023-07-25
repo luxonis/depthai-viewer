@@ -207,9 +207,12 @@ struct StatsTabs<'a, 'b> {
 
 impl<'a, 'b> StatsTabs<'a, 'b> {
     fn imu_ui(&mut self, ui: &mut egui::Ui) {
-        self.ctx
-            .re_ui
-            .styled_scrollbar(ui, re_ui::ScrollAreaDirection::Both, [false; 2], |ui| {
+        self.ctx.re_ui.styled_scrollbar(
+            ui,
+            re_ui::ScrollAreaDirection::Both,
+            [false; 2],
+            false,
+            |ui| {
                 egui::Frame {
                     inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
                     ..Default::default()
@@ -220,7 +223,8 @@ impl<'a, 'b> StatsTabs<'a, 'b> {
                         self.xyz_plot_ui(ui, kind, max_width);
                     }
                 });
-            });
+            },
+        );
     }
 
     fn xlink_ui(&mut self, ui: &mut egui::Ui) {
