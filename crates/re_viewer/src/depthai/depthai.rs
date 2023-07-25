@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use re_log_types::EntityPath;
 
 use super::api::BackendCommChannel;
 use super::ws::WsMessageData;
@@ -567,8 +566,6 @@ pub struct State {
     // Want to resubscribe to api when app is reloaded
     pub subscriptions: Vec<ChannelId>, // Shown in ui
     #[serde(skip)]
-    setting_subscriptions: bool,
-    #[serde(skip)]
     pub backend_comms: BackendCommChannel,
     #[serde(skip)]
     poll_instant: Option<Instant>,
@@ -576,6 +573,9 @@ pub struct State {
     pub neural_networks: Vec<AiModel>,
     #[serde(skip)]
     update_timeout_timer: Option<Instant>,
+    #[serde(skip, default = "bool_true")]
+    first_load: bool,
+    preferred_device: Option<DeviceId>,
 }
 
 #[inline]
@@ -618,7 +618,8 @@ impl Default for State {
             applied_device_config: DeviceConfigState::default(),
             modified_device_config: DeviceConfig::default(),
             subscriptions: ChannelId::iter().collect(),
-            setting_subscriptions: false,
+            first_load: true,
+            preferred_device: None,
             backend_comms: BackendCommChannel::default(),
             poll_instant: Some(Instant::now()), // No default for Instant
             neural_networks: default_neural_networks(),
@@ -712,6 +713,27 @@ impl State {
                 WsMessageData::Devices(devices) => {
                     re_log::debug!("Setting devices...");
                     self.devices_available = Some(devices);
+                    // On first load, automatically select the first device
+                    // On subsequent runs, select the last selected device (if available)
+                    if self.first_load {
+                        if let Some(available_devices) = &self.devices_available {
+                            if !available_devices.is_empty() {
+                                if let Some(preferred_device) = &self.preferred_device {
+                                    if let Some(device) = available_devices
+                                        .iter()
+                                        .find(|device| &device.mxid == preferred_device)
+                                    {
+                                        self.select_device(device.mxid.clone());
+                                    } else {
+                                        self.select_device(available_devices[0].mxid.clone());
+                                    }
+                                } else {
+                                    self.select_device(available_devices[0].mxid.clone());
+                                }
+                                self.first_load = false;
+                            }
+                        }
+                    }
                 }
                 WsMessageData::Pipeline((config, _)) => {
                     let mut subs = self.subscriptions.clone();
@@ -803,7 +825,16 @@ impl State {
         self.set_update_in_progress(false);
     }
 
+    fn set_preferred_device(&mut self, device_id: DeviceId) -> Result<(), &str> {
+        if device_id.is_empty() {
+            return Err("Preferred device cannot have an empty id.");
+        }
+        self.preferred_device = Some(device_id);
+        Ok(())
+    }
+
     pub fn select_device(&mut self, device_id: DeviceId) {
+        let _ = self.set_preferred_device(device_id.clone());
         re_log::debug!("Setting device: {:?}", device_id);
         self.applied_device_config.config = None;
         self.backend_comms.select_device(device_id);
