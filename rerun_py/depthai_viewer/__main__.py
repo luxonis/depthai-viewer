@@ -3,10 +3,11 @@
 import os
 import sys
 
-from depthai_viewer import bindings, unregister_shutdown
 from depthai_viewer import (
-    version as depthai_viewer_version,  # type: ignore[attr-defined]
+    bindings,
+    unregister_shutdown,
 )
+from depthai_viewer import version as depthai_viewer_version  # type: ignore[attr-defined]
 from depthai_viewer.install_requirements import get_site_packages
 
 script_path = os.path.dirname(os.path.abspath(__file__))
