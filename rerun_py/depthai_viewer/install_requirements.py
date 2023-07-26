@@ -1,15 +1,15 @@
+import json
 import os
 import shutil
 import signal
 import subprocess
 import sys
 import traceback
-import json
-import struct
 from typing import Any, Dict
 
-from depthai_viewer import bindings, unregister_shutdown
-from depthai_viewer import version as depthai_viewer_version  # type: ignore[attr-defined]
+from depthai_viewer import (
+    version as depthai_viewer_version,  # type: ignore[attr-defined]
+)
 
 script_path = os.path.dirname(os.path.abspath(__file__))
 venv_dir = os.path.join(script_path, "venv-" + depthai_viewer_version())
@@ -33,7 +33,7 @@ def sigint_mid_venv_install_handler(signum, frame) -> None:  # type: ignore[no-u
 
 
 def get_site_packages() -> str:
-    """Get the site packages directory of the virtual environment. Throws an exception if the site packages could not be fetched."""
+    """Gets site packages dir of the virtual environment. Throws an exception if site packages could not be fetched."""
     return subprocess.run(
         [venv_python, "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'], end='')"],
         capture_output=True,
@@ -43,8 +43,8 @@ def get_site_packages() -> str:
 
 
 def download_blobs() -> None:
-    from depthai_sdk.components.nn_helper import getSupportedModels
     import blobconverter
+    from depthai_sdk.components.nn_helper import getSupportedModels
 
     models = [
         "yolov8n_coco_640x352",

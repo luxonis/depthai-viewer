@@ -107,7 +107,7 @@ impl InstallerProcess {
                         }
                     }
                     std::io::Result::Err(err) => {
-                        re_log::warn!("Failed to read stdout {:?}", err);
+                        re_log::warn!("Failed to read stdout {err}");
                     }
                 }
             }
