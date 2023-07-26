@@ -1,5 +1,11 @@
 # Depthai Viewer changelog
 
+## 0.1.4
+- Added depdendency installer.
+- Added auto device selection on startup:
+    - On startup: If a preferred device is set, try to connect to that device. Else (if preferred device not found or not set) connect to the first available device.
+    - Whenever a device is selected it is designated as the preferred device. A referred device is persisted between runs of depthai-viewer.
+
 ## 0.1.4-alpha.0
 
 - Added dependency installer.
