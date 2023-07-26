@@ -32,7 +32,7 @@ elif [ -x "$(command -v dnf)" ];   then
 fi
 
 # Needed to compile and check the code:
-rustup install 1.67.1
+rustup install 1.70
 ./scripts/setup_web.sh
 
 echo "setup.sh completed!"
