@@ -163,7 +163,7 @@ def read_and_log_sparse_reconstruction(
             img = cv2.resize(img, resize)
             jpeg_quality = [int(cv2.IMWRITE_JPEG_QUALITY), 75]
             _, encimg = cv2.imencode(".jpg", img, jpeg_quality)
-            viewer.log_image_file("camera/image", img_bytes=encimg)
+            viewer.log_image_file("camera/image", img_bytes=encimg)  # type: ignore[arg-type]
         else:
             viewer.log_image_file("camera/image", img_path=dataset_path / "images" / image.name)
 

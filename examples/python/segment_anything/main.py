@@ -149,7 +149,7 @@ def load_image(image_uri: str) -> Mat:
         image = cv2.imread(image_uri, cv2.IMREAD_COLOR)
 
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    return image
+    return image  # type: ignore[no-any-return]
 
 
 def main() -> None:
