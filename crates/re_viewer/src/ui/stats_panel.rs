@@ -146,7 +146,7 @@ impl StatsPanelState {
                     ],
                 );
                 self.avg_xlink_stats_plot_history.add(
-                    xlink_stats.timestamp,
+                    now,
                     [
                         self.xlink_stats_history
                             .iter()
@@ -233,16 +233,17 @@ impl<'a, 'b> StatsTabs<'a, 'b> {
                 inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
                 ..Default::default()
             }
-            .show(ui, |ui| {
+            .show(ui, |ui|
+                {
                 let (history, display_name, unit) = (
                     &mut self.state.avg_xlink_stats_plot_history,
                     "XLink throughput",
                     "",
                 );
                 let Some(latest) = history.latest() else {
-                ui.label(format!("No {display_name} data yet"));
-                return;
-            };
+                    ui.label(format!("No {display_name} data yet"));
+                    return;
+                };
                 ui.label(format!(
                     "{display_name}: avg. Sent from device {:.2} MB/s, avg. Sent to Device: {:.2} MB/s",
                     latest[0], latest[1]
