@@ -19,6 +19,7 @@ from depthai_viewer._backend.messages import (
     SubscriptionsMessage,
 )
 from depthai_viewer._backend.store import Store
+import traceback
 
 viewer.init("Depthai Viewer")
 viewer.connect()
@@ -146,7 +147,9 @@ class DepthaiViewerBack:
                 try:
                     self._device.update()
                 except Exception as e:
-                    print("Error while updating device:", e)
+                    print("Error while updating device:", end="")
+                    # Print exception with traceback
+                    print("\n".join(traceback.format_exception(type(e), e, e.__traceback__)))
                     self.store.send_message_to_frontend(ErrorMessage("Depthai error: " + str(e)))
                     self.on_reset()
                     continue

@@ -10,8 +10,12 @@ from depthai_sdk.classes.packets import (  # PointcloudPacket,
     FramePacket,
     IMUPacket,
     TwoStagePacket,
-    _Detection,
+    Detection,
+    BasePacket,
+    DisparityDepthPacket,
 )
+from depthai_sdk.components import Component, CameraComponent, StereoComponent
+from depthai_sdk.components.tof_component import ToFComponent
 from numpy.typing import NDArray
 from pydantic import BaseModel
 
@@ -53,6 +57,7 @@ class PacketHandler:
     store: Store
     _ahrs: Mahony
     _get_camera_intrinsics: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
+    args: SyncedCallbackArgs
 
     def __init__(
         self, store: Store, intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
@@ -68,6 +73,9 @@ class PacketHandler:
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
 
+    def set_synced_callback_args(self, args: SyncedCallbackArgs) -> None:
+        self.args = args
+
     def set_camera_intrinsics_getter(
         self, camera_intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
     ) -> None:
@@ -76,41 +84,33 @@ class PacketHandler:
     def build_sync_callback(self, args: SyncedCallbackArgs) -> Callable[[Any], None]:
         return lambda packets: self._on_synced_packets(args, packets)
 
-    def _on_synced_packets(self, args: SyncedCallbackArgs, packets: Dict[str, Any]) -> None:
-        for descriptor, packet in packets.items():
-            if type(packet) is FramePacket:
-                # Create dai.CameraBoardSocket from descriptor
-                split_descriptor = descriptor.split(".")
-                sock = getattr(dai, split_descriptor[0])
-                for split in split_descriptor[1:]:
-                    sock = getattr(sock, split)
-                self._on_camera_frame(packet, sock)
-            elif type(packet) is DepthPacket:
-                if args.depth_args is None:
-                    continue
-                self._on_stereo_frame(packet, args.depth_args)
-            elif type(packet) is DetectionPacket:
-                if args.ai_args is None:
-                    continue
-                self._on_detections(packet, args.ai_args)
-            elif type(packet) is TwoStagePacket:
-                if args.ai_args is None:
-                    continue
-                self._on_age_gender_packet(packet, args.ai_args)
 
-    def build_callback(
-        self, args: Union[dai.CameraBoardSocket, DepthCallbackArgs, AiModelCallbackArgs]
-    ) -> Callable[[Any], None]:
-        if isinstance(args, dai.CameraBoardSocket):
-            return lambda packet: self._on_camera_frame(packet, args)  # type: ignore[arg-type]
-        elif isinstance(args, DepthCallbackArgs):
-            return lambda packet: self._on_stereo_frame(packet, args)  # type: ignore[arg-type]
-        elif isinstance(args, AiModelCallbackArgs):
-            callback: Callable[[Any, AiModelCallbackArgs], None] = self._on_detections
-            if args.model_name == "age-gender-recognition-retail-0013":
-                callback = self._on_age_gender_packet
-            return lambda packet: callback(packet, args)  # type: ignore[arg-type]
-        raise ValueError(f"Unknown callback args type: {type(args)}")
+    def log_packet(
+        self,
+        component: Component,
+        packet: BasePacket,
+    ) -> None:
+        if self.args is None:
+            raise RuntimeError("Synced callback args not set.")
+        if type(packet) is FramePacket:
+            if isinstance(component, CameraComponent):
+                self._on_camera_frame(packet, component.board_socket)
+            else:
+                print("Unknown component type:", type(component), "for packet:", type(packet))
+            # Create dai.CameraBoardSocket from descriptor
+        elif type(packet) is DepthPacket:
+            if isinstance(component, StereoComponent):
+                self._on_stereo_frame(packet, self.args.depth_args)
+        elif type(packet) is DisparityDepthPacket:
+            self._on_tof_packet(packet, self.args.depth_args)
+        elif type(packet) is DetectionPacket:
+            if self.args.ai_args is None:
+                self._on_detections(packet, self.args.ai_args)
+        elif type(packet) is TwoStagePacket:
+            if self.args.ai_args is None:
+                self._on_age_gender_packet(packet, self.args.ai_args)
+        else:
+            print("Unknown packet type:", type(packet))
 
     def _on_camera_frame(self, packet: FramePacket, board_socket: dai.CameraBoardSocket) -> None:
         viewer.log_rigid3(
@@ -164,13 +164,22 @@ class PacketHandler:
             return
         viewer.log_imu([accel.z, accel.x, accel.y], [gyro.z, gyro.x, gyro.y], self._ahrs.Q, [mag.x, mag.y, mag.z])
 
-    def _on_stereo_frame(self, packet: DepthPacket, args: DepthCallbackArgs) -> None:
+    def _on_stereo_frame(self, packet: Union[DepthPacket, DisparityDepthPacket], component: StereoComponent) -> None:
         depth_frame = packet.frame
-        cam = cam_kind_from_sensor_kind(args.alignment_camera.kind)
-        path = f"{args.alignment_camera.board_socket.name}/transform/{cam}" + "/Depth"
+        cam = "color_cam" if component._align_component.is_color() else "mono_cam"
+        path = f"{component._align_component._socket.name}/transform/{cam}" + "/Depth"
         if not self.store.pipeline_config or not self.store.pipeline_config.depth:
             # Essentially impossible to get here
             return
+        viewer.log_depth_image(path, depth_frame, meter=1e3)
+
+    def _on_tof_packet(
+        self,
+        packet: DisparityDepthPacket,
+        component: ToFComponent,
+    ) -> None:
+        depth_frame = packet.frame
+        path = f"{component.camera_socket.name}/transform/tof" + "/Depth"
         viewer.log_depth_image(path, depth_frame, meter=1e3)
 
     def _on_detections(self, packet: DetectionPacket, args: AiModelCallbackArgs) -> None:
@@ -219,7 +228,7 @@ class PacketHandler:
                 label=label,
             )
 
-    def _rect_from_detection(self, detection: _Detection, max_height: int, max_width: int) -> List[int]:
+    def _rect_from_detection(self, detection: Detection, max_height: int, max_width: int) -> List[int]:
         return [
             max(min(detection.bottom_right[0], max_width), 0),
             max(min(detection.bottom_right[1], max_height), 0),

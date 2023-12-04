@@ -217,6 +217,7 @@ class CameraFeatures(BaseModel):  # type: ignore[misc]
 
 
 class PipelineConfiguration(BaseModel):  # type: ignore[misc]
+    auto: bool = True  # Should the backend automatically create a pipeline based on the device.
     cameras: List[CameraConfiguration] = []
     depth: Optional[DepthConfiguration]
     ai_model: Optional[AiModelConfiguration]
