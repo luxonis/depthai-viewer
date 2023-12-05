@@ -7,11 +7,11 @@ import depthai as dai
 import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
-from depthai_sdk.components.tof_component import ToFComponent, Component
+from depthai_sdk.components.tof_component import Component
 from depthai_sdk.components.camera_helper import (
     getClosestIspScale,
 )
-from depthai_sdk.classes.packet_handlers import QueuePacketHandler, ComponentOutput
+from depthai_sdk.classes.packet_handlers import ComponentOutput
 from numpy.typing import NDArray
 
 import depthai_viewer as viewer
@@ -29,6 +29,8 @@ from depthai_viewer._backend.device_configuration import (
     compare_dai_camera_configs,
     get_size_from_resolution,
     size_to_resolution,
+    DepthConfiguration,
+    ALL_NEURAL_NETWORKS,
 )
 from depthai_viewer._backend.messages import (
     ErrorMessage,
@@ -36,12 +38,7 @@ from depthai_viewer._backend.messages import (
     Message,
     WarningMessage,
 )
-from depthai_viewer._backend.packet_handler import (
-    AiModelCallbackArgs,
-    DepthCallbackArgs,
-    PacketHandler,
-    SyncedCallbackArgs,
-)
+from depthai_viewer._backend.packet_handler import PacketHandler
 from depthai_viewer._backend.store import Store
 
 
@@ -84,9 +81,7 @@ class Device:
     _xlink_statistics: Optional[XlinkStatistics] = None
     _sys_info_q: Optional[Queue] = None  # type: ignore[type-arg]
     _pipeline_start_t: Optional[float] = None
-    _queues: Dict[
-        Component, QueuePacketHandler
-    ] = {}
+    _queues: List[Tuple[Component, ComponentOutput]] = []
 
     # _profiler = cProfile.Profile()
 
@@ -285,13 +280,54 @@ class Device:
         connected_cam_features = self._oak.device.getConnectedCameraFeatures()
         if not connected_cam_features:
             return ErrorMessage("No camera features found, can't create auto pipeline config!")
-        n_cams = len(connected_cam_features)
-        for cam in connected_cam_features:
-            config.cameras.append(
-                CameraConfiguration(
-                )
-            )
 
+        print("Connected camera features: ", connected_cam_features)
+        # Step 1: Create all the cameras. Try to find RGB cam, to align depth to it later
+        # Step 2: Create stereo depth if calibration is present. Align to RGB if present, otherwise to left cam
+        # Step 3: Create YOLO
+        rgb_cam_socket = None
+        # 1. Create all the cameras
+        config.cameras = []
+        has_tof = False
+        for cam in connected_cam_features:
+            if cam.name == "rgb":  # By convention
+                rgb_cam_socket = cam.socket
+            resolution = CameraSensorResolution.THE_1080_P if cam.width >= 1920 else CameraSensorResolution.THE_720_P
+            resolution = CameraSensorResolution.THE_1200_P if cam.height == 1200 else resolution
+            preferred_type = cam.supportedTypes[0]
+            if preferred_type == dai.CameraSensorType.TOF:
+                has_tof = True
+            config.cameras.append(
+                CameraConfiguration(resolution=resolution, kind=preferred_type, board_socket=cam.socket, name=cam.name)
+            )
+        # 2. Create stereo depth
+        if not has_tof:
+            try:
+                calibration = self._oak.device.readCalibration2()
+                left_cam = calibration.getStereoLeftCameraId()
+                right_cam = calibration.getStereoRightCameraId()
+                if left_cam.value != 255 and right_cam.value != 255:
+                    config.depth = DepthConfiguration(
+                        stereo_pair=(left_cam, right_cam),
+                        align=rgb_cam_socket if rgb_cam_socket is not None else left_cam,
+                    )
+            except RuntimeError:
+                calibration = None
+        else:
+            config.depth = None
+        # 3. Create YOLO
+        nnet_cam_sock = rgb_cam_socket
+        if nnet_cam_sock is None:
+            # Try to find a color camera config
+            nnet_cam_sock = next(filter(lambda cam: cam.kind == dai.CameraSensorType.COLOR, config.cameras), None)  # type: ignore[assignment]
+            if nnet_cam_sock is not None:
+                nnet_cam_sock = nnet_cam_sock.board_socket
+        if nnet_cam_sock is not None:
+            config.ai_model = ALL_NEURAL_NETWORKS[0]
+            config.ai_model.camera = nnet_cam_sock
+        else:
+            config.ai_model = None
+        return InfoMessage("Created auto pipeline config")
 
     def update_pipeline(self, runtime_only: bool) -> Message:
         if self._oak is None:
@@ -313,19 +349,14 @@ class Device:
             if isinstance(message, ErrorMessage):
                 return message
 
-        # if config.auto:
-        #     self._create_auto_pipeline_config(config, self._oak.device)
+        if config.auto:
+            self._create_auto_pipeline_config(config)
 
         self._cameras = []
         self._stereo = None
         self._packet_handler.reset()
         self._sys_info_q = None
         self._pipeline_start_t = None
-
-        synced_outputs: Dict[
-            Component, ComponentOutput
-        ] = {}
-        synced_callback_args = SyncedCallbackArgs()
 
         is_poe = self._oak.device.getDeviceInfo().protocol == dai.XLinkProtocol.X_LINK_TCP_IP
         print("Usb speed: ", self._oak.device.getUsbSpeed())
@@ -378,9 +409,7 @@ class Device:
             # Only create a camera node if it is used by stereo or AI.
             if cam.stream_enabled:
                 if dai.CameraSensorType.TOF in camera_features.supportedTypes:
-                    sdk_cam = self._oak.create_tof(
-                        cam.board_socket
-                    )
+                    sdk_cam = self._oak.create_tof(cam.board_socket)
                 else:
                     sdk_cam = self._oak.create_camera(
                         cam.board_socket,
@@ -395,7 +424,7 @@ class Device:
                             )
                         )
                     self._cameras.append(sdk_cam)
-                synced_outputs[sdk_cam] = sdk_cam.out.main
+                self._queues.append((sdk_cam, self._oak.queue(sdk_cam.out.main)))
 
         if config.depth:
             print("Creating depth")
@@ -428,10 +457,7 @@ class Device:
             aligned_camera = self._get_camera_config_by_socket(config, config.depth.align)
             if not aligned_camera:
                 return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
-            synced_callback_args.depth_args = DepthCallbackArgs(
-                alignment_camera=aligned_camera, stereo_pair=config.depth.stereo_pair
-            )
-            synced_outputs[self._stereo] = self._stereo.out.main
+            self._queues.append((self._stereo, self._oak.queue(self._stereo.out.main)))
 
         if self._oak.device.getConnectedIMU() != "NONE":
             print("Creating IMU")
@@ -465,16 +491,7 @@ class Device:
             if not camera:
                 return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
 
-            synced_callback_args.ai_args = AiModelCallbackArgs(
-                model_name=config.ai_model.path, camera=camera, labels=labels
-            )
-            synced_outputs[self._nnet] = self._nnet.out.main
-
-        # Create the sdk queues and finalize the packet handler
-        if synced_outputs:
-            for component, synced_out in synced_outputs.items():
-                self._queues[component] = self._oak.queue(synced_out)
-        self._packet_handler.set_synced_callback_args(synced_callback_args)
+            self._queues.append((self._nnet, self._oak.queue(self._nnet.out.main)))
 
         sys_logger_xlink = self._oak.pipeline.createXLinkOut()
         logger = self._oak.pipeline.createSystemLogger()
@@ -508,7 +525,7 @@ class Device:
             return
         self._oak.poll()
 
-        for component, queue in self._queues.items():
+        for component, queue in self._queues:
             try:
                 packet = queue.get_queue().get_nowait()
                 self._packet_handler.log_packet(component, packet)
