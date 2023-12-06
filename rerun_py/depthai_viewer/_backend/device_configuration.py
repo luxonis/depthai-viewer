@@ -26,9 +26,9 @@ class DepthConfiguration(BaseModel):  # type: ignore[misc]
         arbitrary_types_allowed = True
 
     def __init__(self, **v) -> None:  # type: ignore[no-untyped-def]
-        if v.get("median", None):
+        if v.get("median", None) and isinstance(v["median"], str):
             v["median"] = getattr(dai.MedianFilter, v["median"])
-        if v.get("align", None):
+        if v.get("align", None) and isinstance(v["align"], str):
             v["align"] = getattr(dai.CameraBoardSocket, v["align"])
         if v.get("stereo_pair", None) and all(isinstance(pair, str) for pair in v["stereo_pair"]):
             v["stereo_pair"] = (
@@ -103,6 +103,30 @@ class AiModelConfiguration(BaseModel):  # type: ignore[misc]
             "path": self.path,
             "camera": self.camera.name,
         }
+
+
+ALL_NEURAL_NETWORKS = [
+    AiModelConfiguration(
+        path="yolov8n_coco_640x352",
+        display_name="Yolo V8",
+        camera=dai.CameraBoardSocket.CAM_A,
+    ),
+    AiModelConfiguration(
+        path="mobilenet-ssd",
+        display_name="MobileNet SSD",
+        camera=dai.CameraBoardSocket.CAM_A,
+    ),
+    AiModelConfiguration(
+        path="face-detection-retail-0004",
+        display_name="Face Detection",
+        camera=dai.CameraBoardSocket.CAM_A,
+    ),
+    AiModelConfiguration(
+        path="age-gender-recognition-retail-0013",
+        display_name="Age gender recognition",
+        camera=dai.CameraBoardSocket.CAM_A,
+    ),
+]
 
 
 class ImuConfiguration(BaseModel):  # type: ignore[misc]
@@ -217,6 +241,7 @@ class CameraFeatures(BaseModel):  # type: ignore[misc]
 
 
 class PipelineConfiguration(BaseModel):  # type: ignore[misc]
+    auto: bool = False  # Should the backend automatically create a pipeline?
     cameras: List[CameraConfiguration] = []
     depth: Optional[DepthConfiguration]
     ai_model: Optional[AiModelConfiguration]
@@ -277,6 +302,7 @@ size_to_resolution = {
     (640, 400): CameraSensorResolution.THE_400_P,
     (640, 480): CameraSensorResolution.THE_480_P,  # OV7251
     (1280, 720): CameraSensorResolution.THE_720_P,
+    # (1280, 962): CameraSensorResolution.THE_1280P, # TOF
     (1280, 800): CameraSensorResolution.THE_800_P,  # OV9782
     (2592, 1944): CameraSensorResolution.THE_5_MP,  # OV5645
     (1440, 1080): CameraSensorResolution.THE_1440X1080,

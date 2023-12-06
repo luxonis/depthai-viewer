@@ -207,7 +207,7 @@ fn default_depthai_space_views(
         .collect::<Vec<_>>();
 
     // If a depth tensor is found, we want to find the 2D space view that has the Image + Depth tensor.
-    // We then wan't to create two separate 2D space views, one for the image and one for the depth.
+    // We then want to create two separate 2D space views, one for the image and one for the depth.
     // But we only want to hide the depth (or image), not remove it from the space view.
     if let Some(depth_2d) = space_views
         .iter_mut()

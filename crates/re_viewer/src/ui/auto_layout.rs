@@ -340,7 +340,7 @@ fn create_inner_viewport_layout(
         .iter()
         .filter(|space| {
             if let Some(last) = space.path.as_ref().and_then(|path| path.as_slice().last()) {
-                last == &EntityPathPart::from("color_cam")
+                last == &EntityPathPart::from("color_cam") || last == &EntityPathPart::from("tof") // Treat TOF as color for now
             } else {
                 false
             }
@@ -551,8 +551,8 @@ pub(crate) fn default_tree_from_space_views(
         let tree_clone = tree.clone();
         let color_tabs = tree_clone.tabs().filter(|tab| {
             if let Some(space_path) = tab.space_path.clone() {
-                if let Some(first_part) = space_path.as_slice().first() {
-                    first_part == &EntityPathPart::from("CAM_A")
+                if let Some(first_part) = space_path.as_slice().get(space_path.len() - 2) {
+                    first_part == &EntityPathPart::from("color_cam")
                 } else {
                     false
                 }

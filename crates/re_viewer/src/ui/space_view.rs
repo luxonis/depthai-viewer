@@ -98,8 +98,9 @@ impl SpaceView {
             let mut is_2d = false;
             if !is_3d {
                 let last_part = space_path.iter().last().unwrap();
-                is_2d = (last_part == &EntityPathPart::from("mono_cam")
+                is_2d = ((last_part == &EntityPathPart::from("mono_cam")
                     || last_part == &EntityPathPart::from("color_cam"))
+                    || last_part == &EntityPathPart::from("tof"))
                     && last_part != &EntityPathPart::from("transform");
             }
             if let Some(board_socket) =

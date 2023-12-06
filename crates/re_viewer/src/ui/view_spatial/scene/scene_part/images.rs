@@ -2,7 +2,7 @@ use egui::NumExt;
 use glam::Vec3;
 use itertools::Itertools;
 
-use re_data_store::{ query_latest_single, EntityPath, EntityProperties };
+use re_data_store::{ query_latest_single, EntityPath, EntityProperties, EditableAutoValue };
 use re_log_types::{
     component_types::{ ColorRGBA, InstanceKey, Tensor, TensorData, TensorDataMeaning },
     Component,
@@ -344,7 +344,9 @@ impl ImagesPart {
                     "Albedo texture couldn't be fetched ({:?})",
                     properties.albedo_texture
                 );
-                colormap = Colormap::Grayscale;
+                colormap = Colormap::Turbo;
+                // Would need some way to update the space view blueprint properties here - to reflect the change in colormap.
+                // For now set the matching default in selection_panel.rs 
             }
         }
 

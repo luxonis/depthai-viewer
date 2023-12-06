@@ -364,6 +364,13 @@ fn colormap_props_ui(
 ) {
     // Color mapping picker
     {
+        if entity_props.color_mapper.get() == &ColorMapper::AlbedoTexture {
+            if entity_props.albedo_texture.is_none() {
+                entity_props.color_mapper = EditableAutoValue::Auto(ColorMapper::Colormap(
+                    Colormap::Turbo, // Same default as in images.rs (scene part)
+                ));
+            }
+        }
         let current = *entity_props.color_mapper.get();
         ui.label("Color map");
         egui::ComboBox::from_id_source("depth_color_mapper")

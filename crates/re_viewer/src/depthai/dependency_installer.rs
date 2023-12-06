@@ -253,7 +253,7 @@ impl DependencyInstaller {
                     .stroke(egui::Stroke::new(1.0, re_ui.design_tokens.gray_400))
                     .inner_margin(egui::Margin::same(12.0));
 
-                egui::CollapsingHeader::new("Details").show_unindented(ui, |ui| {
+                egui::CollapsingHeader::new("Details").default_open(true).show_unindented(ui, |ui| {
                     egui::CentralPanel::default()
                         .frame(frame)
                         .show_inside(ui, |ui| {

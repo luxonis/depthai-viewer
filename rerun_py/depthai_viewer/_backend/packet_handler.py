@@ -10,8 +10,12 @@ from depthai_sdk.classes.packets import (  # PointcloudPacket,
     FramePacket,
     IMUPacket,
     TwoStagePacket,
-    _Detection,
+    Detection,
+    BasePacket,
+    DisparityDepthPacket,
 )
+from depthai_sdk.components import Component, CameraComponent, StereoComponent, NNComponent
+from depthai_sdk.components.tof_component import ToFComponent
 from numpy.typing import NDArray
 from pydantic import BaseModel
 
@@ -20,33 +24,6 @@ from depthai_viewer._backend.device_configuration import CameraConfiguration
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-
-
-class CallbackArgs(BaseModel):  # type: ignore[misc]
-    pass
-
-
-class DepthCallbackArgs(CallbackArgs):  # type: ignore[misc]
-    alignment_camera: CameraConfiguration
-    stereo_pair: Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
-
-    class Config:
-        arbitrary_types_allowed = True
-
-
-class AiModelCallbackArgs(CallbackArgs):  # type: ignore[misc]
-    model_name: str
-    camera: CameraConfiguration
-    labels: Optional[List[str]] = None
-
-    class Config:
-        arbitrary_types_allowed = True
-        protected_namespaces = ()
-
-
-class SyncedCallbackArgs(BaseModel):  # type: ignore[misc]
-    depth_args: Optional[DepthCallbackArgs] = None
-    ai_args: Optional[AiModelCallbackArgs] = None
 
 
 class PacketHandler:
@@ -68,49 +45,40 @@ class PacketHandler:
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
 
+
     def set_camera_intrinsics_getter(
         self, camera_intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
     ) -> None:
         self._get_camera_intrinsics = camera_intrinsics_getter  # type: ignore[assignment, misc]
 
-    def build_sync_callback(self, args: SyncedCallbackArgs) -> Callable[[Any], None]:
-        return lambda packets: self._on_synced_packets(args, packets)
 
-    def _on_synced_packets(self, args: SyncedCallbackArgs, packets: Dict[str, Any]) -> None:
-        for descriptor, packet in packets.items():
-            if type(packet) is FramePacket:
-                # Create dai.CameraBoardSocket from descriptor
-                split_descriptor = descriptor.split(".")
-                sock = getattr(dai, split_descriptor[0])
-                for split in split_descriptor[1:]:
-                    sock = getattr(sock, split)
-                self._on_camera_frame(packet, sock)
-            elif type(packet) is DepthPacket:
-                if args.depth_args is None:
-                    continue
-                self._on_stereo_frame(packet, args.depth_args)
-            elif type(packet) is DetectionPacket:
-                if args.ai_args is None:
-                    continue
-                self._on_detections(packet, args.ai_args)
-            elif type(packet) is TwoStagePacket:
-                if args.ai_args is None:
-                    continue
-                self._on_age_gender_packet(packet, args.ai_args)
-
-    def build_callback(
-        self, args: Union[dai.CameraBoardSocket, DepthCallbackArgs, AiModelCallbackArgs]
-    ) -> Callable[[Any], None]:
-        if isinstance(args, dai.CameraBoardSocket):
-            return lambda packet: self._on_camera_frame(packet, args)  # type: ignore[arg-type]
-        elif isinstance(args, DepthCallbackArgs):
-            return lambda packet: self._on_stereo_frame(packet, args)  # type: ignore[arg-type]
-        elif isinstance(args, AiModelCallbackArgs):
-            callback: Callable[[Any, AiModelCallbackArgs], None] = self._on_detections
-            if args.model_name == "age-gender-recognition-retail-0013":
-                callback = self._on_age_gender_packet
-            return lambda packet: callback(packet, args)  # type: ignore[arg-type]
-        raise ValueError(f"Unknown callback args type: {type(args)}")
+    def log_packet(
+        self,
+        component: Component,
+        packet: BasePacket,
+    ) -> None:
+        if type(packet) is FramePacket:
+            if isinstance(component, CameraComponent):
+                self._on_camera_frame(packet, component._socket)
+            else:
+                print("Unknown component type:", type(component), "for packet:", type(packet))
+            # Create dai.CameraBoardSocket from descriptor
+        elif type(packet) is DepthPacket:
+            if isinstance(component, StereoComponent):
+                self._on_stereo_frame(packet, component)
+        elif type(packet) is DisparityDepthPacket:
+            if isinstance(component, ToFComponent):
+                self._on_tof_packet(packet, component)
+            elif isinstance(component, StereoComponent):
+                self._on_stereo_frame(packet, component)
+            else:
+                print("Unknown component type:", type(component), "for packet:", type(packet))
+        elif type(packet) is DetectionPacket:
+            self._on_detections(packet, component)
+        elif type(packet) is TwoStagePacket:
+            self._on_age_gender_packet(packet, component)
+        else:
+            print("Unknown packet type:", type(packet))
 
     def _on_camera_frame(self, packet: FramePacket, board_socket: dai.CameraBoardSocket) -> None:
         viewer.log_rigid3(
@@ -152,32 +120,51 @@ class PacketHandler:
             viewer.log_image(entity_path, img_frame)
 
     def on_imu(self, packet: IMUPacket) -> None:
-        for data in packet.data:
-            gyro: dai.IMUReportGyroscope = data.gyroscope
-            accel: dai.IMUReportAccelerometer = data.acceleroMeter
-            mag: dai.IMUReportMagneticField = data.magneticField
-            # TODO(filip): Move coordinate mapping to sdk
-            self._ahrs.Q = self._ahrs.updateIMU(
-                self._ahrs.Q, np.array([gyro.z, gyro.x, gyro.y]), np.array([accel.z, accel.x, accel.y])
-            )
+        gyro: dai.IMUReportGyroscope = packet.gyroscope
+        accel: dai.IMUReportAccelerometer = packet.acceleroMeter
+        mag: dai.IMUReportMagneticField = packet.magneticField
+        # TODO(filip): Move coordinate mapping to sdk
+        self._ahrs.Q = self._ahrs.updateIMU(
+            self._ahrs.Q, np.array([gyro.z, gyro.x, gyro.y]), np.array([accel.z, accel.x, accel.y])
+        )
         if Topic.ImuData not in self.store.subscriptions:
             return
         viewer.log_imu([accel.z, accel.x, accel.y], [gyro.z, gyro.x, gyro.y], self._ahrs.Q, [mag.x, mag.y, mag.z])
 
-    def _on_stereo_frame(self, packet: DepthPacket, args: DepthCallbackArgs) -> None:
+    def _on_stereo_frame(self, packet: Union[DepthPacket, DisparityDepthPacket], component: StereoComponent) -> None:
         depth_frame = packet.frame
-        cam = cam_kind_from_sensor_kind(args.alignment_camera.kind)
-        path = f"{args.alignment_camera.board_socket.name}/transform/{cam}" + "/Depth"
+        cam = "color_cam" if component._align_component.is_color() else "mono_cam"
+        path = f"{component._align_component._socket.name}/transform/{cam}" + "/Depth"
         if not self.store.pipeline_config or not self.store.pipeline_config.depth:
             # Essentially impossible to get here
             return
         viewer.log_depth_image(path, depth_frame, meter=1e3)
 
-    def _on_detections(self, packet: DetectionPacket, args: AiModelCallbackArgs) -> None:
-        rects, colors, labels = self._detections_to_rects_colors_labels(packet, args.labels)
-        cam = cam_kind_from_sensor_kind(args.camera.kind)
+    def _on_tof_packet(
+        self,
+        packet: DisparityDepthPacket,
+        component: ToFComponent,
+    ) -> None:
+        depth_frame = packet.frame
+        viewer.log_rigid3(
+            f"{component.camera_socket.name}/transform", child_from_parent=([0, 0, 0], [1, 0, 0, 0]), xyz="RDF"
+        )
+        intrinsics = np.array([[471.451, 0.0, 317.897], [0.0, 471.539, 245.027], [0.0, 0.0, 1.0]])
+        viewer.log_pinhole(
+            f"{component.camera_socket.name}/transform/tof",
+            child_from_parent=intrinsics,
+            width=component.camera_node.getVideoWidth(),
+            height=component.camera_node.getVideoHeight(),
+        )
+
+        path = f"{component.camera_socket.name}/transform/tof/Depth"
+        viewer.log_depth_image(path, depth_frame, meter=1e3)
+
+    def _on_detections(self, packet: DetectionPacket, component: NNComponent) -> None:
+        rects, colors, labels = self._detections_to_rects_colors_labels(packet, component.get_labels())
+        cam = "color_cam" if component._get_camera_comp().is_color() else "mono_cam"
         viewer.log_rects(
-            f"{args.camera.board_socket.name}/transform/{cam}/Detections",
+            f"{component._get_camera_comp()._socket.name}/transform/{cam}/Detections",
             rects,
             rect_format=RectFormat.XYXY,
             colors=colors,
@@ -193,7 +180,7 @@ class PacketHandler:
         for detection in packet.detections:
             rects.append(self._rect_from_detection(detection, packet.frame.shape[0], packet.frame.shape[1]))
             colors.append([0, 255, 0])
-            label: str = detection.label
+            label: str = detection.label_str
             # Open model zoo models output label index
             if omz_labels is not None and isinstance(label, int):
                 label += omz_labels[label]
@@ -201,7 +188,7 @@ class PacketHandler:
             labels.append(label)
         return rects, colors, labels
 
-    def _on_age_gender_packet(self, packet: TwoStagePacket, args: AiModelCallbackArgs) -> None:
+    def _on_age_gender_packet(self, packet: TwoStagePacket, component: NNComponent) -> None:
         for det, rec in zip(packet.detections, packet.nnData):
             age = int(float(np.squeeze(np.array(rec.getLayerFp16("age_conv3")))) * 100)
             gender = np.squeeze(np.array(rec.getLayerFp16("prob")))
@@ -210,16 +197,16 @@ class PacketHandler:
             color = [255, 0, 0] if gender[0] > gender[1] else [0, 0, 255]
             # TODO(filip): maybe use viewer.log_annotation_context to log class colors for detections
 
-            cam = cam_kind_from_sensor_kind(args.camera.kind)
+            cam = "color_cam" if component._get_camera_comp().is_color() else "mono_cam"
             viewer.log_rect(
-                f"{args.camera.board_socket.name}/transform/{cam}/Detection",
+                f"{component._get_camera_comp()._socket.name}/transform/{cam}/Detection",
                 self._rect_from_detection(det, packet.frame.shape[0], packet.frame.shape[1]),
                 rect_format=RectFormat.XYXY,
                 color=color,
                 label=label,
             )
 
-    def _rect_from_detection(self, detection: _Detection, max_height: int, max_width: int) -> List[int]:
+    def _rect_from_detection(self, detection: Detection, max_height: int, max_width: int) -> List[int]:
         return [
             max(min(detection.bottom_right[0], max_width), 0),
             max(min(detection.bottom_right[1], max_height), 0),

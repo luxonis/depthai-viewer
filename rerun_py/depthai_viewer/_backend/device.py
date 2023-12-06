@@ -1,15 +1,17 @@
 import itertools
 import time
-from queue import Queue
+from queue import Queue, Empty as QueueEmpty
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
 import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
+from depthai_sdk.components.tof_component import Component
 from depthai_sdk.components.camera_helper import (
     getClosestIspScale,
 )
+from depthai_sdk.classes.packet_handlers import ComponentOutput
 from numpy.typing import NDArray
 
 import depthai_viewer as viewer
@@ -17,6 +19,7 @@ from depthai_viewer._backend import classification_labels
 from depthai_viewer._backend.device_configuration import (
     CameraConfiguration,
     CameraFeatures,
+    CameraSensorResolution,
     DeviceInfo,
     DeviceProperties,
     ImuKind,
@@ -26,6 +29,8 @@ from depthai_viewer._backend.device_configuration import (
     compare_dai_camera_configs,
     get_size_from_resolution,
     size_to_resolution,
+    DepthConfiguration,
+    ALL_NEURAL_NETWORKS,
 )
 from depthai_viewer._backend.messages import (
     ErrorMessage,
@@ -33,12 +38,7 @@ from depthai_viewer._backend.messages import (
     Message,
     WarningMessage,
 )
-from depthai_viewer._backend.packet_handler import (
-    AiModelCallbackArgs,
-    DepthCallbackArgs,
-    PacketHandler,
-    SyncedCallbackArgs,
-)
+from depthai_viewer._backend.packet_handler import PacketHandler
 from depthai_viewer._backend.store import Store
 
 
@@ -81,6 +81,7 @@ class Device:
     _xlink_statistics: Optional[XlinkStatistics] = None
     _sys_info_q: Optional[Queue] = None  # type: ignore[type-arg]
     _pipeline_start_t: Optional[float] = None
+    _queues: List[Tuple[Component, ComponentOutput]] = []
 
     # _profiler = cProfile.Profile()
 
@@ -186,18 +187,24 @@ class Device:
 
         ordered_resolutions = list(sorted(size_to_resolution.keys(), key=lambda res: res[0] * res[1]))
         for cam in connected_cam_features:
-            prioritized_type = cam.supportedTypes[0]
-            biggest_width, biggest_height = [
-                (conf.width, conf.height) for conf in cam.configs[::-1] if conf.type == prioritized_type
-            ][
-                0
-            ]  # Only support the prioritized type for now
+            if dai.CameraSensorType.TOF not in cam.supportedTypes:
+                prioritized_type = cam.supportedTypes[0]
+                biggest_width, biggest_height = [
+                    (conf.width, conf.height) for conf in cam.configs[::-1] if conf.type == prioritized_type
+                ][0]
 
-            all_supported_resolutions = [
-                size_to_resolution[(w, h)]
-                for w, h in ordered_resolutions
-                if (w * h) <= (biggest_height * biggest_width)
-            ]
+                all_supported_resolutions = list(
+                    filter(
+                        lambda x: x,
+                        [
+                            size_to_resolution.get((w, h), None)
+                            for w, h in ordered_resolutions
+                            if (w * h) <= (biggest_height * biggest_width)
+                        ],
+                    )
+                )
+            else:
+                all_supported_resolutions = []
 
             # Fill in lower resolutions that can be achieved with ISP scaling
             device_properties.cameras.append(
@@ -265,6 +272,63 @@ class Device:
             return None
         return camera[0]
 
+    def _create_auto_pipeline_config(self, config: PipelineConfiguration) -> Message:
+        if self._oak is None:
+            return ErrorMessage("Oak device unavailable, can't create auto pipeline config!")
+        if self._oak.device is None:
+            return ErrorMessage("No device selected, can't create auto pipeline config!")
+        connected_cam_features = self._oak.device.getConnectedCameraFeatures()
+        if not connected_cam_features:
+            return ErrorMessage("No camera features found, can't create auto pipeline config!")
+
+        print("Connected camera features: ", connected_cam_features)
+        # Step 1: Create all the cameras. Try to find RGB cam, to align depth to it later
+        # Step 2: Create stereo depth if calibration is present. Align to RGB if present, otherwise to left cam
+        # Step 3: Create YOLO
+        rgb_cam_socket = None
+        # 1. Create all the cameras
+        config.cameras = []
+        has_tof = False
+        for cam in connected_cam_features:
+            if cam.name == "rgb":  # By convention
+                rgb_cam_socket = cam.socket
+            resolution = CameraSensorResolution.THE_1080_P if cam.width >= 1920 else CameraSensorResolution.THE_720_P
+            resolution = CameraSensorResolution.THE_1200_P if cam.height == 1200 else resolution
+            preferred_type = cam.supportedTypes[0]
+            if preferred_type == dai.CameraSensorType.TOF:
+                has_tof = True
+            config.cameras.append(
+                CameraConfiguration(resolution=resolution, kind=preferred_type, board_socket=cam.socket, name=cam.name)
+            )
+        # 2. Create stereo depth
+        if not has_tof:
+            try:
+                calibration = self._oak.device.readCalibration2()
+                left_cam = calibration.getStereoLeftCameraId()
+                right_cam = calibration.getStereoRightCameraId()
+                if left_cam.value != 255 and right_cam.value != 255:
+                    config.depth = DepthConfiguration(
+                        stereo_pair=(left_cam, right_cam),
+                        align=rgb_cam_socket if rgb_cam_socket is not None else left_cam,
+                    )
+            except RuntimeError:
+                calibration = None
+        else:
+            config.depth = None
+        # 3. Create YOLO
+        nnet_cam_sock = rgb_cam_socket
+        if nnet_cam_sock is None:
+            # Try to find a color camera config
+            nnet_cam_sock = next(filter(lambda cam: cam.kind == dai.CameraSensorType.COLOR, config.cameras), None)  # type: ignore[assignment]
+            if nnet_cam_sock is not None:
+                nnet_cam_sock = nnet_cam_sock.board_socket
+        if nnet_cam_sock is not None:
+            config.ai_model = ALL_NEURAL_NETWORKS[0]
+            config.ai_model.camera = nnet_cam_sock
+        else:
+            config.ai_model = None
+        return InfoMessage("Created auto pipeline config")
+
     def update_pipeline(self, runtime_only: bool) -> Message:
         if self._oak is None:
             return ErrorMessage("No device selected, can't update pipeline!")
@@ -285,14 +349,14 @@ class Device:
             if isinstance(message, ErrorMessage):
                 return message
 
+        if config.auto:
+            self._create_auto_pipeline_config(config)
+
         self._cameras = []
         self._stereo = None
         self._packet_handler.reset()
         self._sys_info_q = None
         self._pipeline_start_t = None
-
-        synced_outputs = []
-        synced_callback_args = SyncedCallbackArgs()
 
         is_poe = self._oak.device.getDeviceInfo().protocol == dai.XLinkProtocol.X_LINK_TCP_IP
         print("Usb speed: ", self._oak.device.getUsbSpeed())
@@ -328,14 +392,14 @@ class Device:
 
             # In case of ISP scaling, don't change the sensor resolution in the pipeline config
             # to keep it logical for the user in the UI
-            sensor_resolution = cam.resolution
+            sensor_resolution: Optional[CameraSensorResolution] = cam.resolution  # None for ToF
             if not does_sensor_support_resolution:
                 smallest_supported_resolution = [
                     config for config in camera_features.configs if config.type == camera_features.supportedTypes[0]
                 ][0]
-                sensor_resolution = size_to_resolution[
-                    smallest_supported_resolution.width, smallest_supported_resolution.height
-                ]
+                sensor_resolution = size_to_resolution.get(
+                    (smallest_supported_resolution.width, smallest_supported_resolution.height), None
+                )
             is_used_by_depth = config.depth is not None and (
                 cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
             )
@@ -344,21 +408,23 @@ class Device:
 
             # Only create a camera node if it is used by stereo or AI.
             if cam.stream_enabled:
-                sdk_cam = self._oak.create_camera(
-                    cam.board_socket,
-                    sensor_resolution.as_sdk_resolution(),
-                    cam.fps,
-                    encode=self.use_encoding,
-                    name=cam.name.capitalize(),
-                )
-                if not does_sensor_support_resolution:
-                    sdk_cam.config_color_camera(
-                        isp_scale=getClosestIspScale(
-                            (smallest_supported_resolution.width, smallest_supported_resolution.height), res_x
-                        )
+                if dai.CameraSensorType.TOF in camera_features.supportedTypes:
+                    sdk_cam = self._oak.create_tof(cam.board_socket)
+                else:
+                    sdk_cam = self._oak.create_camera(
+                        cam.board_socket,
+                        sensor_resolution.as_sdk_resolution(),
+                        cam.fps,
+                        encode=self.use_encoding,
                     )
-                synced_outputs.append(sdk_cam.out.main)
-                self._cameras.append(sdk_cam)
+                    if not does_sensor_support_resolution:
+                        sdk_cam.config_color_camera(
+                            isp_scale=getClosestIspScale(
+                                (smallest_supported_resolution.width, smallest_supported_resolution.height), res_x
+                            )
+                        )
+                    self._cameras.append(sdk_cam)
+                self._queues.append((sdk_cam, self._oak.queue(sdk_cam.out.main)))
 
         if config.depth:
             print("Creating depth")
@@ -391,10 +457,7 @@ class Device:
             aligned_camera = self._get_camera_config_by_socket(config, config.depth.align)
             if not aligned_camera:
                 return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
-            synced_callback_args.depth_args = DepthCallbackArgs(
-                alignment_camera=aligned_camera, stereo_pair=config.depth.stereo_pair
-            )
-            synced_outputs.append(self._stereo.out.main)
+            self._queues.append((self._stereo, self._oak.queue(self._stereo.out.main)))
 
         if self._oak.device.getConnectedIMU() != "NONE":
             print("Creating IMU")
@@ -428,13 +491,7 @@ class Device:
             if not camera:
                 return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
 
-            synced_callback_args.ai_args = AiModelCallbackArgs(
-                model_name=config.ai_model.path, camera=camera, labels=labels
-            )
-            synced_outputs.append(self._nnet.out.main)
-
-        if synced_outputs:
-            self._oak.sync(synced_outputs, self._packet_handler.build_sync_callback(synced_callback_args))
+            self._queues.append((self._nnet, self._oak.queue(self._nnet.out.main)))
 
         sys_logger_xlink = self._oak.pipeline.createXLinkOut()
         logger = self._oak.pipeline.createSystemLogger()
@@ -467,6 +524,14 @@ class Device:
         if not self._oak.running():
             return
         self._oak.poll()
+
+        for component, queue in self._queues:
+            try:
+                packet = queue.get_queue().get_nowait()
+                self._packet_handler.log_packet(component, packet)
+            except QueueEmpty:
+                continue
+
         if self._xlink_statistics is not None:
             self._xlink_statistics.update()
 

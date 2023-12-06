@@ -312,6 +312,7 @@ impl From<&DeviceProperties> for Option<DepthConfig> {
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct DeviceConfig {
+    pub auto: bool, // Should the backend automatically create a pipeline?
     pub cameras: Vec<CameraConfig>,
     #[serde(default = "bool_true")]
     pub depth_enabled: bool, // Much easier to have an explicit bool for checkbox
@@ -323,6 +324,7 @@ pub struct DeviceConfig {
 impl Default for DeviceConfig {
     fn default() -> Self {
         Self {
+            auto: false,
             cameras: Vec::new(),
             depth_enabled: true,
             depth: Some(DepthConfig::default()),
@@ -769,6 +771,7 @@ impl State {
                     applied_device_config.depth_enabled = config.depth.is_some();
                     self.modified_device_config.depth_enabled =
                         self.modified_device_config.depth.is_some();
+                    self.modified_device_config.auto = false; // Always reset auto
                     self.set_subscriptions(&subs);
                     self.set_update_in_progress(false);
                 }
@@ -776,6 +779,7 @@ impl State {
                     re_log::debug!("Setting device: {device:?}");
                     self.set_device(device);
                     if !self.selected_device.id.is_empty() {
+                        self.modified_device_config.auto = true;
                         // Apply default pipeline
                         self.set_pipeline(&mut self.modified_device_config.clone(), false);
                     }
