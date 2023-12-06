@@ -83,12 +83,18 @@ pub struct ReUi {
 impl ReUi {
     /// Create [`ReUi`] and apply style to the given egui context.
     pub fn load_and_apply(egui_ctx: &egui::Context) -> Self {
-        Self {
+        let re_ui = Self {
             egui_ctx: egui_ctx.clone(),
             design_tokens: DesignTokens::load_and_apply(egui_ctx),
             static_image_cache: Arc::new(Mutex::new(StaticImageCache::default())),
             delayed_drag_values: Default::default(),
-        }
+        };
+        //This is probably not the best place to set the visuals but it will do for now
+        let mut visuals = egui::Visuals::dark();
+
+        visuals.selection.bg_fill = Color32::from_rgb(88, 12, 236);
+        re_ui.egui_ctx.set_visuals(visuals);
+        re_ui
     }
 
     pub fn rerun_logo(&self) -> Arc<egui_extras::RetainedImage> {
@@ -169,6 +175,7 @@ impl ReUi {
         menu_contents: impl FnOnce(&mut egui::Ui) -> R,
     ) {
         let align = egui::Align::Center;
+        let text_color = ui.style().visuals.weak_text_color();
         let layout = if left_to_right {
             egui::Layout::left_to_right(align)
         } else {
@@ -177,7 +184,7 @@ impl ReUi {
 
         ui.with_layout(layout, |ui| {
             if left_to_right {
-                ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+                ui.label(egui::RichText::new(label).color(text_color));
             }
             if wrap {
                 ui.add_sized(
@@ -203,12 +210,13 @@ impl ReUi {
             }
 
             if !left_to_right {
-                ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+                ui.label(egui::RichText::new(label).color(text_color));
             }
         });
     }
 
     pub fn labeled_checkbox(&self, ui: &mut egui::Ui, label: &str, value: &mut bool) {
+        let text_color = ui.style().visuals.weak_text_color();
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_sized(
                 [Self::box_width(), Self::box_height()],
@@ -219,7 +227,7 @@ impl ReUi {
                     .response
                 },
             );
-            ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+            ui.label(egui::RichText::new(label).color(text_color));
         });
     }
 
@@ -283,6 +291,7 @@ impl ReUi {
         Num: egui::emath::Numeric,
     {
         let mut borrow_map = self.delayed_drag_values.borrow_mut();
+        let text_color = ui.style().visuals.weak_text_color();
         let state = borrow_map.entry(id).or_insert(DelayedDragState {
             delay_ms: delay.unwrap_or(0.0),
             last_update: instant::Instant::now(),
@@ -294,7 +303,7 @@ impl ReUi {
                     [Self::box_width(), Self::box_height()],
                     egui::DragValue::new(&mut state.value).clamp_range(range),
                 );
-                ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+                ui.label(egui::RichText::new(label).color(text_color));
                 response
             })
             .inner;
@@ -308,6 +317,7 @@ impl ReUi {
     }
 
     pub fn labeled_toggle_switch(&self, ui: &mut egui::Ui, label: &str, value: &mut bool) {
+        let text_color = ui.style().visuals.weak_text_color();
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_sized(
                 [Self::box_width(), Self::box_height()],
@@ -318,16 +328,18 @@ impl ReUi {
                     .response
                 },
             );
-            ui.label(egui::RichText::new(label).color(self.design_tokens.gray_900));
+            ui.label(egui::RichText::new(label).color(text_color));
         });
     }
 
     pub fn top_panel_frame(&self) -> egui::Frame {
         let mut frame = egui::Frame {
             inner_margin: Self::top_bar_margin(),
-            fill: self.design_tokens.top_bar_color,
+            fill: self.egui_ctx.style().visuals.panel_fill,
+            // fill: self.design_tokens.top_bar_color,
             ..Default::default()
         };
+
         if CUSTOM_WINDOW_DECORATIONS {
             frame.rounding.nw = Self::native_window_rounding();
             frame.rounding.ne = Self::native_window_rounding();

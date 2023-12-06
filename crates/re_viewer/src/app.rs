@@ -641,7 +641,8 @@ impl eframe::App for App {
 
         file_saver_progress_ui(egui_ctx, self); // toasts for background file saver
 
-        let mut main_panel_frame = egui::Frame::default();
+        let mut main_panel_frame = egui::Frame::default().fill(egui_ctx.style().visuals.panel_fill);
+
         if re_ui::CUSTOM_WINDOW_DECORATIONS {
             // Add some margin so that we can later paint an outline around it all.
             main_panel_frame.inner_margin = 1.0.into();
@@ -1424,22 +1425,22 @@ fn top_bar_ui(
                 let extra_margin = (ui.available_height() - 24.0) / 2.0;
                 ui.add_space(extra_margin);
             }
-            let mut blueprint_panel_expanded = blueprint.blueprint_panel_expanded;
-            if app
-                .re_ui
-                .medium_icon_toggle_button(
-                    ui,
-                    &re_ui::icons::LEFT_PANEL_TOGGLE,
-                    &mut blueprint_panel_expanded,
-                )
-                .on_hover_text(format!(
-                    "Toggle Blueprint View{}",
-                    Command::ToggleBlueprintPanel.format_shortcut_tooltip_suffix(ui.ctx())
-                ))
-                .clicked()
-            {
-                app.pending_commands.push(Command::ToggleBlueprintPanel);
-            }
+            // let mut blueprint_panel_expanded = blueprint.blueprint_panel_expanded;
+            // if app
+            //     .re_ui
+            //     .medium_icon_toggle_button(
+            //         ui,
+            //         &re_ui::icons::LEFT_PANEL_TOGGLE,
+            //         &mut blueprint_panel_expanded,
+            //     )
+            //     .on_hover_text(format!(
+            //         "Toggle Blueprint View{}",
+            //         Command::ToggleBlueprintPanel.format_shortcut_tooltip_suffix(ui.ctx())
+            //     ))
+            //     .clicked()
+            // {
+            //     app.pending_commands.push(Command::ToggleBlueprintPanel);
+            // }
 
             if cfg!(debug_assertions) && app.state.app_options.show_metrics {
                 ui.vertical_centered(|ui| {
