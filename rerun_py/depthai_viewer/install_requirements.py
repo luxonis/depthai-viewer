@@ -87,8 +87,9 @@ def create_venv_and_install_dependencies() -> None:
                     "-m",
                     "pip",
                     "install",
-                    # "depthai-sdk==1.11.0"
-                    "git+https://github.com/luxonis/depthai@develop#subdirectory=depthai_sdk",
+                    "depthai-sdk==1.13.1.dev0+b0340e0c4ad869711d7d5fff48e41c46fe41f475" "--extra-index-url",
+                    "https://artifacts.luxonis.com/artifactory/luxonis-python-snapshot-local/",
+                    # "git+https://github.com/luxonis/depthai@develop#subdirectory=depthai_sdk",
                 ],
                 check=True,
             )
