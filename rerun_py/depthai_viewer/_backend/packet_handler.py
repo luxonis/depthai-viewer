@@ -1,26 +1,24 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
 import numpy as np
 from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
+    BasePacket,
     DepthPacket,
+    Detection,
     DetectionPacket,
+    DisparityDepthPacket,
     FramePacket,
     IMUPacket,
     TwoStagePacket,
-    Detection,
-    BasePacket,
-    DisparityDepthPacket,
 )
-from depthai_sdk.components import Component, CameraComponent, StereoComponent, NNComponent
+from depthai_sdk.components import CameraComponent, Component, NNComponent, StereoComponent
 from depthai_sdk.components.tof_component import ToFComponent
 from numpy.typing import NDArray
-from pydantic import BaseModel
 
 import depthai_viewer as viewer
-from depthai_viewer._backend.device_configuration import CameraConfiguration
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
@@ -45,12 +43,10 @@ class PacketHandler:
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
 
-
     def set_camera_intrinsics_getter(
         self, camera_intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
     ) -> None:
         self._get_camera_intrinsics = camera_intrinsics_getter  # type: ignore[assignment, misc]
-
 
     def log_packet(
         self,
@@ -208,10 +204,10 @@ class PacketHandler:
 
     def _rect_from_detection(self, detection: Detection, max_height: int, max_width: int) -> List[int]:
         return [
-            max(min(detection.bottom_right[0], max_width), 0),
-            max(min(detection.bottom_right[1], max_height), 0),
-            max(min(detection.top_left[0], max_width), 0),
-            max(min(detection.top_left[1], max_height), 0),
+            max(min(detection.bottom_right[0], max_width), 0) * max_width,
+            max(min(detection.bottom_right[1], max_height), 0) * max_height,
+            max(min(detection.top_left[0], max_width), 0) * max_width,
+            max(min(detection.top_left[1], max_height), 0) * max_height,
         ]
 
 

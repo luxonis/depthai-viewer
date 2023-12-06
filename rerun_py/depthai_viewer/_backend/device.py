@@ -1,22 +1,24 @@
 import itertools
 import time
-from queue import Queue, Empty as QueueEmpty
+from queue import Empty as QueueEmpty
+from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
 import numpy as np
 from depthai_sdk import OakCamera
+from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
-from depthai_sdk.components.tof_component import Component
 from depthai_sdk.components.camera_helper import (
     getClosestIspScale,
 )
-from depthai_sdk.classes.packet_handlers import ComponentOutput
+from depthai_sdk.components.tof_component import Component
 from numpy.typing import NDArray
 
 import depthai_viewer as viewer
 from depthai_viewer._backend import classification_labels
 from depthai_viewer._backend.device_configuration import (
+    ALL_NEURAL_NETWORKS,
     CameraConfiguration,
     CameraFeatures,
     CameraSensorResolution,
@@ -24,13 +26,12 @@ from depthai_viewer._backend.device_configuration import (
     DeviceProperties,
     ImuKind,
     PipelineConfiguration,
+    StereoDepthConfiguration,
     XLinkConnection,
     calculate_isp_scale,
     compare_dai_camera_configs,
     get_size_from_resolution,
     size_to_resolution,
-    DepthConfiguration,
-    ALL_NEURAL_NETWORKS,
 )
 from depthai_viewer._backend.messages import (
     ErrorMessage,
@@ -120,10 +121,15 @@ class Device:
         """Tries to find the possible stereo pairs for a camera."""
         if self._oak is None:
             return []
-        calib_data = self._oak.device.readCalibration()
+        try:
+            calib_data = self._oak.device.readCalibration2()
+        except RuntimeError:
+            print("No calibration available.")
+            return []
         try:
             calib_data.getCameraIntrinsics(cam.socket)
         except IndexError:
+            print("No intrisics for cam: ", cam.socket)
             return []
         possible_stereo_pairs = []
         if cam.name == "right":
@@ -183,19 +189,26 @@ class Device:
             else:
                 device_properties.default_stereo_pair = (left_cam, right_cam)
         except RuntimeError:
-            pass
+            print("No calibration found while trying to fetch the default stereo pair.")
 
         ordered_resolutions = list(sorted(size_to_resolution.keys(), key=lambda res: res[0] * res[1]))
         for cam in connected_cam_features:
-            if dai.CameraSensorType.TOF not in cam.supportedTypes:
-                prioritized_type = cam.supportedTypes[0]
-                biggest_width, biggest_height = [
-                    (conf.width, conf.height) for conf in cam.configs[::-1] if conf.type == prioritized_type
-                ][0]
+            prioritized_type = cam.supportedTypes[0]
+            biggest_width_height = [
+                (conf.width, conf.height) for conf in cam.configs[::-1] if conf.type == prioritized_type
+            ]
+            # Some sensors don't have configs, use the sensor width, height
+            if not biggest_width_height:
+                biggest_width, biggest_height = cam.width, cam.height
+            else:
+                biggest_width, biggest_height = biggest_width_height[0]
 
+            if cam.supportedTypes[0] == dai.CameraSensorType.TOF:
+                all_supported_resolutions = [size_to_resolution[(biggest_width, biggest_height)]]
+            else:
                 all_supported_resolutions = list(
                     filter(
-                        lambda x: x,
+                        lambda x: x,  # type: ignore[arg-type]
                         [
                             size_to_resolution.get((w, h), None)
                             for w, h in ordered_resolutions
@@ -203,8 +216,6 @@ class Device:
                         ],
                     )
                 )
-            else:
-                all_supported_resolutions = []
 
             # Fill in lower resolutions that can be achieved with ISP scaling
             device_properties.cameras.append(
@@ -222,7 +233,7 @@ class Device:
                 [(cam.board_socket, pair) for pair in cam.stereo_pairs] for cam in device_properties.cameras
             )
         )
-        print("Device properties: ", device_properties.default_stereo_pair)
+        print("Default stereo pair: ", device_properties.default_stereo_pair)
         return device_properties
 
     def close_oak(self) -> None:
@@ -292,7 +303,9 @@ class Device:
         for cam in connected_cam_features:
             if cam.name == "rgb":  # By convention
                 rgb_cam_socket = cam.socket
-            resolution = CameraSensorResolution.THE_1080_P if cam.width >= 1920 else CameraSensorResolution.THE_720_P
+            resolution = (
+                CameraSensorResolution.THE_1080_P if cam.width >= 1920 else size_to_resolution[(cam.width, cam.height)]
+            )
             resolution = CameraSensorResolution.THE_1200_P if cam.height == 1200 else resolution
             preferred_type = cam.supportedTypes[0]
             if preferred_type == dai.CameraSensorType.TOF:
@@ -307,7 +320,7 @@ class Device:
                 left_cam = calibration.getStereoLeftCameraId()
                 right_cam = calibration.getStereoRightCameraId()
                 if left_cam.value != 255 and right_cam.value != 255:
-                    config.depth = DepthConfiguration(
+                    config.depth = StereoDepthConfiguration(
                         stereo_pair=(left_cam, right_cam),
                         align=rgb_cam_socket if rgb_cam_socket is not None else left_cam,
                     )
@@ -319,11 +332,17 @@ class Device:
         nnet_cam_sock = rgb_cam_socket
         if nnet_cam_sock is None:
             # Try to find a color camera config
-            nnet_cam_sock = next(filter(lambda cam: cam.kind == dai.CameraSensorType.COLOR, config.cameras), None)  # type: ignore[assignment]
+            nnet_cam_sock = next(
+                filter(
+                    lambda cam: cam.kind == dai.CameraSensorType.COLOR,  # type: ignore[arg-type,union-attr]
+                    config.cameras,
+                ),
+                None,
+            )  # type: ignore[assignment]
             if nnet_cam_sock is not None:
                 nnet_cam_sock = nnet_cam_sock.board_socket
         if nnet_cam_sock is not None:
-            config.ai_model = ALL_NEURAL_NETWORKS[0]
+            config.ai_model = ALL_NEURAL_NETWORKS[1]  # Mobilenet SSd
             config.ai_model.camera = nnet_cam_sock
         else:
             config.ai_model = None
@@ -382,13 +401,16 @@ class Device:
             # When the resolution is too small, the ISP needs to scale it down
             res_x, res_y = get_size_from_resolution(cam.resolution)
 
-            does_sensor_support_resolution = any(
-                [
-                    config.width == res_x and config.height == res_y
-                    for config in camera_features.configs
-                    if config.type == camera_features.supportedTypes[0]
-                ]
-            )
+            does_sensor_support_resolution = (
+                any(
+                    [
+                        config.width == res_x and config.height == res_y
+                        for config in camera_features.configs
+                        if config.type == camera_features.supportedTypes[0]
+                    ]
+                )
+                or len(camera_features.configs) == 0
+            )  # Some sensors don't have any configs... just assume the resolution is supported
 
             # In case of ISP scaling, don't change the sensor resolution in the pipeline config
             # to keep it logical for the user in the UI
@@ -410,10 +432,10 @@ class Device:
             if cam.stream_enabled:
                 if dai.CameraSensorType.TOF in camera_features.supportedTypes:
                     sdk_cam = self._oak.create_tof(cam.board_socket)
-                else:
+                elif sensor_resolution is not None:
                     sdk_cam = self._oak.create_camera(
                         cam.board_socket,
-                        sensor_resolution.as_sdk_resolution(),
+                        sensor_resolution.as_sdk_resolution(),  # type: ignore[union-attr]
                         cam.fps,
                         encode=self.use_encoding,
                     )
@@ -424,6 +446,9 @@ class Device:
                             )
                         )
                     self._cameras.append(sdk_cam)
+                else:
+                    print("Skipped creating camera:", cam.board_socket, "because no valid sensor resolution was found.")
+                    continue
                 self._queues.append((sdk_cam, self._oak.queue(sdk_cam.out.main)))
 
         if config.depth:
@@ -459,8 +484,9 @@ class Device:
                 return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
             self._queues.append((self._stereo, self._oak.queue(self._stereo.out.main)))
 
-        if self._oak.device.getConnectedIMU() != "NONE":
-            print("Creating IMU")
+        if self._oak.device.getConnectedIMU() != "NONE" and self._oak.device.getConnectedIMU() != "":
+            print("Creating IMU, connected IMU: ", self._oak.device.getConnectedIMU())
+            # TODO(someone): Handle IMU updates
             imu = self._oak.create_imu()
             sensors = [
                 dai.IMUSensor.ACCELEROMETER_RAW,
@@ -479,13 +505,12 @@ class Device:
             cam_component = self._get_component_by_socket(config.ai_model.camera)
             if not cam_component:
                 return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
-            labels: Optional[List[str]] = None
             if config.ai_model.path == "age-gender-recognition-retail-0013":
                 face_detection = self._oak.create_nn("face-detection-retail-0004", cam_component)
                 self._nnet = self._oak.create_nn("age-gender-recognition-retail-0013", input=face_detection)
             else:
                 self._nnet = self._oak.create_nn(config.ai_model.path, cam_component)
-                labels = getattr(classification_labels, config.ai_model.path.upper().replace("-", "_"), None)
+                getattr(classification_labels, config.ai_model.path.upper().replace("-", "_"), None)
 
             camera = self._get_camera_config_by_socket(config, config.ai_model.camera)
             if not camera:

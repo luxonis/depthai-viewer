@@ -10,7 +10,7 @@ from pydantic import BaseModel
 #     enabled: bool = True
 
 
-class DepthConfiguration(BaseModel):  # type: ignore[misc]
+class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
     median: Optional[dai.MedianFilter] = dai.MedianFilter.KERNEL_7x7
     lr_check: Optional[bool] = True
     lrc_threshold: int = 5  # 0..10
@@ -143,6 +143,7 @@ class CameraSensorResolution(Enum):
     THE_1440X1080: str = "THE_1440X1080"
     THE_1080_P: str = "THE_1080_P"
     THE_1200_P: str = "THE_1200_P"
+    THE_1280_P: str = "THE_1280_P"
     THE_4_K: str = "THE_4_K"
     THE_4000X3000: str = "THE_4000X3000"
     THE_12_MP: str = "THE_12_MP"
@@ -243,7 +244,7 @@ class CameraFeatures(BaseModel):  # type: ignore[misc]
 class PipelineConfiguration(BaseModel):  # type: ignore[misc]
     auto: bool = False  # Should the backend automatically create a pipeline?
     cameras: List[CameraConfiguration] = []
-    depth: Optional[DepthConfiguration]
+    depth: Optional[StereoDepthConfiguration]
     ai_model: Optional[AiModelConfiguration]
     imu: ImuConfiguration = ImuConfiguration()
 
@@ -302,7 +303,7 @@ size_to_resolution = {
     (640, 400): CameraSensorResolution.THE_400_P,
     (640, 480): CameraSensorResolution.THE_480_P,  # OV7251
     (1280, 720): CameraSensorResolution.THE_720_P,
-    # (1280, 962): CameraSensorResolution.THE_1280P, # TOF
+    (1280, 962): CameraSensorResolution.THE_1280_P,  # TOF
     (1280, 800): CameraSensorResolution.THE_800_P,  # OV9782
     (2592, 1944): CameraSensorResolution.THE_5_MP,  # OV5645
     (1440, 1080): CameraSensorResolution.THE_1440X1080,
