@@ -510,7 +510,6 @@ class Device:
                 self._nnet = self._oak.create_nn("age-gender-recognition-retail-0013", input=face_detection)
             else:
                 self._nnet = self._oak.create_nn(config.ai_model.path, cam_component)
-                getattr(classification_labels, config.ai_model.path.upper().replace("-", "_"), None)
 
             camera = self._get_camera_config_by_socket(config, config.ai_model.camera)
             if not camera:
