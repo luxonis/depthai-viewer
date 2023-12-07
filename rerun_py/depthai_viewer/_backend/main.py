@@ -1,4 +1,5 @@
 import threading
+import traceback
 from multiprocessing import Queue
 from queue import Empty as QueueEmptyException
 from typing import Optional
@@ -96,7 +97,11 @@ class DepthaiViewerBack:
             print("No device selected, can't update pipeline!")
             return ErrorMessage("No device selected, can't update pipeline!")
         print("Updating pipeline...")
-        message = self._device.update_pipeline(runtime_only)
+        try:
+            message = self._device.update_pipeline(runtime_only)
+        except RuntimeError as e:
+            print("Failed to update pipeline:", e)
+            return ErrorMessage(str(e))
         if isinstance(message, InfoMessage):
             return PipelineMessage(self.store.pipeline_config)
         return message

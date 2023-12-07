@@ -10,7 +10,7 @@ from pydantic import BaseModel
 #     enabled: bool = True
 
 
-class DepthConfiguration(BaseModel):  # type: ignore[misc]
+class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
     median: Optional[dai.MedianFilter] = dai.MedianFilter.KERNEL_7x7
     lr_check: Optional[bool] = True
     lrc_threshold: int = 5  # 0..10
@@ -37,7 +37,8 @@ class DepthConfiguration(BaseModel):  # type: ignore[misc]
             )
         return super().__init__(**v)  # type: ignore[no-any-return]
 
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:
         return {
             "median": self.median.name if self.median else None,
             "lr_check": self.lr_check,
@@ -143,6 +144,7 @@ class CameraSensorResolution(Enum):
     THE_1440X1080: str = "THE_1440X1080"
     THE_1080_P: str = "THE_1080_P"
     THE_1200_P: str = "THE_1200_P"
+    THE_1280_P: str = "THE_1280_P"
     THE_4_K: str = "THE_4_K"
     THE_4000X3000: str = "THE_4000X3000"
     THE_12_MP: str = "THE_12_MP"
@@ -175,13 +177,15 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
     def __init__(self, **v) -> None:  # type: ignore[no-untyped-def]
         if v.get("board_socket", None):
             if isinstance(v["board_socket"], str):
-                v["board_socket"] = getattr(dai.CameraBoardSocket, v["board_socket"])
+                v["board_socket"] = getattr(
+                    dai.CameraBoardSocket, v["board_socket"])
         if v.get("kind", None):
             if isinstance(v["kind"], str):
                 v["kind"] = getattr(dai.CameraSensorType, v["kind"])
         return super().__init__(**v)  # type: ignore[no-any-return]
 
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:
         return {
             "fps": self.fps,
             "resolution": self.resolution.dict(),
@@ -192,7 +196,8 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
         }
 
     @classmethod
-    def create_left(cls, **kwargs) -> "CameraConfiguration":  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def create_left(cls, **kwargs) -> "CameraConfiguration":
         if not kwargs.get("kind", None):
             kwargs["kind"] = dai.CameraSensorType.MONO
         if not kwargs.get("resolution", None):
@@ -200,7 +205,8 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
         return cls(board_socket="LEFT", **kwargs)
 
     @classmethod
-    def create_right(cls, **kwargs) -> "CameraConfiguration":  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def create_right(cls, **kwargs) -> "CameraConfiguration":
         if not kwargs.get("kind", None):
             kwargs["kind"] = dai.CameraSensorType.MONO
         if not kwargs.get("resolution", None):
@@ -208,7 +214,8 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
         return cls(board_socket="RIGHT", **kwargs)
 
     @classmethod
-    def create_color(cls, **kwargs) -> "CameraConfiguration":  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def create_color(cls, **kwargs) -> "CameraConfiguration":
         if not kwargs.get("kind", None):
             kwargs["kind"] = dai.CameraSensorType.COLOR
         if not kwargs.get("resolution", None):
@@ -229,7 +236,8 @@ class CameraFeatures(BaseModel):  # type: ignore[misc]
         arbitrary_types_allowed = True
         use_enum_values = True
 
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:
         return {
             "resolutions": [r for r in self.resolutions],
             "max_fps": self.max_fps,
@@ -243,7 +251,7 @@ class CameraFeatures(BaseModel):  # type: ignore[misc]
 class PipelineConfiguration(BaseModel):  # type: ignore[misc]
     auto: bool = False  # Should the backend automatically create a pipeline?
     cameras: List[CameraConfiguration] = []
-    depth: Optional[DepthConfiguration]
+    depth: Optional[StereoDepthConfiguration]
     ai_model: Optional[AiModelConfiguration]
     imu: ImuConfiguration = ImuConfiguration()
 
@@ -266,22 +274,26 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     stereo_pairs: List[
         Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
     ] = []  # Which cameras can be paired for stereo
-    default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
+    default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket,
+                                        dai.CameraBoardSocket]] = None
     info: DeviceInfo = DeviceInfo()
 
     class Config:
         arbitrary_types_allowed = True
         use_enum_values = True
 
-    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def __init__(self, *args, **kwargs) -> None:
         if kwargs.get("stereo_pairs", None) and all(isinstance(pair[0], str) for pair in kwargs["stereo_pairs"]):
             kwargs["stereo_pairs"] = [
-                (getattr(dai.CameraBoardSocket, pair[0]), getattr(dai.CameraBoardSocket, pair[1]))
+                (getattr(dai.CameraBoardSocket, pair[0]), getattr(
+                    dai.CameraBoardSocket, pair[1]))
                 for pair in kwargs["stereo_pairs"]
             ]
         return super().__init__(*args, **kwargs)  # type: ignore[no-any-return]
 
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:
         return {
             "id": self.id,
             "cameras": [cam.dict() for cam in self.cameras],
@@ -302,14 +314,15 @@ size_to_resolution = {
     (640, 400): CameraSensorResolution.THE_400_P,
     (640, 480): CameraSensorResolution.THE_480_P,  # OV7251
     (1280, 720): CameraSensorResolution.THE_720_P,
-    # (1280, 962): CameraSensorResolution.THE_1280P, # TOF
+    (1280, 962): CameraSensorResolution.THE_1280_P,  # TOF
     (1280, 800): CameraSensorResolution.THE_800_P,  # OV9782
     (2592, 1944): CameraSensorResolution.THE_5_MP,  # OV5645
     (1440, 1080): CameraSensorResolution.THE_1440X1080,
     (1920, 1080): CameraSensorResolution.THE_1080_P,
     (1920, 1200): CameraSensorResolution.THE_1200_P,  # AR0234
     (3840, 2160): CameraSensorResolution.THE_4_K,
-    (4000, 3000): CameraSensorResolution.THE_4000X3000,  # IMX582 with binning enabled
+    # IMX582 with binning enabled
+    (4000, 3000): CameraSensorResolution.THE_4000X3000,
     (4056, 3040): CameraSensorResolution.THE_12_MP,  # IMX378, IMX477, IMX577
     (4208, 3120): CameraSensorResolution.THE_13_MP,  # AR214
     (5312, 6000): CameraSensorResolution.THE_5312X6000,  # IMX582 cropped

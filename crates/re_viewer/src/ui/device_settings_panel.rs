@@ -1,5 +1,5 @@
 use crate::{
-    depthai::depthai::{self, CameraBoardSocket},
+    depthai::depthai::{self},
     misc::ViewerContext,
 };
 
@@ -234,11 +234,13 @@ impl DeviceSettingsPanel {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             for cam in connected_cameras.clone() {
-                                let Some(config) = device_config.cameras
-                                .iter_mut()
-                                .find(|conf| conf.board_socket == cam.board_socket) else {
-                                continue;
-                            };
+                                let Some(config) = device_config
+                                    .cameras
+                                    .iter_mut()
+                                    .find(|conf| conf.board_socket == cam.board_socket)
+                                else {
+                                    continue;
+                                };
                                 Self::camera_config_ui(ctx, ui, &cam, config);
                             }
 
@@ -270,7 +272,17 @@ impl DeviceSettingsPanel {
                                             false,
                                             true,
                                             |ui| {
-                                                for cam in &connected_cameras {
+                                                let filtered_cameras: Vec<_> = connected_cameras
+                                                    .iter() // iterates over references
+                                                    .filter(|cam| {
+                                                        !(cam.supported_types.contains(
+                                                            &depthai::CameraSensorKind::THERMAL,
+                                                        ) || cam.supported_types.contains(
+                                                            &depthai::CameraSensorKind::TOF,
+                                                        ))
+                                                    })
+                                                    .collect();
+                                                for cam in filtered_cameras {
                                                     ui.selectable_value(
                                                         &mut device_config.ai_model.camera,
                                                         cam.board_socket,
