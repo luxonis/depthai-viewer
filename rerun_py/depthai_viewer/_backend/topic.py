@@ -16,9 +16,9 @@ class Topic(Enum):
 
     @classmethod
     def create(cls, name_or_id: Union[str, int]) -> "Topic":
-        if type(name_or_id) == str:
+        if isinstance(name_or_id, str):
             return Topic[name_or_id]
-        elif type(name_or_id) == int:
+        elif isinstance(name_or_id, int):
             return Topic(name_or_id)
         else:
             raise ValueError("Invalid topic name or id: ", name_or_id)

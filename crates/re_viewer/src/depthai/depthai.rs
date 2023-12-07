@@ -130,6 +130,7 @@ pub enum CameraSensorResolution {
     THE_1440X1080,
     THE_1080_P,
     THE_1200_P,
+    THE_1280_P,
     THE_4_K,
     THE_4000X3000,
     THE_12_MP,
@@ -149,6 +150,7 @@ impl fmt::Display for CameraSensorResolution {
             Self::THE_1440X1080 => write!(f, "1440x1080"),
             Self::THE_1080_P => write!(f, "1080p"),
             Self::THE_1200_P => write!(f, "1200p"),
+            Self::THE_1280_P => write!(f, "1280p"),
             Self::THE_4_K => write!(f, "4k"),
             Self::THE_4000X3000 => write!(f, "4000x3000"),
             Self::THE_12_MP => write!(f, "12MP"),
@@ -243,8 +245,8 @@ impl Default for DepthMedianFilter {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Debug)]
-pub struct DepthConfig {
+#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Debug)]
+pub struct StereoDepthConfig {
     pub median: DepthMedianFilter,
     pub lr_check: bool,
     pub lrc_threshold: u64,
@@ -256,7 +258,7 @@ pub struct DepthConfig {
     pub stereo_pair: (CameraBoardSocket, CameraBoardSocket),
 }
 
-impl Default for DepthConfig {
+impl Default for StereoDepthConfig {
     fn default() -> Self {
         Self {
             median: DepthMedianFilter::default(),
@@ -267,17 +269,17 @@ impl Default for DepthConfig {
             sigma: 0,
             confidence: 230,
             align: CameraBoardSocket::RGB,
-            stereo_pair: (CameraBoardSocket::CAM_A, CameraBoardSocket::CAM_C),
+            stereo_pair: (CameraBoardSocket::CAM_B, CameraBoardSocket::CAM_C),
         }
     }
 }
 
-impl DepthConfig {
+impl StereoDepthConfig {
     pub fn default_as_option() -> Option<Self> {
         Some(Self::default())
     }
 
-    pub fn only_runtime_configs_differ(&self, other: &DepthConfig) -> bool {
+    pub fn only_runtime_configs_differ(&self, other: &StereoDepthConfig) -> bool {
         self.lr_check == other.lr_check
             && self.align == other.align
             && self.extended_disparity == other.extended_disparity
@@ -286,12 +288,14 @@ impl DepthConfig {
     }
 }
 
-impl From<&DeviceProperties> for Option<DepthConfig> {
+impl From<&DeviceProperties> for Option<StereoDepthConfig> {
     fn from(props: &DeviceProperties) -> Self {
-        let mut config = DepthConfig::default();
-        let Some(cam_with_stereo_pair) = props.cameras
+        let mut config = StereoDepthConfig::default();
+        let Some(cam_with_stereo_pair) = props
+            .cameras
             .iter()
-            .find(|feat| !feat.stereo_pairs.is_empty()) else {
+            .find(|feat| !feat.stereo_pairs.is_empty())
+        else {
             return None;
         };
         if let Some((cam_a, cam_b)) = props.default_stereo_pair {
@@ -312,20 +316,22 @@ impl From<&DeviceProperties> for Option<DepthConfig> {
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct DeviceConfig {
+    pub auto: bool, // Should the backend automatically create a pipeline?
     pub cameras: Vec<CameraConfig>,
     #[serde(default = "bool_true")]
     pub depth_enabled: bool, // Much easier to have an explicit bool for checkbox
-    #[serde(default = "DepthConfig::default_as_option")]
-    pub depth: Option<DepthConfig>,
+    #[serde(default = "StereoDepthConfig::default_as_option")]
+    pub depth: Option<StereoDepthConfig>,
     pub ai_model: AiModel,
 }
 
 impl Default for DeviceConfig {
     fn default() -> Self {
         Self {
+            auto: false,
             cameras: Vec::new(),
             depth_enabled: true,
-            depth: Some(DepthConfig::default()),
+            depth: Some(StereoDepthConfig::default()),
             ai_model: AiModel::default(),
         }
     }
@@ -357,7 +363,7 @@ impl From<&DeviceProperties> for DeviceConfig {
                 kind: *cam.supported_types.first().unwrap(),
             })
             .collect();
-        config.depth = Option::<DepthConfig>::from(props);
+        config.depth = Option::<StereoDepthConfig>::from(props);
         config.ai_model = AiModel::from(props);
         config
     }
@@ -503,6 +509,7 @@ impl AiModel {
 impl From<&DeviceProperties> for AiModel {
     fn from(props: &DeviceProperties) -> Self {
         let mut model = Self::default();
+
         if let Some(cam) = props.cameras.iter().find(|cam| cam.is_color_camera()) {
             model.camera = cam.board_socket;
         } else if let Some(cam) = props.cameras.first() {
@@ -646,12 +653,10 @@ impl State {
         old_config: &DeviceConfig,
         new_config: &DeviceConfig,
     ) -> bool {
-        let any_runtime_conf_changed = old_config.depth.is_some()
-            && new_config.depth.is_some()
-            && old_config
-                .depth
-                .unwrap()
-                .only_runtime_configs_differ(&new_config.depth.unwrap()); // || others to be added
+        let any_runtime_conf_changed = match (&old_config.depth, &new_config.depth) {
+            (Some(old_depth), Some(new_depth)) => old_depth.only_runtime_configs_differ(new_depth),
+            _ => false,
+        };
         any_runtime_conf_changed
             && old_config.cameras == new_config.cameras
             && old_config.ai_model == new_config.ai_model
@@ -760,8 +765,8 @@ impl State {
                     }
                     self.applied_device_config.config = Some(config.clone());
                     self.modified_device_config = config.clone();
-                    let Some(applied_device_config) =
-                        self.applied_device_config.config.as_mut() else {
+                    let Some(applied_device_config) = self.applied_device_config.config.as_mut()
+                    else {
                         self.reset();
                         self.applied_device_config.update_in_progress = false;
                         return;
@@ -769,6 +774,7 @@ impl State {
                     applied_device_config.depth_enabled = config.depth.is_some();
                     self.modified_device_config.depth_enabled =
                         self.modified_device_config.depth.is_some();
+                    self.modified_device_config.auto = false; // Always reset auto
                     self.set_subscriptions(&subs);
                     self.set_update_in_progress(false);
                 }
@@ -776,6 +782,7 @@ impl State {
                     re_log::debug!("Setting device: {device:?}");
                     self.set_device(device);
                     if !self.selected_device.id.is_empty() {
+                        self.modified_device_config.auto = true;
                         // Apply default pipeline
                         self.set_pipeline(&mut self.modified_device_config.clone(), false);
                     }
