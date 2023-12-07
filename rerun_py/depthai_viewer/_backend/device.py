@@ -16,7 +16,6 @@ from depthai_sdk.components.tof_component import Component
 from numpy.typing import NDArray
 
 import depthai_viewer as viewer
-from depthai_viewer._backend import classification_labels
 from depthai_viewer._backend.device_configuration import (
     ALL_NEURAL_NETWORKS,
     CameraConfiguration,
