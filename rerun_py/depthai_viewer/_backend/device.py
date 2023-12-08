@@ -254,7 +254,9 @@ class Device:
             timeout_start = time.time()
             while time.time() - timeout_start < 10:
                 available_devices = [
-                    device.getMxId() for device in dai.Device.getAllAvailableDevices()  # type: ignore[call-arg]
+                    # type: ignore[call-arg]
+                    device.getMxId()
+                    for device in dai.Device.getAllAvailableDevices()
                 ]
                 if self.id in available_devices:
                     break
@@ -413,7 +415,8 @@ class Device:
 
             # In case of ISP scaling, don't change the sensor resolution in the pipeline config
             # to keep it logical for the user in the UI
-            sensor_resolution: Optional[CameraSensorResolution] = cam.resolution  # None for ToF
+            # None for ToF
+            sensor_resolution: Optional[CameraSensorResolution] = cam.resolution
             if not does_sensor_support_resolution:
                 smallest_supported_resolution = [
                     config for config in camera_features.configs if config.type == camera_features.supportedTypes[0]
@@ -434,7 +437,8 @@ class Device:
                 elif sensor_resolution is not None:
                     sdk_cam = self._oak.create_camera(
                         cam.board_socket,
-                        sensor_resolution.as_sdk_resolution(),  # type: ignore[union-attr]
+                        # type: ignore[union-attr]
+                        sensor_resolution.as_sdk_resolution(),
                         cam.fps,
                         encode=self.use_encoding,
                     )
@@ -532,7 +536,8 @@ class Device:
         if running:
             self._pipeline_start_t = time.time()
             self._sys_info_q = self._oak.device.getOutputQueue("sys_logger", 1, False)
-            self.store.set_pipeline_config(config)  # We might have modified the config, so store it
+            # We might have modified the config, so store it
+            self.store.set_pipeline_config(config)
             try:
                 self._oak.poll()
             except RuntimeError:

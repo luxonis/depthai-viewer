@@ -46,7 +46,8 @@ class PacketHandler:
     def set_camera_intrinsics_getter(
         self, camera_intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
     ) -> None:
-        self._get_camera_intrinsics = camera_intrinsics_getter  # type: ignore[assignment, misc]
+        # type: ignore[assignment, misc]
+        self._get_camera_intrinsics = camera_intrinsics_getter
 
     def log_packet(
         self,

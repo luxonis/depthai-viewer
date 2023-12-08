@@ -10,7 +10,7 @@ use strum::IntoEnumIterator; // Needed for enum::iter()
 #[serde(default)]
 pub(crate) struct DeviceSettingsPanel {}
 
-const CONFIG_UI_WIDTH: f32 = 224.0;
+const CONFIG_UI_WIDTH: f32 = 280.0;
 
 impl DeviceSettingsPanel {
     #[allow(clippy::unused_self)]
@@ -26,12 +26,14 @@ impl DeviceSettingsPanel {
         egui::CentralPanel::default()
             .frame(egui::Frame {
                 inner_margin: egui::Margin::same(0.0),
-                fill: egui::Color32::WHITE,
+                fill: ui.visuals().panel_fill,
+                // fill: egui::Color32::WHITE,
                 ..Default::default()
             })
             .show_inside(ui, |ui| {
                 (egui::Frame {
                     inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
+                    fill: ui.visuals().panel_fill,
                     ..Default::default()
                 })
                 .show(ui, |ui| {
@@ -163,9 +165,10 @@ impl DeviceSettingsPanel {
         camera_features: &depthai::CameraFeatures,
         camera_config: &mut depthai::CameraConfig,
     ) {
-        let primary_700 = ctx.re_ui.design_tokens.primary_700;
+        // let text_color = ctx.re_ui.design_tokens.primary_700;
+        let text_color = ui.style().visuals.strong_text_color();
         egui::CollapsingHeader::new(
-            egui::RichText::new(camera_features.board_socket.display_name(ctx)).color(primary_700),
+            egui::RichText::new(camera_features.board_socket.display_name(ctx)).color(text_color),
         )
         .default_open(true)
         .show(ui, |ui| {
@@ -204,14 +207,16 @@ impl DeviceSettingsPanel {
                     0..=camera_features.max_fps,
                 );
                 ctx.re_ui
-                    .labeled_checkbox(ui, "Stream", &mut camera_config.stream_enabled);
+                    .labeled_toggle_switch(ui, "Stream", &mut camera_config.stream_enabled);
             });
         });
     }
 
     fn device_configuration_ui(ctx: &mut ViewerContext<'_>, ui: &mut egui::Ui) {
         let mut device_config = ctx.depthai_state.modified_device_config.clone();
-        let primary_700 = ctx.re_ui.design_tokens.primary_700;
+
+        let text_color = ui.style().visuals.strong_text_color();
+        // let text_color = ctx.re_ui.design_tokens.primary_700;
         let connected_cameras = ctx.depthai_state.get_connected_cameras().clone();
 
         ctx.re_ui.styled_scrollbar(
@@ -221,7 +226,7 @@ impl DeviceSettingsPanel {
             false,
             |ui| {
                 (egui::Frame {
-                    fill: ctx.re_ui.design_tokens.gray_50,
+                    fill: ui.style().visuals.panel_fill,
                     inner_margin: egui::Margin::symmetric(30.0, 21.0),
                     ..Default::default()
                 })
@@ -240,7 +245,7 @@ impl DeviceSettingsPanel {
                             }
 
                             ui.collapsing(
-                                egui::RichText::new("AI settings").color(primary_700),
+                                egui::RichText::new("AI settings").color(text_color),
                                 |ui| {
                                     ui.vertical(|ui| {
                                         ui.set_width(CONFIG_UI_WIDTH);
@@ -295,7 +300,7 @@ impl DeviceSettingsPanel {
                                 ctx.depthai_state.selected_device.has_stereo_pairs(),
                                 |ui| {
                                     egui::CollapsingHeader::new(
-                                        egui::RichText::new("Depth Settings").color(primary_700),
+                                        egui::RichText::new("Depth Settings").color(text_color),
                                     )
                                     .open(
                                         if !ctx.depthai_state.selected_device.has_stereo_pairs() {
@@ -336,7 +341,7 @@ impl DeviceSettingsPanel {
                                                     }
                                                 },
                                             );
-                                            ctx.re_ui.labeled_checkbox(
+                                            ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "LR Check",
                                                 &mut depth.lr_check,
@@ -382,12 +387,12 @@ impl DeviceSettingsPanel {
                                                 &mut depth.lrc_threshold,
                                                 0..=10,
                                             );
-                                            ctx.re_ui.labeled_checkbox(
+                                            ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "Extended Disparity",
                                                 &mut depth.extended_disparity,
                                             );
-                                            ctx.re_ui.labeled_checkbox(
+                                            ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "Subpixel Disparity",
                                                 &mut depth.subpixel_disparity,
@@ -464,14 +469,11 @@ impl DeviceSettingsPanel {
                                     ui.add_enabled_ui(apply_enabled, |ui| {
                                         ui.scope(|ui| {
                                             let mut style = ui.style_mut().clone();
+                                            let color = style.visuals.selection.bg_fill;
+                                            //TODO(tomas):Investigate whether this could be default button style
                                             if apply_enabled {
-                                                let color =
-                                                    ctx.re_ui.design_tokens.primary_bg_color;
-                                                let hover_color =
-                                                    ctx.re_ui.design_tokens.primary_hover_bg_color;
-                                                style.visuals.widgets.hovered.bg_fill = hover_color;
-                                                style.visuals.widgets.hovered.weak_bg_fill =
-                                                    hover_color;
+                                                style.visuals.widgets.hovered.bg_fill = color;
+                                                style.visuals.widgets.hovered.weak_bg_fill = color;
                                                 style.visuals.widgets.inactive.bg_fill = color;
                                                 style.visuals.widgets.inactive.weak_bg_fill = color;
                                                 style.visuals.widgets.inactive.fg_stroke.color =

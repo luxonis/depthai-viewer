@@ -824,31 +824,31 @@ fn space_view_options_ui(
                 return;
             };
 
-            if ctx
-                .re_ui
-                .small_icon_button(ui, &re_ui::icons::ADD)
-                .clicked()
-            {
-                // Create a new space view that is identical to this one
-                let new_sv = space_view.duplicate(ctx);
-                let id = new_sv.id.clone();
-                viewport.add_space_view(new_sv);
-                viewport
-                    .has_been_user_edited
-                    .insert(viewport.space_views[&id].space_path.clone(), true);
-            }
+            // if ctx
+            //     .re_ui
+            //     .small_icon_button(ui, &re_ui::icons::ADD)
+            //     .clicked()
+            // {
+            //     // Create a new space view that is identical to this one
+            //     let new_sv = space_view.duplicate(ctx);
+            //     let id = new_sv.id.clone();
+            //     viewport.add_space_view(new_sv);
+            //     viewport
+            //         .has_been_user_edited
+            //         .insert(viewport.space_views[&id].space_path.clone(), true);
+            // }
 
-            if ctx
-                .re_ui
-                .small_icon_button(ui, &re_ui::icons::REMOVE)
-                .clicked()
-            {
-                viewport.has_been_user_edited.insert(
-                    viewport.space_views[&space_view_id].space_path.clone(),
-                    true,
-                );
-                viewport.remove(&space_view_id);
-            }
+            // if ctx
+            //     .re_ui
+            //     .small_icon_button(ui, &re_ui::icons::REMOVE)
+            //     .clicked()
+            // {
+            //     viewport.has_been_user_edited.insert(
+            //         viewport.space_views[&space_view_id].space_path.clone(),
+            //         true,
+            //     );
+            //     viewport.remove(&space_view_id);
+            // }
 
             // Show help last, since not all space views have help text
             help_text_ui(ui, &space_view);

@@ -132,6 +132,7 @@ impl StatsPanelState {
                     if xlink_stats.timestamp == then {
                         return;
                     }
+
                     written = (written - total_written) / (xlink_stats.timestamp - then);
                     read = (read - total_read) / (xlink_stats.timestamp - then);
                 }
@@ -145,21 +146,23 @@ impl StatsPanelState {
                         (xlink_stats.bytes_read / 1e6 as i64) as f64,
                     ],
                 );
-                self.avg_xlink_stats_plot_history.add(
-                    xlink_stats.timestamp,
-                    [
-                        self.xlink_stats_history
-                            .iter()
-                            .map(|(_, [written, _, _, _])| written)
-                            .sum::<f64>()
-                            / self.xlink_stats_history.len() as f64,
-                        self.xlink_stats_history
-                            .iter()
-                            .map(|(_, [_, read, _, _])| read)
-                            .sum::<f64>()
-                            / self.xlink_stats_history.len() as f64,
-                    ],
-                );
+                let written_sum = self
+                    .xlink_stats_history
+                    .iter()
+                    .map(|(_, [written, _, _, _])| written)
+                    .sum::<f64>();
+                let read_sum = self
+                    .xlink_stats_history
+                    .iter()
+                    .map(|(_, [_, read, _, _])| read)
+                    .sum::<f64>();
+                let history_len = self.xlink_stats_history.len() as f64;
+
+                let written_avg = written_sum / history_len;
+                let read_avg = read_sum / history_len;
+
+                self.avg_xlink_stats_plot_history
+                    .add(now, [written_avg, read_avg]);
             });
         }
     }
@@ -233,16 +236,17 @@ impl<'a, 'b> StatsTabs<'a, 'b> {
                 inner_margin: egui::Margin::same(re_ui::ReUi::view_padding()),
                 ..Default::default()
             }
-            .show(ui, |ui| {
+            .show(ui, |ui|
+                {
                 let (history, display_name, unit) = (
                     &mut self.state.avg_xlink_stats_plot_history,
                     "XLink throughput",
                     "",
                 );
                 let Some(latest) = history.latest() else {
-                ui.label(format!("No {display_name} data yet"));
-                return;
-            };
+                    ui.label(format!("No {display_name} data yet"));
+                    return;
+                };
                 ui.label(format!(
                     "{display_name}: avg. Sent from device {:.2} MB/s, avg. Sent to Device: {:.2} MB/s",
                     latest[0], latest[1]

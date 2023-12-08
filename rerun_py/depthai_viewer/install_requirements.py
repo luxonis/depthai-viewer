@@ -7,7 +7,8 @@ import sys
 import traceback
 from typing import Any, Dict
 
-from depthai_viewer import version as depthai_viewer_version  # type: ignore[attr-defined]
+# type: ignore[attr-defined]
+from depthai_viewer import version as depthai_viewer_version
 
 script_path = os.path.dirname(os.path.abspath(__file__))
 venv_dir = os.path.join(script_path, "venv-" + depthai_viewer_version())
@@ -87,7 +88,8 @@ def create_venv_and_install_dependencies() -> None:
                     "-m",
                     "pip",
                     "install",
-                    "depthai-sdk==1.13.1.dev0+b0340e0c4ad869711d7d5fff48e41c46fe41f475" "--extra-index-url",
+                    "depthai-sdk==1.13.1.dev0+b0340e0c4ad869711d7d5fff48e41c46fe41f475",
+                    "--extra-index-url",
                     "https://artifacts.luxonis.com/artifactory/luxonis-python-snapshot-local/",
                     # "git+https://github.com/luxonis/depthai@develop#subdirectory=depthai_sdk",
                 ],
@@ -111,11 +113,26 @@ def create_venv_and_install_dependencies() -> None:
         env = os.environ.copy()
         env["PYTHONPATH"] = venv_packages_dir
         # Download blobs
-        subprocess.run(
-            [sys.executable, "-c", "from depthai_viewer.install_requirements import download_blobs; download_blobs()"],
-            check=True,
-            env=env,
-        )
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "from depthai_viewer.install_requirements import download_blobs; download_blobs()",
+                ],
+                check=True,
+                env=env,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print("stderr")
+            print(e.stderr.decode("utf-8"))
+            print("stdout")
+            print(e.stdout.decode("utf-8"))
+            print("output")
+            print(e.output.decode("utf-8"))
+
+            raise e
 
         # Restore original SIGINT handler
         signal.signal(signal.SIGINT, original_sigint_handler)

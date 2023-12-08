@@ -193,7 +193,8 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
         }
 
     @classmethod
-    def create_left(cls, **kwargs) -> "CameraConfiguration":  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def create_left(cls, **kwargs) -> "CameraConfiguration":
         if not kwargs.get("kind", None):
             kwargs["kind"] = dai.CameraSensorType.MONO
         if not kwargs.get("resolution", None):
@@ -201,7 +202,8 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
         return cls(board_socket="LEFT", **kwargs)
 
     @classmethod
-    def create_right(cls, **kwargs) -> "CameraConfiguration":  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def create_right(cls, **kwargs) -> "CameraConfiguration":
         if not kwargs.get("kind", None):
             kwargs["kind"] = dai.CameraSensorType.MONO
         if not kwargs.get("resolution", None):
@@ -209,7 +211,8 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
         return cls(board_socket="RIGHT", **kwargs)
 
     @classmethod
-    def create_color(cls, **kwargs) -> "CameraConfiguration":  # type: ignore[no-untyped-def]
+    # type: ignore[no-untyped-def]
+    def create_color(cls, **kwargs) -> "CameraConfiguration":
         if not kwargs.get("kind", None):
             kwargs["kind"] = dai.CameraSensorType.COLOR
         if not kwargs.get("resolution", None):
@@ -310,7 +313,8 @@ size_to_resolution = {
     (1920, 1080): CameraSensorResolution.THE_1080_P,
     (1920, 1200): CameraSensorResolution.THE_1200_P,  # AR0234
     (3840, 2160): CameraSensorResolution.THE_4_K,
-    (4000, 3000): CameraSensorResolution.THE_4000X3000,  # IMX582 with binning enabled
+    # IMX582 with binning enabled
+    (4000, 3000): CameraSensorResolution.THE_4000X3000,
     (4056, 3040): CameraSensorResolution.THE_12_MP,  # IMX378, IMX477, IMX577
     (4208, 3120): CameraSensorResolution.THE_13_MP,  # AR214
     (5312, 6000): CameraSensorResolution.THE_5312X6000,  # IMX582 cropped

@@ -189,8 +189,9 @@ impl DependencyInstaller {
     }
 
     pub fn show(&mut self, re_ui: &re_ui::ReUi, ui: &mut egui::Ui) {
+        let panel_color = ui.style().visuals.panel_fill;
         let frame = egui::Frame::default()
-            .fill(egui::Color32::WHITE)
+            .fill(panel_color)
             .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
             .inner_margin(egui::Margin::symmetric(16.0, 0.0))
             .rounding(8.0);
@@ -202,11 +203,13 @@ impl DependencyInstaller {
             .resizable(true)
             .default_height(600.0)
             .show(ui.ctx(), |ui| {
-                let frame = egui::Frame::default().inner_margin(egui::Margin {
-                    top: 24.0,
-                    bottom: 4.0,
-                    ..0.0.into()
-                });
+                let frame = egui::Frame::default()
+                    .fill(panel_color)
+                    .inner_margin(egui::Margin {
+                        top: 24.0,
+                        bottom: 4.0,
+                        ..0.0.into()
+                    });
                 egui::TopBottomPanel::top("header")
                     .frame(frame)
                     .show_separator_line(false)
@@ -248,33 +251,41 @@ impl DependencyInstaller {
                     .show_inside(ui, |_| ());
 
                 let frame = egui::Frame::default()
-                    .fill(egui::Color32::WHITE)
+                    .fill(panel_color)
                     .rounding(4.0)
                     .stroke(egui::Stroke::new(1.0, re_ui.design_tokens.gray_400))
                     .inner_margin(egui::Margin::same(12.0));
 
-                egui::CollapsingHeader::new("Details").default_open(true).show_unindented(ui, |ui| {
-                    egui::CentralPanel::default()
-                        .frame(frame)
-                        .show_inside(ui, |ui| {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                if re_ui.small_icon_button(ui, &re_ui::icons::COPY).clicked() {
-                                    crate::misc::Clipboard::with(|clipboard| {
-                                        clipboard.set_text(self.stdio.clone());
-                                    });
-                                }
+                egui::CollapsingHeader::new("Details")
+                    .default_open(true)
+                    .show_unindented(ui, |ui| {
+                        egui::CentralPanel::default()
+                            .frame(frame)
+                            .show_inside(ui, |ui| {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::TOP),
+                                    |ui| {
+                                        if re_ui
+                                            .small_icon_button(ui, &re_ui::icons::COPY)
+                                            .clicked()
+                                        {
+                                            crate::misc::Clipboard::with(|clipboard| {
+                                                clipboard.set_text(self.stdio.clone());
+                                            });
+                                        }
+                                    },
+                                );
+                                re_ui.styled_scrollbar(
+                                    ui,
+                                    re_ui::ScrollAreaDirection::Both,
+                                    [false; 2],
+                                    true,
+                                    |ui| {
+                                        ui.label(&self.stdio);
+                                    },
+                                );
                             });
-                            re_ui.styled_scrollbar(
-                                ui,
-                                re_ui::ScrollAreaDirection::Both,
-                                [false; 2],
-                                true,
-                                |ui| {
-                                    ui.label(&self.stdio);
-                                },
-                            );
-                        });
-                });
+                    });
             });
     }
 
