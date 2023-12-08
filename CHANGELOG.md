@@ -1,11 +1,19 @@
 # Depthai Viewer changelog
 
+## 0.1.5
+
+- UI improvements
+- Added support for OAK-D-SR POE (tof)
+- Fixed some bugs:
+  - https://discuss.luxonis.com/d/2425-depthai-viewer-not-working-with-ffc-4p-based-setup/3
+  - Blob download failure in dependency installer
+
 ## 0.1.4
+
 - Added depdendency installer.
 - Added auto device selection on startup:
   - On startup: If a preferred device is set, try to connect to that device. Else (if preferred device not found or not set) connect to the first available device.
   - Whenever a device is selected it is designated as the preferred device. A preferred device is persisted between runs of depthai-viewer.
-
 
 ## 0.1.4-alpha.0
 
