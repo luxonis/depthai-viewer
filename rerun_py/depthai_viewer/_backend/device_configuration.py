@@ -37,8 +37,7 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
             )
         return super().__init__(**v)  # type: ignore[no-any-return]
 
-    # type: ignore[no-untyped-def]
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
         return {
             "median": self.median.name if self.median else None,
             "lr_check": self.lr_check,
@@ -177,15 +176,13 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
     def __init__(self, **v) -> None:  # type: ignore[no-untyped-def]
         if v.get("board_socket", None):
             if isinstance(v["board_socket"], str):
-                v["board_socket"] = getattr(
-                    dai.CameraBoardSocket, v["board_socket"])
+                v["board_socket"] = getattr(dai.CameraBoardSocket, v["board_socket"])
         if v.get("kind", None):
             if isinstance(v["kind"], str):
                 v["kind"] = getattr(dai.CameraSensorType, v["kind"])
         return super().__init__(**v)  # type: ignore[no-any-return]
 
-    # type: ignore[no-untyped-def]
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
         return {
             "fps": self.fps,
             "resolution": self.resolution.dict(),
@@ -236,8 +233,7 @@ class CameraFeatures(BaseModel):  # type: ignore[misc]
         arbitrary_types_allowed = True
         use_enum_values = True
 
-    # type: ignore[no-untyped-def]
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
         return {
             "resolutions": [r for r in self.resolutions],
             "max_fps": self.max_fps,
@@ -274,26 +270,22 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     stereo_pairs: List[
         Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
     ] = []  # Which cameras can be paired for stereo
-    default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket,
-                                        dai.CameraBoardSocket]] = None
+    default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
     info: DeviceInfo = DeviceInfo()
 
     class Config:
         arbitrary_types_allowed = True
         use_enum_values = True
 
-    # type: ignore[no-untyped-def]
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         if kwargs.get("stereo_pairs", None) and all(isinstance(pair[0], str) for pair in kwargs["stereo_pairs"]):
             kwargs["stereo_pairs"] = [
-                (getattr(dai.CameraBoardSocket, pair[0]), getattr(
-                    dai.CameraBoardSocket, pair[1]))
+                (getattr(dai.CameraBoardSocket, pair[0]), getattr(dai.CameraBoardSocket, pair[1]))
                 for pair in kwargs["stereo_pairs"]
             ]
         return super().__init__(*args, **kwargs)  # type: ignore[no-any-return]
 
-    # type: ignore[no-untyped-def]
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
         return {
             "id": self.id,
             "cameras": [cam.dict() for cam in self.cameras],

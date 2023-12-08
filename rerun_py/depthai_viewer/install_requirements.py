@@ -13,8 +13,7 @@ from depthai_viewer import version as depthai_viewer_version
 script_path = os.path.dirname(os.path.abspath(__file__))
 venv_dir = os.path.join(script_path, "venv-" + depthai_viewer_version())
 venv_python = (
-    os.path.join(venv_dir, "Scripts", "python") if sys.platform == "win32" else os.path.join(
-        venv_dir, "bin", "python")
+    os.path.join(venv_dir, "Scripts", "python") if sys.platform == "win32" else os.path.join(venv_dir, "bin", "python")
 )
 
 
@@ -24,21 +23,18 @@ def delete_partially_created_venv(path: str) -> None:
             print(f"Deleting partially created virtual environment: {path}")
             shutil.rmtree(path)
     except Exception as e:
-        print(
-            f"Error occurred while attempting to delete the virtual environment: {e}")
+        print(f"Error occurred while attempting to delete the virtual environment: {e}")
         print(traceback.format_exc())
 
 
-# type: ignore[no-untyped-def]
-def sigint_mid_venv_install_handler(signum, frame) -> None:
+def sigint_mid_venv_install_handler(signum, frame) -> None:  # type: ignore[no-untyped-def]
     delete_partially_created_venv(venv_dir)
 
 
 def get_site_packages() -> str:
     """Gets site packages dir of the virtual environment. Throws an exception if site packages could not be fetched."""
     return subprocess.run(
-        [venv_python, "-c",
-            "import sysconfig; print(sysconfig.get_paths()['purelib'], end='')"],
+        [venv_python, "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'], end='')"],
         capture_output=True,
         text=True,
         check=True,
@@ -81,12 +77,10 @@ def create_venv_and_install_dependencies() -> None:
             # In case of Ctrl+C during the venv creation, delete the partially created venv
             signal.signal(signal.SIGINT, sigint_mid_venv_install_handler)
             print("Creating virtual environment...")
-            subprocess.run(
-                [sys.executable, "-m", "venv", venv_dir], check=True)
+            subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
 
             # Install dependencies
-            subprocess.run([venv_python, "-m", "pip",
-                           "install", "-U", "pip"], check=True)
+            subprocess.run([venv_python, "-m", "pip", "install", "-U", "pip"], check=True)
             # Install depthai_sdk first, then override depthai version with the one from requirements.txt
             subprocess.run(
                 [
@@ -102,8 +96,7 @@ def create_venv_and_install_dependencies() -> None:
                 check=True,
             )
             subprocess.run(
-                [venv_python, "-m", "pip", "install", "-r",
-                    f"{script_path}/requirements.txt"],
+                [venv_python, "-m", "pip", "install", "-r", f"{script_path}/requirements.txt"],
                 check=True,
             )
         venv_packages_dir = get_site_packages()
@@ -122,20 +115,22 @@ def create_venv_and_install_dependencies() -> None:
         # Download blobs
         try:
             subprocess.run(
-                [sys.executable, "-c",
-                    "from depthai_viewer.install_requirements import download_blobs; download_blobs()"],
+                [
+                    sys.executable,
+                    "-c",
+                    "from depthai_viewer.install_requirements import download_blobs; download_blobs()",
+                ],
                 check=True,
                 env=env,
-                capture_output=True
+                capture_output=True,
             )
         except subprocess.CalledProcessError as e:
-
             print("stderr")
-            print(e.stderr.decode('utf-8'))
+            print(e.stderr.decode("utf-8"))
             print("stdout")
-            print(e.stdout.decode('utf-8'))
+            print(e.stdout.decode("utf-8"))
             print("output")
-            print(e.output.decode('utf-8'))
+            print(e.output.decode("utf-8"))
 
             raise e
 

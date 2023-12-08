@@ -20,7 +20,6 @@ from depthai_viewer._backend.messages import (
     SubscriptionsMessage,
 )
 from depthai_viewer._backend.store import Store
-import traceback
 
 viewer.init("Depthai Viewer")
 viewer.connect()
