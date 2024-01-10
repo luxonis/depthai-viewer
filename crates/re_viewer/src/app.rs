@@ -162,7 +162,7 @@ impl App {
     ) -> Self {
         // Setup Sentry
         let _guard = sentry::init((
-            "https://bb23d43cf3914af5956157b888342b02@o1095304.ingest.sentry.io/4505075212353536",
+            "https://37decdc44d584dca906e43ebd7fd1508@sentry.luxonis.com/16",
             sentry::ClientOptions {
                 release: sentry::release_name!(),
                 ..Default::default()

@@ -25,7 +25,7 @@ viewer.init("Depthai Viewer")
 viewer.connect()
 
 sentry_sdk.init(
-    dsn="https://bb23d43cf3914af5956157b888342b02@o1095304.ingest.sentry.io/4505075212353536",
+    dsn="https://37decdc44d584dca906e43ebd7fd1508@sentry.luxonis.com/16",
     # Set traces_sample_rate to 1.0 to capture 100%
     # of transactions for performance monitoring.
     # We recommend adjusting this value in production.
