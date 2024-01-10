@@ -5,7 +5,6 @@ from queue import Empty as QueueEmptyException
 from typing import Optional
 
 import sentry_sdk
-
 from depthai_viewer import version as depthai_viewer_version
 from depthai_viewer._backend.config_api import Action, start_api
 from depthai_viewer._backend.device import Device
