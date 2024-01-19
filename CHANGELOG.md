@@ -1,5 +1,9 @@
 # Depthai Viewer changelog
 
+## 0.1.6
+
+- Added ability to control IR dot projector and flood light brightness.
+
 ## 0.1.5
 
 - UI improvements
