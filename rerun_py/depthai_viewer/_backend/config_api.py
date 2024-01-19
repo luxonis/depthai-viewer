@@ -1,7 +1,7 @@
 import asyncio
 import atexit
 import json
-from enum import Enum
+from enum import Enum, auto
 from multiprocessing import Queue
 from queue import Empty as QueueEmptyException
 from signal import SIGINT, signal
@@ -37,12 +37,14 @@ send_message_queue: Queue  # type: ignore[type-arg]
 
 class Action(Enum):
     UPDATE_PIPELINE = 0
-    SELECT_DEVICE = 1
-    GET_SUBSCRIPTIONS = 2
-    SET_SUBSCRIPTIONS = 3
-    GET_PIPELINE = 4
-    RESET = 5  # When anything bad happens, a reset occurs (like closing ws connection)
-    GET_AVAILABLE_DEVICES = 6
+    SELECT_DEVICE = auto()
+    GET_SUBSCRIPTIONS = auto()
+    SET_SUBSCRIPTIONS = auto()
+    GET_PIPELINE = auto()
+    SET_FLOOD_BRIGHTNESS = auto()
+    SET_DOT_BRIGHTNESS = auto()
+    RESET = auto()  # When anything bad happens, a reset occurs (like closing ws connection)
+    GET_AVAILABLE_DEVICES = auto()
 
 
 def dispatch_action(action: Action, **kwargs) -> Message:  # type: ignore[no-untyped-def]
@@ -123,6 +125,22 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
                     print("Missing device id")
                     continue
                 await send_message(websocket, dispatch_action(Action.SELECT_DEVICE, device_id=device_id))
+            elif message_type == MessageType.SET_FLOOD_BRIGHTNESS:
+                data = message.get("data", {})
+                flood_brightness = data.get(message_type, None)
+                if flood_brightness is None:
+                    print("Missing", message_type)
+                    continue
+                await send_message(
+                    websocket, dispatch_action(Action.SET_FLOOD_BRIGHTNESS, flood_brightness=flood_brightness)
+                )
+            elif message_type == MessageType.SET_DOT_BRIGHTNESS:
+                data = message.get("data", {})
+                dot_brightness = data.get(message_type, None)
+                if dot_brightness is None:
+                    print("Missing dot", message_type)
+                    continue
+                await send_message(websocket, dispatch_action(Action.SET_DOT_BRIGHTNESS, dot_brightness=dot_brightness))
             else:
                 print("Unknown message type: ", message_type)
                 continue

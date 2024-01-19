@@ -12,6 +12,8 @@ class MessageType:
     PIPELINE = "Pipeline"  # Get or Set pipeline
     DEVICES = "Devices"  # Get device list
     DEVICE = "DeviceProperties"  # Get or set device
+    SET_FLOOD_BRIGHTNESS = "SetFloodBrightness"  # Set floodlight
+    SET_DOT_BRIGHTNESS = "SetDotBrightness"  # Set floodlight
     ERROR = "Error"  # Error message
     INFO = "Info"  # Info message
     WARNING = "Warning"  # Warning message

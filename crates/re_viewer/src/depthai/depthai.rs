@@ -323,6 +323,10 @@ pub struct DeviceConfig {
     #[serde(default = "StereoDepthConfig::default_as_option")]
     pub depth: Option<StereoDepthConfig>,
     pub ai_model: AiModel,
+    #[serde(skip)]
+    pub dot_brightness: u32,
+    #[serde(skip)]
+    pub flood_brightness: u32,
 }
 
 impl Default for DeviceConfig {
@@ -333,6 +337,8 @@ impl Default for DeviceConfig {
             depth_enabled: true,
             depth: Some(StereoDepthConfig::default()),
             ai_model: AiModel::default(),
+            dot_brightness: 0,
+            flood_brightness: 0,
         }
     }
 }
@@ -809,6 +815,12 @@ impl State {
                     }
                     re_log::warn!("{}", warning.message);
                 }
+                WsMessageData::SetDotBrightness(_brightness) => {
+                    re_log::debug!("Set dot brightness received from backend.")
+                }
+                WsMessageData::SetFloodBrightness(_brightness) => {
+                    re_log::debug!("Set flood brightness received from backend.")
+                }
             }
         }
 
@@ -872,6 +884,16 @@ impl State {
         } else {
             self.set_update_in_progress(true);
         }
+    }
+
+    pub fn set_dot_brightness(&mut self, brightness: u32) {
+        println!("Setting dot brightness to {}", brightness);
+        self.backend_comms.set_dot_brightness(brightness);
+    }
+
+    pub fn set_flood_brightness(&mut self, brightness: u32) {
+        println!("Setting flood brightness to {}", brightness);
+        self.backend_comms.set_flood_brightness(brightness);
     }
 
     pub fn reset(&mut self) {

@@ -52,6 +52,34 @@ impl BackendCommChannel {
         );
     }
 
+    pub fn set_dot_brightness(&mut self, brightness: u32) {
+        self.ws.send(
+            serde_json
+                ::to_string(
+                    &(WsMessage {
+                        kind: WsMessageType::SetDotBrightness,
+                        data: WsMessageData::SetDotBrightness(brightness),
+                        ..Default::default()
+                    })
+                )
+                .unwrap()
+        );
+    }
+
+    pub fn set_flood_brightness(&mut self, brightness: u32) {
+        self.ws.send(
+            serde_json
+                ::to_string(
+                    &(WsMessage {
+                        kind: WsMessageType::SetFloodBrightness,
+                        data: WsMessageData::SetFloodBrightness(brightness),
+                        ..Default::default()
+                    })
+                )
+                .unwrap()
+        );
+    }
+
     pub fn receive(&mut self) -> Option<WsMessage> {
         self.ws.receive()
     }

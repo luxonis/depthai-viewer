@@ -341,6 +341,33 @@ impl DeviceSettingsPanel {
                                                     }
                                                 },
                                             );
+                                            let dot_drag = ctx.re_ui.labeled_dragvalue(
+                                                ui,
+                                                egui::Id::from("Dot brightness [mA]"),
+                                                None,
+                                                "Dot brightness [mA]",
+                                                &mut device_config.dot_brightness,
+                                                0..=1200);
+                                                if dot_drag.drag_released() {
+                                                    ctx.depthai_state.set_dot_brightness(device_config.dot_brightness);
+                                                } else if dot_drag.changed() && !dot_drag.dragged() {
+                                                    // Dragging isn't ongoing, but the value changed
+                                                    ctx.depthai_state.set_dot_brightness(device_config.dot_brightness);
+                                                }
+                                            let flood_drag = ctx.re_ui.labeled_dragvalue(
+                                                ui,
+                                                egui::Id::from("Flood light brightness [mA]"),
+                                                None,
+                                                "Flood light brightness [mA]",
+                                                &mut device_config.flood_brightness,
+                                                0..=1500,
+                                            );
+                                            if flood_drag.drag_released() {
+                                                ctx.depthai_state.set_flood_brightness(device_config.flood_brightness);
+                                            } else if flood_drag.changed() && !flood_drag.dragged() {
+                                                // Dragging isn't ongoing, but the value changed
+                                                ctx.depthai_state.set_flood_brightness(device_config.flood_brightness);
+                                            }
                                             ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "LR Check",

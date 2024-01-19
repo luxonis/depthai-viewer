@@ -87,7 +87,7 @@ class Device:
 
     def __init__(self, device_id: str, store: Store):
         self.id = device_id
-        self.set_oak(OakCamera(device_id))
+        self.set_oak(OakCamera(device_id, args={"irFloodBrightness": 0, "irDotBrightness": 0}))
         self.store = store
         self._packet_handler = PacketHandler(self.store, self.get_intrinsic_matrix)
         print("Oak cam: ", self._oak)
@@ -261,7 +261,7 @@ class Device:
                 if self.id in available_devices:
                     break
             try:
-                self.set_oak(OakCamera(self.id))
+                self.set_oak(OakCamera(self.id, args={"irFloodBrightness": 0, "irDotBrightness": 0}))
                 return InfoMessage("Successfully reconnected to device")
             except RuntimeError as e:
                 print("Failed to create oak camera")

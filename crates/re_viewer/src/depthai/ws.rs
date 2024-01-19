@@ -83,6 +83,8 @@ pub enum WsMessageData {
     Devices(Vec<depthai::DeviceInfo>),
     DeviceProperties(depthai::DeviceProperties),
     Pipeline((depthai::DeviceConfig, RuntimeOnly)),
+    SetFloodBrightness(u32),
+    SetDotBrightness(u32),
     Error(depthai::Error),
     Info(depthai::Info),
     Warning(depthai::Warning),
@@ -94,6 +96,8 @@ pub enum WsMessageType {
     Devices,
     DeviceProperties,
     Pipeline,
+    SetFloodBrightness,
+    SetDotBrightness,
     Error,
     Info,
     Warning,
@@ -148,6 +152,12 @@ impl<'de> Deserialize<'de> for BackWsMessage {
             }
             WsMessageType::Warning => {
                 WsMessageData::Warning(serde_json::from_value(message.data).unwrap_or_default())
+            }
+            WsMessageType::SetDotBrightness => {
+                WsMessageData::SetDotBrightness(serde_json::from_value(message.data).unwrap())
+            }
+            WsMessageType::SetFloodBrightness => {
+                WsMessageData::SetFloodBrightness(serde_json::from_value(message.data).unwrap())
             }
         };
 

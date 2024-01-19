@@ -135,6 +135,20 @@ class DepthaiViewerBack:
             return self.store.pipeline_config  # type: ignore[return-value]
         elif action == Action.RESET:
             return self.on_reset()
+        elif action == Action.SET_FLOOD_BRIGHTNESS:
+            self.store.set_flood_brightness(kwargs.get("flood_brightness", 0))
+            print("Set flood: ", kwargs.get("flood_brightness", 0))
+            if self._device:
+                self._device._oak.device.setIrFloodLightBrightness(self.store.flood_brightness)
+                return InfoMessage("Floodlight set successfully")
+            return ErrorMessage("No device selected")
+        elif action == Action.SET_DOT_BRIGHTNESS:
+            print("Set dot: ", kwargs.get("dot_brightness", 0))
+            self.store.set_dot_brightness(kwargs.get("dot_brightness", 0))
+            if self._device:
+                self._device._oak.device.setIrLaserDotProjectorBrightness(self.store.dot_brightness)
+                return InfoMessage("Dot projector set successfully")
+            return ErrorMessage("No device selected")
         return ErrorMessage(f"Action: {action} not implemented")
 
     def run(self) -> None:
@@ -142,7 +156,7 @@ class DepthaiViewerBack:
         while True:
             try:
                 action, kwargs = self.action_queue.get(timeout=0.0001)
-                print("Handling action: ", action)
+                # print("Handling action: ", action)
                 self.result_queue.put(self.handle_action(action, **kwargs))
             except QueueEmptyException:
                 pass

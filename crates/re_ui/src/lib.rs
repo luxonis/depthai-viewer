@@ -310,7 +310,7 @@ impl ReUi {
         if response.changed() {
             state.last_update = instant::Instant::now();
         }
-        if state.delay_ms < state.last_update.elapsed().as_millis() as f32 {
+        if state.delay_ms <= state.last_update.elapsed().as_millis() as f32 {
             *value = Num::from_f64(state.value as f64);
         }
         response
