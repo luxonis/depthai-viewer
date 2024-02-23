@@ -24,7 +24,7 @@ from depthai_viewer._backend.store import Store
 viewer.init("Depthai Viewer")
 viewer.connect()
 
-sentry_sdk.init(
+sentry_sdk.init(  # type: ignore[abstract]
     dsn="https://37decdc44d584dca906e43ebd7fd1508@sentry.luxonis.com/16",
     # Set traces_sample_rate to 1.0 to capture 100%
     # of transactions for performance monitoring.
@@ -138,14 +138,14 @@ class DepthaiViewerBack:
         elif action == Action.SET_FLOOD_BRIGHTNESS:
             self.store.set_flood_brightness(kwargs.get("flood_brightness", 0))
             print("Set flood: ", kwargs.get("flood_brightness", 0))
-            if self._device:
+            if self._device and self._device._oak:
                 self._device._oak.device.setIrFloodLightBrightness(self.store.flood_brightness)
                 return InfoMessage("Floodlight set successfully")
             return ErrorMessage("No device selected")
         elif action == Action.SET_DOT_BRIGHTNESS:
             print("Set dot: ", kwargs.get("dot_brightness", 0))
             self.store.set_dot_brightness(kwargs.get("dot_brightness", 0))
-            if self._device:
+            if self._device and self._device._oak:
                 self._device._oak.device.setIrLaserDotProjectorBrightness(self.store.dot_brightness)
                 return InfoMessage("Dot projector set successfully")
             return ErrorMessage("No device selected")
