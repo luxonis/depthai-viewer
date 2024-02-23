@@ -9,6 +9,7 @@ from depthai_viewer._backend.topic import Topic
 class Store:
     """Used to store common data that is used by the backend."""
 
+    viewer_address: str = "127.0.0.1:9876"
     _pipeline_config: Optional[PipelineConfiguration] = None
     _subscriptions: List[Topic] = []
     _send_message_queue: Queue  # type: ignore[type-arg]
