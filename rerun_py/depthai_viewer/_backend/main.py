@@ -21,9 +21,6 @@ from depthai_viewer._backend.messages import (
 )
 from depthai_viewer._backend.store import Store
 
-viewer.init("Depthai Viewer")
-viewer.connect()
-
 sentry_sdk.init(  # type: ignore[abstract]
     dsn="https://37decdc44d584dca906e43ebd7fd1508@sentry.luxonis.com/16",
     # Set traces_sample_rate to 1.0 to capture 100%
@@ -36,19 +33,21 @@ sentry_sdk.init(  # type: ignore[abstract]
 
 class DepthaiViewerBack:
     _device: Optional[Device] = None
+    port: int = 9001
 
     # Queues for communicating with the API process
     action_queue: Queue  # type: ignore[type-arg]
     result_queue: Queue  # type: ignore[type-arg]
 
-    def __init__(self) -> None:
+    def __init__(self, port: int, sdk_port: int) -> None:
         self.action_queue = Queue()
         self.result_queue = Queue()
 
         self.store = Store()
+        self.store.viewer_address = f"127.0.0.1:{sdk_port}"
         self.api_process = threading.Thread(
             target=start_api,
-            args=(self.action_queue, self.result_queue, self.store._send_message_queue),  # This is a bit ugly
+            args=(self.action_queue, self.result_queue, self.store._send_message_queue, port),  # This is a bit ugly
         )
         self.api_process.start()
         self.run()
@@ -177,4 +176,11 @@ class DepthaiViewerBack:
 
 
 if __name__ == "__main__":
-    DepthaiViewerBack()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Depthai Viewer backend")
+    parser.add_argument("--port", required=False, type=int, default=9001, help="Port to run the backend on")
+    parser.add_argument("--sdk-port", required=False, type=int, default=9876, help="The rerun port")
+    args = parser.parse_args()
+
+    DepthaiViewerBack(args.port, args.sdk_port)

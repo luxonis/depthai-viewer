@@ -15,6 +15,7 @@ use re_renderer::WgpuResourcePoolStatistics;
 use re_smart_channel::Receiver;
 use re_ui::{toasts, Command};
 use sentry;
+use re_sdk_comms::DEFAULT_SERVER_PORT;
 
 use crate::{
     app_icon::setup_app_icon,
@@ -49,6 +50,7 @@ enum TimeControlCommand {
 pub struct StartupOptions {
     pub memory_limit: re_memory::MemoryLimit,
     pub persist_state: bool,
+    pub sdk_port: u32,
 }
 
 #[derive(Clone, Default)]
@@ -119,7 +121,7 @@ pub struct App {
     backend_environment: BackendEnvironment,
 
     #[cfg(not(target_arch = "wasm32"))]
-    backend_handle: Option<std::process::Child>,
+    backend_handle: Option<(std::process::Child, u32)>,
 
     #[cfg(not(target_arch = "wasm32"))]
     dependency_installer: Option<DependencyInstaller>,
@@ -127,20 +129,44 @@ pub struct App {
 
 impl App {
     #[cfg(not(target_arch = "wasm32"))]
-    fn spawn_backend(environment: &BackendEnvironment) -> Option<std::process::Child> {
+    fn spawn_backend(&self, environment: &BackendEnvironment) -> Option<(std::process::Child, u32)> {
         // It is necessary to install the requirements before starting the backend
+
+        use re_smart_channel::Source;
         let Some(site_packages_directory) = environment.venv_site_packages.clone() else {
             return None;
         };
+        const DEFAULT_BACKEND_PORT: u32 = 9001;
+        let mut port: u32=DEFAULT_BACKEND_PORT; // The default depthai_viewer._backend port
+        let max_retries = 100;
+        let mut port_found = false;
+        for _ in 0..max_retries {
+            if std::net::TcpListener::bind(format!("localhost:{port}")).is_ok() {
+                port_found = true;
+                break;
+            } else {
+                port+=1;
+            }
+        }
+        if !port_found {
+            re_log::warn!("Port probing was unsuccessful, using default port: {DEFAULT_BACKEND_PORT}");
+        }
 
         let backend_handle = match std::process::Command::new(environment.python_path.clone())
-            .args(["-m", "depthai_viewer._backend.main"])
+            .args(["-m", "depthai_viewer._backend.main", "--port", &port.to_string(), "--sdk-port", &match &self.rx.source() {
+                Source::TcpServer { port } => *port,
+                Source::File { .. } => DEFAULT_SERVER_PORT,
+                Source::RrdHttpStream { .. } => DEFAULT_SERVER_PORT,
+                Source::RrdWebEventListener => DEFAULT_SERVER_PORT,
+                Source::Sdk => DEFAULT_SERVER_PORT,
+                Source::WsClient { .. } => DEFAULT_SERVER_PORT
+            }.to_string()])
             .env("PYTHONPATH", site_packages_directory)
             .spawn()
         {
             Ok(child) => {
                 println!("Backend started successfully.");
-                Some(child)
+                Some((child, port))
             }
             Err(err) => {
                 eprintln!("Failed to start depthai viewer backend: {err}.");
@@ -228,7 +254,7 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             backend_environment: backend_environment.clone(),
             #[cfg(not(target_arch = "wasm32"))]
-            backend_handle: App::spawn_backend(&backend_environment),
+            backend_handle: None,
             #[cfg(not(target_arch = "wasm32"))]
             dependency_installer: None,
         }
@@ -336,7 +362,7 @@ impl App {
             #[cfg(not(target_arch = "wasm32"))]
             Command::Quit => {
                 self.state.depthai_state.shutdown();
-                if let Some(backend_handle) = &mut self.backend_handle {
+                if let Some((backend_handle, _)) = &mut self.backend_handle {
                     let _ = backend_handle.kill();
                 }
                 _frame.close();
@@ -503,7 +529,7 @@ impl eframe::App for App {
     #[cfg(not(target_arch = "wasm32"))]
     fn on_close_event(&mut self) -> bool {
         self.state.depthai_state.shutdown();
-        if let Some(backend_handle) = &mut self.backend_handle {
+        if let Some((backend_handle, _)) = &mut self.backend_handle {
             let _ = backend_handle.kill();
         }
         true
@@ -546,20 +572,28 @@ impl eframe::App for App {
                 dependency_installer.update();
             }
             match &mut self.backend_handle {
-                Some(handle) => match handle.try_wait() {
+                Some((handle, port)) => match handle.try_wait() {
                     Ok(status) => {
-                        if status.is_some() {
-                            let _ = handle.kill(); // It will only Err in case the process is already dead (which is what we want anyway)
-                            self.state.depthai_state.reset();
-                            re_log::debug!("Backend process has exited, restarting!");
-                            self.backend_handle = App::spawn_backend(&self.backend_environment);
+                        match status {
+                            Some(_) => {
+                                let _ = handle.kill(); // It will only Err in case the process is already dead (which is what we want anyway)
+                                self.state.depthai_state.reset();
+                                re_log::debug!("Backend process has exited, restarting!");
+                                self.backend_handle = self.spawn_backend(&self.backend_environment);
+                            }
+                            None => {
+                                if !self.state.depthai_state.backend_comms.ws.is_initialized() {
+                                    self.state.depthai_state.backend_comms.ws.connect(*port);
+                                }
+                            }
                         }
                     }
-                    Err(_) => {}
+                    Err(_) => {
+                    }
                 },
                 None => {
                     if self.backend_environment.are_requirements_installed() {
-                        self.backend_handle = App::spawn_backend(&self.backend_environment);
+                        self.backend_handle = self.spawn_backend(&self.backend_environment);
                     } else {
                         re_log::debug!(
                             "Backend requirements not installed, starting dependency installer!"
@@ -583,7 +617,7 @@ impl eframe::App for App {
             self.state.depthai_state.shutdown();
             #[cfg(not(target_arch = "wasm32"))]
             {
-                if let Some(backend_handle) = &mut self.backend_handle {
+                if let Some((backend_handle, _)) = &mut self.backend_handle {
                     let _ = backend_handle.kill();
                 }
                 frame.close();

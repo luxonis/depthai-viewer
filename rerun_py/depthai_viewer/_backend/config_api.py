@@ -156,13 +156,13 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
             await send_message(websocket, message_to_send)
 
 
-async def main() -> None:
-    async with websockets.serve(ws_api, "localhost", 9001):  # type: ignore[attr-defined]
+async def main(port: int = 9001) -> None:
+    async with websockets.serve(ws_api, "localhost", port):  # type: ignore[attr-defined]
         await asyncio.Future()  # run forever
 
 
 def start_api(
-    _dispatch_action_queue: Queue, _result_queue: Queue, _send_message_queue: Queue  # type: ignore[type-arg]
+    _dispatch_action_queue: Queue, _result_queue: Queue, _send_message_queue: Queue, port: int = 9001  # type: ignore[type-arg]
 ) -> None:
     """
     Starts the websocket API.
@@ -178,4 +178,4 @@ def start_api(
     global send_message_queue
     send_message_queue = _send_message_queue
 
-    asyncio.run(main())
+    asyncio.run(main(port))

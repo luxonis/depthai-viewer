@@ -10,6 +10,7 @@ use std::sync::Arc;
 use super::depthai;
 
 async fn spawn_ws_client(
+    port: u32,
     recv_tx: crossbeam_channel::Sender<WsMessage>,
     send_rx: crossbeam_channel::Receiver<WsMessage>,
     shutdown: Arc<AtomicBool>,
@@ -22,7 +23,7 @@ async fn spawn_ws_client(
         let error_tx = error_tx.clone();
         let connected = connected.clone();
         if let Ok(sender) = ewebsock::ws_connect(
-            String::from("ws://localhost:9001"),
+            String::from(format!("ws://localhost:{port}")),
             Box::new(move |event| {
                 match event {
                     WsEvent::Opened => {
@@ -179,7 +180,7 @@ impl Default for BackWsMessage {
     }
 }
 
-pub struct WebSocket {
+struct WsInner {
     receiver: crossbeam_channel::Receiver<WsMessage>,
     sender: crossbeam_channel::Sender<WsMessage>,
     shutdown: Arc<AtomicBool>,
@@ -187,14 +188,23 @@ pub struct WebSocket {
     connected: Arc<AtomicBool>,
 }
 
+pub struct WebSocket {
+    inner: Option<WsInner>,
+}
+
 impl Default for WebSocket {
     fn default() -> Self {
-        Self::new()
+        Self {
+            inner: None
+        }
     }
 }
 
 impl WebSocket {
-    pub fn new() -> Self {
+
+    pub fn is_initialized(&self) -> bool {self.inner.is_some()}
+
+    pub fn connect(&mut self, port: u32) {
         re_log::debug!("Creating websocket client");
         let (recv_tx, recv_rx) = crossbeam_channel::unbounded();
         let (send_tx, send_rx) = crossbeam_channel::unbounded();
@@ -206,6 +216,7 @@ impl WebSocket {
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             re_log::debug!("Using current tokio runtime");
             task = handle.spawn(spawn_ws_client(
+                port,
                 recv_tx,
                 send_rx,
                 shutdown_clone,
@@ -217,58 +228,81 @@ impl WebSocket {
                 .build()
                 .unwrap()
                 .spawn(spawn_ws_client(
+                    port,
                     recv_tx,
                     send_rx,
                     shutdown_clone,
                     connected_clone,
                 ));
         }
-        Self {
-            receiver: recv_rx,
-            sender: send_tx,
-            shutdown,
-            task,
-            connected,
-        }
+
+        self.inner = Some(
+            WsInner {
+                receiver: recv_rx,
+                sender: send_tx,
+                shutdown,
+                task,
+                connected
+            }
+        );
     }
 
     pub fn is_connected(&self) -> bool {
-        self.connected.load(std::sync::atomic::Ordering::SeqCst)
+        match &self.inner {
+            Some(ws_state) => {
+                ws_state.connected.load(std::sync::atomic::Ordering::SeqCst)
+            },
+            None => false
+        }
     }
 
     pub fn shutdown(&mut self) {
-        self.shutdown
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        match &mut self.inner {
+            Some(ws_state) => ws_state.shutdown.store(true, std::sync::atomic::Ordering::SeqCst),
+            None => ()
+        }
     }
 
     pub fn receive(&self) -> Option<BackWsMessage> {
-        if let Ok(message) = self.receiver.try_recv() {
-            match message {
-                WsMessage::Text(text) => {
-                    re_log::debug!("Received: {:?}", text);
-                    match serde_json::from_str::<BackWsMessage>(&text.as_str()) {
-                        Ok(back_message) => {
-                            return Some(back_message);
+        match &self.inner {
+            Some(ws_state) => {
+                if let Ok(message) = ws_state.receiver.try_recv() {
+                    match message {
+                        WsMessage::Text(text) => {
+                            re_log::debug!("Received: {:?}", text);
+                            match serde_json::from_str::<BackWsMessage>(&text.as_str()) {
+                                Ok(back_message) => {
+                                    return Some(back_message);
+                                }
+                                Err(err) => {
+                                    re_log::error!("Error: {:}", err);
+                                    return None;
+                                }
+                            }
                         }
-                        Err(err) => {
-                            re_log::error!("Error: {:}", err);
+                        _ => {
                             return None;
                         }
                     }
+                } else {
+                    None
                 }
-                _ => {
-                    return None;
-                }
-            }
+            },
+            None => None
         }
-        None
     }
 
     pub fn send(&self, message: String) {
-        self.sender.send(WsMessage::Text(message));
-        // TODO(filip): This is a hotfix for the websocket not sending the message
-        // This makes the websocket actually send the previous msg
-        // It has to be something related to tokio::spawn, because it works fine when just running in the current thread
-        self.sender.send(WsMessage::Text("".to_string()));
+        match &self.inner {
+            Some(ws_state) => {
+                ws_state.sender.send(WsMessage::Text(message));
+                // TODO(filip): This is a hotfix for the websocket not sending the message
+                // This makes the websocket actually send the previous msg
+                // It has to be something related to tokio::spawn, because it works fine when just running in the current thread
+                ws_state.sender.send(WsMessage::Text("".to_string()));
+            },
+            None => ()
+        }
+
     }
 }

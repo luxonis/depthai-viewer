@@ -54,6 +54,7 @@ re_renderer = { workspace = true, default-features = false, features = [
   "import-obj",
   "serde",
 ] }
+re_sdk_comms.workspace = true
 re_smart_channel.workspace = true
 re_tensor_ops.workspace = true
 re_ui.workspace = true

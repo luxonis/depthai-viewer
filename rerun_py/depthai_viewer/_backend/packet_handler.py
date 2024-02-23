@@ -32,8 +32,9 @@ class PacketHandler:
     def __init__(
         self, store: Store, intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
     ):
-        viewer.init("Depthai Viewer")
-        viewer.connect()
+        viewer.init(f"Depthai Viewer {store.viewer_address}")
+        print("Connecting to viewer at", store.viewer_address)
+        viewer.connect(store.viewer_address)
         self.store = store
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
