@@ -252,7 +252,10 @@ impl DeviceSettingsPanel {
                                         ctx.re_ui.labeled_combo_box(
                                             ui,
                                             "AI Model",
-                                            device_config.ai_model.display_name.clone(),
+                                            match &device_config.ai_model {
+                                                Some(model) => model.display_name.clone(),
+                                                None => "No Model".to_string(),
+                                            },
                                             false,
                                             true,
                                             |ui| {
@@ -260,40 +263,48 @@ impl DeviceSettingsPanel {
                                                     ui.selectable_value(
                                                         &mut device_config.ai_model,
                                                         nn.clone(),
-                                                        &nn.display_name,
+                                                        match &nn {
+                                                            Some(model) => model.display_name.clone(),
+                                                            None => "No Model".to_string(),
+                                                        },
                                                     );
                                                 }
                                             },
                                         );
-                                        ctx.re_ui.labeled_combo_box(
-                                            ui,
-                                            "Run on",
-                                            device_config.ai_model.camera.display_name(ctx),
-                                            false,
-                                            true,
-                                            |ui| {
-                                                let filtered_cameras: Vec<_> = connected_cameras
-                                                    .iter() // iterates over references
-                                                    .filter(|cam| {
-                                                        !(cam.supported_types.contains(
-                                                            &depthai::CameraSensorKind::THERMAL,
-                                                        ) || cam.supported_types.contains(
-                                                            &depthai::CameraSensorKind::TOF,
-                                                        ))
-                                                    })
-                                                    .collect();
-                                                for cam in filtered_cameras {
-                                                    ui.selectable_value(
-                                                        &mut device_config.ai_model.camera,
-                                                        cam.board_socket,
-                                                        cam.board_socket.display_name(ctx),
-                                                    );
-                                                }
-                                            },
-                                        );
+                                        match &mut device_config.ai_model {
+                                            Some(model) => {
+                                                ctx.re_ui.labeled_combo_box(
+                                                    ui,
+                                                    "Run on",
+                                                    model.camera.display_name(ctx),
+                                                    false,
+                                                    true,
+                                                    |ui| {
+                                                        let filtered_cameras: Vec<_> = connected_cameras
+                                                            .iter() // iterates over references
+                                                            .filter(|cam| {
+                                                                !(cam.supported_types.contains(
+                                                                    &depthai::CameraSensorKind::THERMAL,
+                                                                ) || cam.supported_types.contains(
+                                                                    &depthai::CameraSensorKind::TOF,
+                                                                ))
+                                                            })
+                                                            .collect();
+                                                        for cam in filtered_cameras {
+                                                            ui.selectable_value(
+                                                                &mut model.camera,
+                                                                cam.board_socket,
+                                                                cam.board_socket.display_name(ctx),
+                                                            );
+                                                        }
+                                                    },
+                                                );
+                                            }
+                                            None => {
+                                            }
+                                        };
                                     });
-                                },
-                            );
+                            });
 
                             let mut depth = device_config.depth.unwrap_or_default();
                             ui.add_enabled_ui(

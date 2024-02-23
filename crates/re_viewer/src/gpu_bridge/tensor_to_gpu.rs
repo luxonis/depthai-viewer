@@ -8,7 +8,7 @@ use bytemuck::{ allocation::pod_collect_to_vec, cast_slice, Pod };
 use egui::util::hash;
 use wgpu::TextureFormat;
 
-use re_log_types::component_types::{ DecodedTensor, Tensor, TensorData };
+use re_log_types::component_types::{ DecodedTensor, Tensor, TensorData, TensorColormap };
 use re_renderer::{
     renderer::{ ColorMapper, ColormappedTexture, TextureEncoding },
     resource_managers::Texture2DCreationDesc,
@@ -148,8 +148,16 @@ fn color_tensor_to_gpu(
         encoding != Some(TextureEncoding::Nv12) &&
         re_renderer::texture_info::num_texture_components(texture_format) == 1
     {
-        // Single-channel images = luminance = grayscale
-        Some(ColorMapper::Function(re_renderer::Colormap::Grayscale))
+        match tensor.inner().colormap {
+            TensorColormap::Grayscale => Some(ColorMapper::Function(re_renderer::Colormap::Grayscale)),
+            TensorColormap::Viridis => Some(ColorMapper::Function(re_renderer::Colormap::Viridis)),
+            TensorColormap::Plasma => Some(ColorMapper::Function(re_renderer::Colormap::Plasma)),
+            TensorColormap::Inferno => Some(ColorMapper::Function(re_renderer::Colormap::Inferno)),
+            TensorColormap::Magma => Some(ColorMapper::Function(re_renderer::Colormap::Magma)),
+            TensorColormap::Turbo => Some(ColorMapper::Function(re_renderer::Colormap::Turbo)),
+            // Single-channel images = luminance = grayscale
+            TensorColormap::None => Some(ColorMapper::Function(re_renderer::Colormap::Grayscale)),
+        }
     } else {
         None
     };

@@ -50,6 +50,22 @@ class PacketHandler:
         # type: ignore[assignment, misc]
         self._get_camera_intrinsics = camera_intrinsics_getter
 
+    def log_dai_packet(self, node: dai.Node, packet: dai.Buffer) -> None:
+        if isinstance(packet, dai.ImgFrame):
+            board_socket = None
+            if isinstance(node, dai.node.ColorCamera):
+                board_socket = node.getBoardSocket()
+            elif isinstance(node, dai.node.MonoCamera):
+                board_socket = node.getBoardSocket()
+            elif isinstance(node, dai.node.Camera):
+                board_socket = node.getBoardSocket()
+            if board_socket is not None:
+                self._on_camera_frame(FramePacket("", packet), board_socket)
+            else:
+                print("Unknown node type:", type(node), "for packet:", type(packet))
+        else:
+            print("Unknown dai packet type:", type(packet))
+
     def log_packet(
         self,
         component: Component,
@@ -114,6 +130,9 @@ class PacketHandler:
                 height=h,
                 encoding=viewer.ImageEncoding.NV12,
             )
+        elif packet.msg.getType() == dai.RawImgFrame.Type.GRAYF16:
+            img = img_frame.view(np.float16).reshape(h, w)
+            viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="degrees ")
         else:
             viewer.log_image(entity_path, img_frame)
 

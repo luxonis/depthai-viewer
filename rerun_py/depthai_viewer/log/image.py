@@ -2,9 +2,9 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
-
+from enum import Enum
 from depthai_viewer import bindings
-from depthai_viewer.components.tensor import ImageEncoding
+from depthai_viewer.components.tensor import ImageEncoding, Colormap
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.log_decorator import log_decorator
 from depthai_viewer.log.tensor import Tensor, _log_tensor, _to_numpy
@@ -22,6 +22,8 @@ def log_image(
     entity_path: str,
     image: Tensor,
     *,
+    colormap: Optional[Colormap] = None,
+    unit: Optional[str] = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
 ) -> None:
@@ -75,7 +77,7 @@ def log_image(
     if interpretable_as_image and num_non_empty_dims != len(shape):
         image = np.squeeze(image)
 
-    _log_tensor(entity_path, image, ext=ext, timeless=timeless)
+    _log_tensor(entity_path, image, ext=ext, timeless=timeless, colormap=colormap, unit=unit)
 
 
 @log_decorator

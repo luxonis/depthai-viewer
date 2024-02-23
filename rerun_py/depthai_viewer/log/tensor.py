@@ -5,7 +5,7 @@ import numpy.typing as npt
 
 from depthai_viewer import bindings
 from depthai_viewer.components.instance import InstanceArray
-from depthai_viewer.components.tensor import ImageEncoding, TensorArray
+from depthai_viewer.components.tensor import ImageEncoding, TensorArray, Colormap
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.extension_components import _add_extension_components
 from depthai_viewer.log.log_decorator import log_decorator
@@ -18,8 +18,7 @@ __all__ = [
 class TorchTensorLike(Protocol):
     """Describes what is need from a Torch Tensor to be loggable to Rerun."""
 
-    def numpy(self, force: bool) -> npt.NDArray[Any]:
-        ...
+    def numpy(self, force: bool) -> npt.NDArray[Any]: ...
 
 
 Tensor = Union[npt.ArrayLike, TorchTensorLike]
@@ -86,6 +85,8 @@ def _log_tensor(
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
     encoding: Optional[ImageEncoding] = None,
+    colormap: Optional[Colormap] = None,
+    unit: Optional[str] = None,
 ) -> None:
     """Log a general tensor, perhaps with named dimensions."""
 
@@ -128,7 +129,7 @@ def _log_tensor(
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
 
-    instanced["rerun.tensor"] = TensorArray.from_numpy(tensor, encoding, names, meaning, meter)
+    instanced["rerun.tensor"] = TensorArray.from_numpy(tensor, encoding, colormap, names, meaning, meter, unit)
 
     if ext:
         _add_extension_components(instanced, splats, ext, None)

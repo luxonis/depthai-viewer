@@ -27,6 +27,15 @@ class ImageEncoding(Enum):
     NV12 = "NV12"
 
 
+class Colormap(Enum):
+    Grayscale: str = "grayscale"
+    Inferno: str = "inferno"
+    Magma: str = "magma"
+    Plasma: str = "plasma"
+    Turbo: str = "turbo"
+    Viridis: str = "viridis"
+
+
 TensorDType = Union[
     np.uint8,
     np.uint16,
@@ -61,9 +70,11 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
     def from_numpy(
         array: npt.NDArray[TensorDType],
         encoding: ImageEncoding | None = None,
+        colormap: Colormap | None = None,
         names: Iterable[str | None] | None = None,
         meaning: bindings.TensorDataMeaning = None,
         meter: float | None = None,
+        unit: str | None = None,
     ) -> TensorArray:
         """Build a `TensorArray` from an numpy array."""
         # Build a random tensor_id
@@ -98,7 +109,11 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
             discriminant=discriminant,
             child=pa.array([True], type=pa.bool_()),
         )
-
+        colormap = build_dense_union(
+            TensorType.storage_type["colormap"].type,
+            discriminant=colormap.name if colormap is not None else "None",
+            child=pa.array([True], type=pa.bool_()),
+        )
         # Note: the pa.array mask is backwards from expectations
         # Mask is True for elements which are not valid.
         if meter is None:
@@ -106,8 +121,10 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
         else:
             meter = pa.array([meter], mask=[False], type=pa.float32())
 
+        unit = pa.array(["string" if unit is not None else ""], type=pa.string())
+
         storage = pa.StructArray.from_arrays(
-            [tensor_id, shape, data, meaning, meter],
+            [tensor_id, shape, data, meaning, meter, colormap, unit],
             fields=list(TensorType.storage_type),
         ).cast(TensorType.storage_type)
         storage.validate(full=True)
