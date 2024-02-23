@@ -32,6 +32,7 @@ from depthai_viewer._backend.device_configuration import (
     get_size_from_resolution,
     size_to_resolution,
 )
+from depthai_viewer._backend.device_defaults import oak_t_default
 from depthai_viewer._backend.messages import (
     ErrorMessage,
     InfoMessage,
@@ -40,7 +41,6 @@ from depthai_viewer._backend.messages import (
 )
 from depthai_viewer._backend.packet_handler import PacketHandler
 from depthai_viewer._backend.store import Store
-from depthai_viewer._backend.device_defaults import oak_t_default
 
 
 class XlinkStatistics:
@@ -526,10 +526,10 @@ class Device:
                 self.store.send_message_to_frontend(
                     WarningMessage(f"{config.ai_model.camera} is not configured, won't create NNET.")
                 )
-            if cam_component and config.ai_model and config.ai_model.path == "age-gender-recognition-retail-0013":
+            elif config.ai_model.path == "age-gender-recognition-retail-0013":
                 face_detection = self._oak.create_nn("face-detection-retail-0004", cam_component)
                 self._nnet = self._oak.create_nn("age-gender-recognition-retail-0013", input=face_detection)
-            elif cam_component:
+            else:
                 self._nnet = self._oak.create_nn(config.ai_model.path, cam_component)
             if self._nnet:
                 self._queues.append((self._nnet, self._oak.queue(self._nnet.out.main)))

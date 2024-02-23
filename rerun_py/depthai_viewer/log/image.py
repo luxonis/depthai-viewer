@@ -2,9 +2,9 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
-from enum import Enum
+
 from depthai_viewer import bindings
-from depthai_viewer.components.tensor import ImageEncoding, Colormap
+from depthai_viewer.components.tensor import Colormap, ImageEncoding
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.log_decorator import log_decorator
 from depthai_viewer.log.tensor import Tensor, _log_tensor, _to_numpy
@@ -46,6 +46,10 @@ def log_image(
         Path to the image in the space hierarchy.
     image:
         A [Tensor][rerun.log.tensor.Tensor] representing the image to log.
+    colormap:
+        Optional colormap to apply to single channel images.
+    unit:
+        Optional unit of the single channel image.
     ext:
         Optional dictionary of extension components. See [rerun.log_extension_components][]
     timeless:

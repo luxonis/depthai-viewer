@@ -132,7 +132,7 @@ class PacketHandler:
             )
         elif packet.msg.getType() == dai.RawImgFrame.Type.GRAYF16:
             img = img_frame.view(np.float16).reshape(h, w)
-            viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="degrees ")
+            viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
         else:
             viewer.log_image(entity_path, img_frame)
 

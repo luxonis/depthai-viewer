@@ -5,7 +5,7 @@ import numpy.typing as npt
 
 from depthai_viewer import bindings
 from depthai_viewer.components.instance import InstanceArray
-from depthai_viewer.components.tensor import ImageEncoding, TensorArray, Colormap
+from depthai_viewer.components.tensor import Colormap, ImageEncoding, TensorArray
 from depthai_viewer.log.error_utils import _send_warning
 from depthai_viewer.log.extension_components import _add_extension_components
 from depthai_viewer.log.log_decorator import log_decorator
@@ -18,7 +18,8 @@ __all__ = [
 class TorchTensorLike(Protocol):
     """Describes what is need from a Torch Tensor to be loggable to Rerun."""
 
-    def numpy(self, force: bool) -> npt.NDArray[Any]: ...
+    def numpy(self, force: bool) -> npt.NDArray[Any]:
+        ...
 
 
 Tensor = Union[npt.ArrayLike, TorchTensorLike]

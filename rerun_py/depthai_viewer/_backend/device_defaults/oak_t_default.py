@@ -1,9 +1,9 @@
+import depthai as dai
 from depthai_viewer._backend.device_configuration import (
-    PipelineConfiguration,
     CameraConfiguration,
     CameraSensorResolution,
+    PipelineConfiguration,
 )
-import depthai as dai
 
 config = PipelineConfiguration(
     cameras=[

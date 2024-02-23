@@ -6,7 +6,7 @@ from typing import Optional
 import depthai_viewer_bindings as bindings  # type: ignore[attr-defined]
 
 from depthai_viewer import _backend
-from depthai_viewer.components.tensor import ImageEncoding, Colormap
+from depthai_viewer.components.tensor import Colormap, ImageEncoding
 from depthai_viewer.log import log_cleared
 from depthai_viewer.log.annotation import (
     AnnotationInfo,

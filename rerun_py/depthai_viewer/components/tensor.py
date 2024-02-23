@@ -121,7 +121,7 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
         else:
             meter = pa.array([meter], mask=[False], type=pa.float32())
 
-        unit = pa.array(["string" if unit is not None else ""], type=pa.string())
+        unit = pa.array([unit if unit is not None else ""], type=pa.string())
 
         storage = pa.StructArray.from_arrays(
             [tensor_id, shape, data, meaning, meter, colormap, unit],

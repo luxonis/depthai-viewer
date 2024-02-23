@@ -568,8 +568,11 @@ fn tensor_pixel_value_ui(
                 _ => {
                     match &tensor.unit {
                         Some(unit) => {
-                            println!("Unit: {unit}");
-                            tensor.get(&[y, x]).map(|v| format!("Val: {v} {unit}"))
+                            if tensor.dtype().is_float() {
+                                tensor.get(&[y, x]).map(|v| format!("Val: {v:.2} {unit}"))
+                            } else {
+                                tensor.get(&[y, x]).map(|v| format!("Val: {v} {unit}"))
+                            }
                         },
                         None => {
                             tensor.get(&[y, x]).map(|v| format!("Val: {v}"))
