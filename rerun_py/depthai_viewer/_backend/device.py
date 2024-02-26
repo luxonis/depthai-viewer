@@ -240,8 +240,8 @@ class Device:
     def close_oak(self) -> None:
         if self._oak is None:
             return
-        if self._oak.running():
-            self._oak.device.__exit__(0, 0, 0)
+        if self._oak.device:
+            self._oak.device.close()
 
     def reconnect_to_oak(self) -> Message:
         """
@@ -371,6 +371,9 @@ class Device:
             message = self.reconnect_to_oak()
             if isinstance(message, ErrorMessage):
                 return message
+
+        self._queues = []
+        self._dai_queues = []
 
         if config.auto:
             if self._oak.device.getDeviceName() == "OAK-T":
