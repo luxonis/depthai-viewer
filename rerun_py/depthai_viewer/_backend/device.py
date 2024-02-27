@@ -612,7 +612,7 @@ class Device:
             return
         if not self._oak.device.isPipelineRunning():
             return
-        # self._oak.poll()
+        self._oak.poll()
 
         for component, queue in self._queues:
             try:
