@@ -90,7 +90,7 @@ class PacketHandler:
         colors = []
         labels = []
         for detection in packet.detections:
-            rects.append(self._rect_from_detection(detection, context.frame_width, context.frame_height))
+            rects.append(self._rect_from_detection(detection, context.frame_height, context.frame_width))
             colors.append([0, 255, 0])
             label = ""
             # Open model zoo models output label index
@@ -273,10 +273,10 @@ class PacketHandler:
 
     def _rect_from_detection(self, detection: dai.ImgDetection, max_height: int, max_width: int) -> List[int]:
         return [
-            int(max(min(detection.xmin, max_width), 0) * max_width),
-            int(max(min(detection.xmax, max_height), 0) * max_height),
-            int(max(min(detection.ymax, max_width), 0) * max_width),
-            int(max(min(detection.ymin, max_height), 0) * max_height),
+            int(min(max(detection.xmin, 0.0), 1.0) * max_width),
+            int(min(max(detection.ymin, 0.0), 1.0) * max_height),
+            int(min(max(detection.xmax, 0.0), 1.0) * max_width),
+            int(min(max(detection.ymax, 0.0), 1.0) * max_height),
         ]
 
 

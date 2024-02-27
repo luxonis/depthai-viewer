@@ -1,5 +1,9 @@
 # Depthai Viewer changelog
 
+## 0.1.7
+
+- Added support for OAK-T
+
 ## 0.1.6
 
 - Added ability to control IR dot projector and flood light brightness.
