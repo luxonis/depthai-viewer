@@ -56,9 +56,7 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
                 "align": (
                     "RECTIFIED_LEFT"
                     if self.align == dai.CameraBoardSocket.LEFT
-                    else "RECTIFIED_RIGHT"
-                    if self.align == dai.CameraBoardSocket.RIGHT
-                    else "CENTER"
+                    else "RECTIFIED_RIGHT" if self.align == dai.CameraBoardSocket.RIGHT else "CENTER"
                 ),
                 "lr_check": self.lr_check,
                 "lrc_check_threshold": self.lrc_threshold,
@@ -129,6 +127,11 @@ ALL_NEURAL_NETWORKS = [
         path="age-gender-recognition-retail-0013",
         display_name="Age gender recognition",
         camera=dai.CameraBoardSocket.CAM_A,
+    ),
+    AiModelConfiguration(
+        path="yolov6n_thermal_people_256x192",
+        display_name="Thermal Person Detection",
+        camera=dai.CameraBoardSocket.CAM_E,
     ),
 ]
 
@@ -272,9 +275,9 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     id: str
     cameras: List[CameraFeatures] = []
     imu: Optional[ImuKind]
-    stereo_pairs: List[
-        Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
-    ] = []  # Which cameras can be paired for stereo
+    stereo_pairs: List[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = (
+        []
+    )  # Which cameras can be paired for stereo
     default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
     info: DeviceInfo = DeviceInfo()
 

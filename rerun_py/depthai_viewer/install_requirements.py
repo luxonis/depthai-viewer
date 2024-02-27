@@ -6,6 +6,7 @@ import subprocess
 import sys
 import traceback
 from typing import Any, Dict
+from pathlib import Path
 
 # type: ignore[attr-defined]
 from depthai_viewer import version as depthai_viewer_version
@@ -15,6 +16,8 @@ venv_dir = os.path.join(script_path, "venv-" + depthai_viewer_version())
 venv_python = (
     os.path.join(venv_dir, "Scripts", "python") if sys.platform == "win32" else os.path.join(venv_dir, "bin", "python")
 )
+# The default blobconverter location. __ protected...
+model_dir = Path.home() / Path(".cache/blobconverter")
 
 
 def delete_partially_created_venv(path: str) -> None:
@@ -43,25 +46,19 @@ def get_site_packages() -> str:
 
 def download_blobs() -> None:
     import blobconverter
-    from depthai_sdk.components.nn_helper import getSupportedModels
 
-    models = [
-        "yolov8n_coco_640x352",
-        "mobilenet-ssd",
-        "face-detection-retail-0004",
-        "age-gender-recognition-retail-0013",
-    ]
-    sdk_models = getSupportedModels(printModels=False)
-    for model in models:
-        zoo_type = None
-        if model in sdk_models:
-            model_config_file = sdk_models[model] / "config.json"
-            config = json.load(open(model_config_file))
-            if "model" in config:
-                model_config: Dict[str, Any] = config["model"]
-                if "model_name" in model_config:
-                    zoo_type = model_config.get("zoo", "intel")
-        blobconverter.from_zoo(model, zoo_type=zoo_type, shaves=6)
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+    models = {
+        "yolov8n_coco_640x352": "depthai",
+        "mobilenet-ssd": "intel",
+        "face-detection-retail-0004": "intel",
+        "age-gender-recognition-retail-0013": "intel",
+        "yolov6n_thermal_people_256x192": "depthai",
+    }
+    for model, zoo_type in models.items():
+        # With use_cache=True, blobconverter will not download / move the blob to model_dir...
+        blobconverter.from_zoo(model, zoo_type=zoo_type, shaves=6, output_dir=model_dir, use_cache=False)
 
 
 def dependencies_installed() -> bool:

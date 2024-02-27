@@ -587,7 +587,7 @@ pub struct State {
     pub backend_comms: BackendCommChannel,
     #[serde(skip)]
     poll_instant: Option<Instant>,
-    #[serde(default = "default_neural_networks")]
+    #[serde(skip, default = "default_neural_networks")]
     pub neural_networks: Vec<Option<AiModel>>,
     #[serde(skip)]
     update_timeout_timer: Option<Instant>,
@@ -624,6 +624,11 @@ fn default_neural_networks() -> Vec<Option<AiModel>> {
             path: String::from("age-gender-recognition-retail-0013"),
             display_name: String::from("Age gender recognition"),
             camera: CameraBoardSocket::CAM_A,
+        }),
+        Some(AiModel {
+            path: String::from("yolov6n_thermal_people_256x192"),
+            display_name: String::from("Thermal Person Detection"),
+            camera: CameraBoardSocket::CAM_E
         }),
     ]
 }

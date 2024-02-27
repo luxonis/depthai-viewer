@@ -3,6 +3,7 @@ from depthai_viewer._backend.device_configuration import (
     CameraConfiguration,
     CameraSensorResolution,
     PipelineConfiguration,
+    AiModelConfiguration,
 )
 
 config = PipelineConfiguration(
@@ -22,5 +23,9 @@ config = PipelineConfiguration(
         ),
     ],
     depth=None,
-    ai_model=None,
+    ai_model=AiModelConfiguration(
+        display_name="Thermal Person Detection",
+        path="yolov6n_thermal_people_256x192",
+        camera=dai.CameraBoardSocket.CAM_E,
+    ),
 )
