@@ -7,7 +7,6 @@ from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
     BasePacket,
     DepthPacket,
-    Detection,
     DetectionPacket,
     DisparityDepthPacket,
     FramePacket,
@@ -17,16 +16,15 @@ from depthai_sdk.classes.packets import (  # PointcloudPacket,
 from depthai_sdk.components import CameraComponent, Component, NNComponent, StereoComponent
 from depthai_sdk.components.tof_component import ToFComponent
 from numpy.typing import NDArray
+from pydantic import BaseModel
 
 import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-from pydantic import BaseModel
 
 
-class PacketHandlerContext(BaseModel):
-
+class PacketHandlerContext(BaseModel):  # type: ignore[misc]
     class Config:
         arbitrary_types_allowed = True
 
@@ -64,7 +62,7 @@ class PacketHandler:
         # type: ignore[assignment, misc]
         self._get_camera_intrinsics = camera_intrinsics_getter
 
-    def log_dai_packet(self, node: dai.Node, packet: dai.Buffer, context: PacketHandlerContext) -> None:
+    def log_dai_packet(self, node: dai.Node, packet: dai.Buffer, context: Optional[PacketHandlerContext]) -> None:
         if isinstance(packet, dai.ImgFrame):
             board_socket = None
             if isinstance(node, dai.node.ColorCamera):
@@ -78,8 +76,9 @@ class PacketHandler:
             else:
                 print("Unknown node type:", type(node), "for packet:", type(packet))
         elif isinstance(packet, dai.ImgDetections):
-            if not isinstance(context, DetectionContext):
+            if context is None or not isinstance(context, DetectionContext):
                 print("Invalid context for detections packet", context)
+                return
             self._on_dai_detections(packet, context)
         else:
             print("Unknown dai packet type:", type(packet))
@@ -274,10 +273,10 @@ class PacketHandler:
 
     def _rect_from_detection(self, detection: dai.ImgDetection, max_height: int, max_width: int) -> List[int]:
         return [
-            max(min(detection.xmin, max_width), 0) * max_width,
-            max(min(detection.xmax, max_height), 0) * max_height,
-            max(min(detection.ymax, max_width), 0) * max_width,
-            max(min(detection.ymin, max_height), 0) * max_height,
+            int(max(min(detection.xmin, max_width), 0) * max_width),
+            int(max(min(detection.xmax, max_height), 0) * max_height),
+            int(max(min(detection.ymax, max_width), 0) * max_width),
+            int(max(min(detection.ymin, max_height), 0) * max_height),
         ]
 
 

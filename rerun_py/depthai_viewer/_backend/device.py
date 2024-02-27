@@ -1,9 +1,9 @@
 import itertools
+import os
 import time
 from queue import Empty as QueueEmpty
 from queue import Queue
 from typing import Dict, List, Optional, Tuple
-import os
 
 import depthai as dai
 import numpy as np
@@ -15,7 +15,6 @@ from depthai_sdk.components.camera_helper import (
 )
 from depthai_sdk.components.tof_component import Component
 from numpy.typing import NDArray
-from depthai_viewer.install_requirements import model_dir
 
 import depthai_viewer as viewer
 from depthai_viewer._backend.device_configuration import (
@@ -41,8 +40,9 @@ from depthai_viewer._backend.messages import (
     Message,
     WarningMessage,
 )
-from depthai_viewer._backend.packet_handler import PacketHandler, PacketHandlerContext, DetectionContext
+from depthai_viewer._backend.packet_handler import DetectionContext, PacketHandler, PacketHandlerContext
 from depthai_viewer._backend.store import Store
+from depthai_viewer.install_requirements import model_dir
 
 
 class XlinkStatistics:
@@ -84,7 +84,7 @@ class Device:
     _sys_info_q: Optional[Queue] = None  # type: ignore[type-arg]
     _pipeline_start_t: Optional[float] = None
     _queues: List[Tuple[Component, ComponentOutput]] = []
-    _dai_queues: List[Tuple[dai.Node, Optional[PacketHandlerContext]]] = []
+    _dai_queues: List[Tuple[dai.Node, dai.DataOutputQueue, Optional[PacketHandlerContext]]] = []
 
     # _profiler = cProfile.Profile()
 
@@ -274,8 +274,9 @@ class Device:
 
     def _get_component_by_socket(self, socket: dai.CameraBoardSocket) -> Optional[CameraComponent]:
         component = list(
-            filter(
-                lambda c: isinstance(c, CameraComponent) and c.node.getBoardSocket() == socket, self._oak._components
+            filter(  # type: ignore[arg-type]
+                lambda c: isinstance(c, CameraComponent) and c.node.getBoardSocket() == socket,
+                self._oak._components if self._oak else [],
             )
         )
         if not component:
@@ -386,7 +387,7 @@ class Device:
             else:
                 self._create_auto_pipeline_config(config)
 
-        create_dai_queues_after_start: Dict[str, (dai.Node, Optional[PacketHandlerContext])] = {}
+        create_dai_queues_after_start: Dict[str, Tuple[dai.Node, Optional[PacketHandlerContext]]] = {}
         self._stereo = None
         self._packet_handler.reset()
         self._sys_info_q = None
