@@ -57,7 +57,14 @@ def download_blobs() -> None:
     }
     for model, zoo_type in models.items():
         # With use_cache=True, blobconverter will not download / move the blob to model_dir...
-        blobconverter.from_zoo(model, zoo_type=zoo_type, shaves=6, output_dir=model_dir, use_cache=False)
+        blobconverter.from_zoo(
+            model,
+            zoo_type=zoo_type,
+            shaves=6,
+            output_dir=model_dir,
+            use_cache=False,
+            compile_params=["-ip FP16"] if "thermal" in model else None,
+        )
 
 
 def dependencies_installed() -> bool:

@@ -549,10 +549,11 @@ class Device:
                 if "yolo" in config.ai_model.path:
                     yolo = self._oak.pipeline.createYoloDetectionNetwork()
                     yolo.setBlobPath(model_path)
-                    yolo.setConfidenceThreshold(0.5)
                     if "yolov6n_thermal_people_256x192" == config.ai_model.path:
+                        yolo.setConfidenceThreshold(0.5)
                         yolo.setNumClasses(1)
                         yolo.setCoordinateSize(4)
+                        yolo.setIouThreshold(0.5)
                 cam_node.raw.link(yolo.input)
                 xlink_out_yolo = self._oak.pipeline.createXLinkOut()
                 xlink_out_yolo.setStreamName("yolo")
