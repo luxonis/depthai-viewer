@@ -53,25 +53,29 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
     def to_runtime_controls(self) -> Dict[str, Any]:
         return {
             "algorithm_control": {
-                "align": "RECTIFIED_LEFT"
-                if self.align == dai.CameraBoardSocket.LEFT
-                else "RECTIFIED_RIGHT"
-                if self.align == dai.CameraBoardSocket.RIGHT
-                else "CENTER",
+                "align": (
+                    "RECTIFIED_LEFT"
+                    if self.align == dai.CameraBoardSocket.LEFT
+                    else "RECTIFIED_RIGHT"
+                    if self.align == dai.CameraBoardSocket.RIGHT
+                    else "CENTER"
+                ),
                 "lr_check": self.lr_check,
                 "lrc_check_threshold": self.lrc_threshold,
                 "extended": self.extended_disparity,
                 "subpixel": self.subpixel_disparity,
             },
             "postprocessing": {
-                "median": {
-                    dai.MedianFilter.MEDIAN_OFF: 0,
-                    dai.MedianFilter.KERNEL_3x3: 3,
-                    dai.MedianFilter.KERNEL_5x5: 5,
-                    dai.MedianFilter.KERNEL_7x7: 7,
-                }[self.median]
-                if self.median
-                else 0,
+                "median": (
+                    {
+                        dai.MedianFilter.MEDIAN_OFF: 0,
+                        dai.MedianFilter.KERNEL_3x3: 3,
+                        dai.MedianFilter.KERNEL_5x5: 5,
+                        dai.MedianFilter.KERNEL_7x7: 7,
+                    }[self.median]
+                    if self.median
+                    else 0
+                ),
                 "bilateral_sigma": self.sigma,
             },
             "cost_matching": {
@@ -126,6 +130,11 @@ ALL_NEURAL_NETWORKS = [
         display_name="Age gender recognition",
         camera=dai.CameraBoardSocket.CAM_A,
     ),
+    AiModelConfiguration(
+        path="yolov6n_thermal_people_256x192",
+        display_name="Thermal Person Detection",
+        camera=dai.CameraBoardSocket.CAM_E,
+    ),
 ]
 
 
@@ -135,6 +144,7 @@ class ImuConfiguration(BaseModel):  # type: ignore[misc]
 
 
 class CameraSensorResolution(Enum):
+    THE_256X192: str = "THE_256X192"
     THE_400_P: str = "THE_400_P"
     THE_480_P: str = "THE_480_P"
     THE_720_P: str = "THE_720_P"
@@ -296,13 +306,16 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
                 "connection": self.info.connection.value,
                 "mxid": self.info.mxid,
             },
-            "default_stereo_pair": (self.default_stereo_pair[0].name, self.default_stereo_pair[1].name)
-            if self.default_stereo_pair
-            else None,
+            "default_stereo_pair": (
+                (self.default_stereo_pair[0].name, self.default_stereo_pair[1].name)
+                if self.default_stereo_pair
+                else None
+            ),
         }
 
 
 size_to_resolution = {
+    (256, 192): CameraSensorResolution.THE_256X192,
     (640, 400): CameraSensorResolution.THE_400_P,
     (640, 480): CameraSensorResolution.THE_480_P,  # OV7251
     (1280, 720): CameraSensorResolution.THE_720_P,

@@ -122,6 +122,7 @@ pub enum ImuKind {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Debug)]
 #[allow(non_camel_case_types)]
 pub enum CameraSensorResolution {
+    THE_256X192,
     THE_400_P,
     THE_480_P,
     THE_720_P,
@@ -142,6 +143,7 @@ pub enum CameraSensorResolution {
 impl fmt::Display for CameraSensorResolution {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::THE_256X192 => write!(f, "256x192"),
             Self::THE_400_P => write!(f, "400p"),
             Self::THE_480_P => write!(f, "480p"),
             Self::THE_720_P => write!(f, "720p"),
@@ -322,7 +324,7 @@ pub struct DeviceConfig {
     pub depth_enabled: bool, // Much easier to have an explicit bool for checkbox
     #[serde(default = "StereoDepthConfig::default_as_option")]
     pub depth: Option<StereoDepthConfig>,
-    pub ai_model: AiModel,
+    pub ai_model: Option<AiModel>,
     #[serde(skip)]
     pub dot_brightness: u32,
     #[serde(skip)]
@@ -336,7 +338,7 @@ impl Default for DeviceConfig {
             cameras: Vec::new(),
             depth_enabled: true,
             depth: Some(StereoDepthConfig::default()),
-            ai_model: AiModel::default(),
+            ai_model: None,
             dot_brightness: 0,
             flood_brightness: 0,
         }
@@ -370,7 +372,7 @@ impl From<&DeviceProperties> for DeviceConfig {
             })
             .collect();
         config.depth = Option::<StereoDepthConfig>::from(props);
-        config.ai_model = AiModel::from(props);
+        config.ai_model = Option::<AiModel>::from(props);
         config
     }
 }
@@ -498,7 +500,10 @@ pub struct AiModel {
 
 impl Default for AiModel {
     fn default() -> Self {
-        default_neural_networks()[2].clone()
+        match default_neural_networks()[2].clone() {
+            Some(model) => model,
+            None => panic!("Default neural network not found!")
+        }
     }
 }
 
@@ -512,16 +517,16 @@ impl AiModel {
     }
 }
 
-impl From<&DeviceProperties> for AiModel {
+impl From<&DeviceProperties> for Option<AiModel> {
     fn from(props: &DeviceProperties) -> Self {
-        let mut model = Self::default();
+        let mut model = AiModel::default();
 
         if let Some(cam) = props.cameras.iter().find(|cam| cam.is_color_camera()) {
             model.camera = cam.board_socket;
-        } else if let Some(cam) = props.cameras.first() {
-            model.camera = cam.board_socket;
+            Some(model)
+        } else {
+            None
         }
-        model
     }
 }
 
@@ -582,8 +587,8 @@ pub struct State {
     pub backend_comms: BackendCommChannel,
     #[serde(skip)]
     poll_instant: Option<Instant>,
-    #[serde(default = "default_neural_networks")]
-    pub neural_networks: Vec<AiModel>,
+    #[serde(skip, default = "default_neural_networks")]
+    pub neural_networks: Vec<Option<AiModel>>,
     #[serde(skip)]
     update_timeout_timer: Option<Instant>,
     #[serde(skip, default = "bool_true")]
@@ -597,29 +602,34 @@ fn all_subscriptions() -> Vec<ChannelId> {
 }
 
 #[inline]
-fn default_neural_networks() -> Vec<AiModel> {
+fn default_neural_networks() -> Vec<Option<AiModel>> {
     vec![
-        AiModel::none(),
-        AiModel {
+        None,
+        Some(AiModel {
             path: String::from("yolov8n_coco_640x352"),
             display_name: String::from("Yolo V8"),
             camera: CameraBoardSocket::CAM_A,
-        },
-        AiModel {
+        }),
+        Some(AiModel {
             path: String::from("mobilenet-ssd"),
             display_name: String::from("MobileNet SSD"),
             camera: CameraBoardSocket::CAM_A,
-        },
-        AiModel {
+        }),
+        Some(AiModel {
             path: String::from("face-detection-retail-0004"),
             display_name: String::from("Face Detection"),
             camera: CameraBoardSocket::CAM_A,
-        },
-        AiModel {
+        }),
+        Some(AiModel {
             path: String::from("age-gender-recognition-retail-0013"),
             display_name: String::from("Age gender recognition"),
             camera: CameraBoardSocket::CAM_A,
-        },
+        }),
+        Some(AiModel {
+            path: String::from("yolov6n_thermal_people_256x192"),
+            display_name: String::from("Thermal Person Detection"),
+            camera: CameraBoardSocket::CAM_E
+        }),
     ]
 }
 

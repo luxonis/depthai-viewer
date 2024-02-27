@@ -220,7 +220,7 @@ pub fn tensor_summary_ui_grid_contents(
     tensor: &Tensor,
     tensor_stats: &TensorStats
 ) {
-    let Tensor { tensor_id: _, shape, data, meaning, meter } = tensor;
+    let Tensor { tensor_id: _, shape, data, meaning, meter, colormap: _, unit: _ } = tensor;
 
     re_ui
         .grid_left_hand_label(ui, "Data type")
@@ -565,7 +565,20 @@ fn tensor_pixel_value_ui(
                             _ => unreachable!("NV12 should only contain u8"),
                         }
                     }),
-                _ => tensor.get(&[y, x]).map(|v| format!("Val: {v}")),
+                _ => {
+                    match &tensor.unit {
+                        Some(unit) => {
+                            if tensor.dtype().is_float() {
+                                tensor.get(&[y, x]).map(|v| format!("Val: {v:.2} {unit}"))
+                            } else {
+                                tensor.get(&[y, x]).map(|v| format!("Val: {v} {unit}"))
+                            }
+                        },
+                        None => {
+                            tensor.get(&[y, x]).map(|v| format!("Val: {v}"))
+                        }
+                    }
+                }
             }
         3 =>
             match tensor.real_shape().as_slice()[2].size {

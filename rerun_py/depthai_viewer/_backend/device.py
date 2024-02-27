@@ -1,4 +1,5 @@
 import itertools
+import os
 import time
 from queue import Empty as QueueEmpty
 from queue import Queue
@@ -32,14 +33,16 @@ from depthai_viewer._backend.device_configuration import (
     get_size_from_resolution,
     size_to_resolution,
 )
+from depthai_viewer._backend.device_defaults import oak_t_default
 from depthai_viewer._backend.messages import (
     ErrorMessage,
     InfoMessage,
     Message,
     WarningMessage,
 )
-from depthai_viewer._backend.packet_handler import PacketHandler
+from depthai_viewer._backend.packet_handler import DetectionContext, PacketHandler, PacketHandlerContext
 from depthai_viewer._backend.store import Store
+from depthai_viewer.install_requirements import model_dir
 
 
 class XlinkStatistics:
@@ -75,13 +78,13 @@ class Device:
 
     _packet_handler: PacketHandler
     _oak: Optional[OakCamera] = None
-    _cameras: List[CameraComponent] = []
     _stereo: StereoComponent = None
     _nnet: NNComponent = None
     _xlink_statistics: Optional[XlinkStatistics] = None
     _sys_info_q: Optional[Queue] = None  # type: ignore[type-arg]
     _pipeline_start_t: Optional[float] = None
     _queues: List[Tuple[Component, ComponentOutput]] = []
+    _dai_queues: List[Tuple[dai.Node, dai.DataOutputQueue, Optional[PacketHandlerContext]]] = []
 
     # _profiler = cProfile.Profile()
 
@@ -171,9 +174,9 @@ class Device:
         device_info = self._oak.device.getDeviceInfo()
         device_info = DeviceInfo(
             name=device_info.name,
-            connection=XLinkConnection.POE
-            if device_info.protocol == dai.XLinkProtocol.X_LINK_TCP_IP
-            else XLinkConnection.USB,
+            connection=(
+                XLinkConnection.POE if device_info.protocol == dai.XLinkProtocol.X_LINK_TCP_IP else XLinkConnection.USB
+            ),
             mxid=device_info.mxid,
         )
         device_properties = DeviceProperties(id=self.id, imu=imu, info=device_info)
@@ -238,8 +241,8 @@ class Device:
     def close_oak(self) -> None:
         if self._oak is None:
             return
-        if self._oak.running():
-            self._oak.device.__exit__(0, 0, 0)
+        if self._oak.device:
+            self._oak.device.close()
 
     def reconnect_to_oak(self) -> Message:
         """
@@ -270,7 +273,12 @@ class Device:
         return ErrorMessage("Failed to create oak camera")
 
     def _get_component_by_socket(self, socket: dai.CameraBoardSocket) -> Optional[CameraComponent]:
-        component = list(filter(lambda c: c.node.getBoardSocket() == socket, self._cameras))
+        component = list(
+            filter(  # type: ignore[arg-type]
+                lambda c: isinstance(c, CameraComponent) and c.node.getBoardSocket() == socket,
+                self._oak._components if self._oak else [],
+            )
+        )
         if not component:
             return None
         return component[0]
@@ -285,6 +293,7 @@ class Device:
         return camera[0]
 
     def _create_auto_pipeline_config(self, config: PipelineConfiguration) -> Message:
+        print("Creating auto pipeline config")
         if self._oak is None:
             return ErrorMessage("Oak device unavailable, can't create auto pipeline config!")
         if self._oak.device is None:
@@ -346,7 +355,7 @@ class Device:
             config.ai_model = ALL_NEURAL_NETWORKS[1]  # Mobilenet SSd
             config.ai_model.camera = nnet_cam_sock
         else:
-            config.ai_model = None
+            config.ai_model = ALL_NEURAL_NETWORKS[1]
         return InfoMessage("Created auto pipeline config")
 
     def update_pipeline(self, runtime_only: bool) -> Message:
@@ -369,10 +378,16 @@ class Device:
             if isinstance(message, ErrorMessage):
                 return message
 
-        if config.auto:
-            self._create_auto_pipeline_config(config)
+        self._queues = []
+        self._dai_queues = []
 
-        self._cameras = []
+        if config.auto:
+            if self._oak.device.getDeviceName() == "OAK-T":
+                config = oak_t_default.config
+            else:
+                self._create_auto_pipeline_config(config)
+
+        create_dai_queues_after_start: Dict[str, Tuple[dai.Node, Optional[PacketHandlerContext]]] = {}
         self._stereo = None
         self._packet_handler.reset()
         self._sys_info_q = None
@@ -434,6 +449,16 @@ class Device:
             if cam.stream_enabled:
                 if dai.CameraSensorType.TOF in camera_features.supportedTypes:
                     sdk_cam = self._oak.create_tof(cam.board_socket)
+                    self._queues.append((sdk_cam, self._oak.queue(sdk_cam.out.main)))
+                elif dai.CameraSensorType.THERMAL in camera_features.supportedTypes:
+                    thermal_cam = self._oak.pipeline.create(dai.node.Camera)
+                    # Hardcoded for OAK-T. The correct size is needed for correct detection parsing
+                    thermal_cam.setSize(256, 192)
+                    thermal_cam.setBoardSocket(cam.board_socket)
+                    xout_thermal = self._oak.pipeline.create(dai.node.XLinkOut)
+                    xout_thermal.setStreamName("thermal_cam")
+                    thermal_cam.raw.link(xout_thermal.input)
+                    create_dai_queues_after_start["thermal_cam"] = (thermal_cam, None)
                 elif sensor_resolution is not None:
                     sdk_cam = self._oak.create_camera(
                         cam.board_socket,
@@ -448,11 +473,10 @@ class Device:
                                 (smallest_supported_resolution.width, smallest_supported_resolution.height), res_x
                             )
                         )
-                    self._cameras.append(sdk_cam)
+                    self._queues.append((sdk_cam, self._oak.queue(sdk_cam.out.main)))
                 else:
                     print("Skipped creating camera:", cam.board_socket, "because no valid sensor resolution was found.")
                     continue
-                self._queues.append((sdk_cam, self._oak.queue(sdk_cam.out.main)))
 
         if config.depth:
             print("Creating depth")
@@ -506,19 +530,53 @@ class Device:
 
         if config.ai_model and config.ai_model.path:
             cam_component = self._get_component_by_socket(config.ai_model.camera)
-            if not cam_component:
-                return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
-            if config.ai_model.path == "age-gender-recognition-retail-0013":
-                face_detection = self._oak.create_nn("face-detection-retail-0004", cam_component)
-                self._nnet = self._oak.create_nn("age-gender-recognition-retail-0013", input=face_detection)
+            dai_camnode = [
+                node
+                for node, _ in create_dai_queues_after_start.values()
+                if isinstance(node, dai.node.Camera) and node.getBoardSocket() == config.ai_model.camera
+            ]
+            model_path = config.ai_model.path
+            if len(dai_camnode) > 0:
+                model_path = os.path.join(
+                    model_dir,
+                    config.ai_model.path
+                    + "_openvino_"
+                    + dai.OpenVINO.getVersionName(dai.OpenVINO.DEFAULT_VERSION)
+                    + "_6shave"
+                    + ".blob",
+                )
+                cam_node = dai_camnode[0]
+                if "yolo" in config.ai_model.path:
+                    yolo = self._oak.pipeline.createYoloDetectionNetwork()
+                    yolo.setBlobPath(model_path)
+                    yolo.setConfidenceThreshold(0.5)
+                    if "yolov6n_thermal_people_256x192" == config.ai_model.path:
+                        yolo.setNumClasses(1)
+                        yolo.setCoordinateSize(4)
+                cam_node.raw.link(yolo.input)
+                xlink_out_yolo = self._oak.pipeline.createXLinkOut()
+                xlink_out_yolo.setStreamName("yolo")
+                yolo.out.link(xlink_out_yolo.input)
+                create_dai_queues_after_start["yolo"] = (
+                    yolo,
+                    DetectionContext(
+                        labels=["person"],
+                        frame_width=cam_node.getWidth(),
+                        frame_height=cam_node.getHeight(),
+                        board_socket=config.ai_model.camera,
+                    ),
+                )
+            elif not cam_component:
+                self.store.send_message_to_frontend(
+                    WarningMessage(f"{config.ai_model.camera} is not configured, won't create NNET.")
+                )
+            elif config.ai_model.path == "age-gender-recognition-retail-0013":
+                face_detection = self._oak.create_nn(model_path, cam_component)
+                self._nnet = self._oak.create_nn(model_path, input=face_detection)
             else:
-                self._nnet = self._oak.create_nn(config.ai_model.path, cam_component)
-
-            camera = self._get_camera_config_by_socket(config, config.ai_model.camera)
-            if not camera:
-                return ErrorMessage(f"{config.ai_model.camera} is not configured. Couldn't create NN.")
-
-            self._queues.append((self._nnet, self._oak.queue(self._nnet.out.main)))
+                self._nnet = self._oak.create_nn(model_path, cam_component)
+            if self._nnet:
+                self._queues.append((self._nnet, self._oak.queue(self._nnet.out.main)))
 
         sys_logger_xlink = self._oak.pipeline.createXLinkOut()
         logger = self._oak.pipeline.createSystemLogger()
@@ -527,6 +585,7 @@ class Device:
         logger.out.link(sys_logger_xlink.input)
 
         try:
+            print("Starting pipeline")
             self._oak.start(blocking=False)
         except RuntimeError as e:
             print("Couldn't start pipeline: ", e)
@@ -534,6 +593,8 @@ class Device:
 
         running = self._oak.running()
         if running:
+            for q_name, (node, context) in create_dai_queues_after_start.items():
+                self._dai_queues.append((node, self._oak.device.getOutputQueue(q_name, 2, False), context))
             self._pipeline_start_t = time.time()
             self._sys_info_q = self._oak.device.getOutputQueue("sys_logger", 1, False)
             # We might have modified the config, so store it
@@ -549,9 +610,9 @@ class Device:
     def update(self) -> None:
         if self._oak is None:
             return
-        if not self._oak.running():
+        if not self._oak.device.isPipelineRunning():
             return
-        self._oak.poll()
+        # self._oak.poll()
 
         for component, queue in self._queues:
             try:
@@ -559,6 +620,11 @@ class Device:
                 self._packet_handler.log_packet(component, packet)
             except QueueEmpty:
                 continue
+
+        for dai_node, queue, context in self._dai_queues:
+            packet = queue.tryGet()
+            if packet is not None:
+                self._packet_handler.log_dai_packet(dai_node, packet, context)
 
         if self._xlink_statistics is not None:
             self._xlink_statistics.update()

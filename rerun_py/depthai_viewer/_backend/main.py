@@ -6,7 +6,6 @@ from typing import Optional
 
 import sentry_sdk
 
-import depthai_viewer as viewer
 from depthai_viewer import version as depthai_viewer_version
 from depthai_viewer._backend.config_api import Action, start_api
 from depthai_viewer._backend.device import Device

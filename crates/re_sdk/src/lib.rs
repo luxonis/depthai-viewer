@@ -78,7 +78,7 @@ pub mod components {
         MeshFormat, MeshId, Pinhole, Point2D, Point3D, Quaternion, Radius, RawMesh3D, Rect2D,
         Rigid3, Scalar, ScalarPlotProps, Size3D, Tensor, TensorData, TensorDataMeaning,
         TensorDimension, TensorId, TextEntry, Transform, Vec2D, Vec3D, Vec4D,
-        ViewCoordinates,
+        ViewCoordinates, TensorColormap
     };
 }
 

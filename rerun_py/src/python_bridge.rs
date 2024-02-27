@@ -25,7 +25,7 @@ pub use depthai_viewer::{
         EncodedMesh3D, InstanceKey, KeypointId, Label, LineStrip2D, LineStrip3D, Mat3x3, Mesh3D,
         MeshFormat, MeshId, Pinhole, Point2D, Point3D, Quaternion, Radius, RawMesh3D, Rect2D,
         Rigid3, Scalar, ScalarPlotProps, Size3D, Tensor, TensorData, TensorDimension, TensorId,
-        TextEntry, Transform, Vec2D, Vec3D, Vec4D, ViewCoordinates,
+        TextEntry, Transform, Vec2D, Vec3D, Vec4D, ViewCoordinates, TensorColormap,
     },
     coordinates::{Axis3, Handedness, Sign, SignedAxis3},
 };
@@ -943,6 +943,8 @@ fn log_image_file(
         data: re_log_types::component_types::TensorData::JPEG(img_bytes.into()),
         meaning: re_log_types::component_types::TensorDataMeaning::Unknown,
         meter: None,
+        colormap: TensorColormap::None,
+        unit: None,
     };
 
     let row = DataRow::from_cells1(

@@ -162,7 +162,10 @@ async def main(port: int = 9001) -> None:
 
 
 def start_api(
-    _dispatch_action_queue: Queue, _result_queue: Queue, _send_message_queue: Queue, port: int = 9001  # type: ignore[type-arg]
+    _dispatch_action_queue: Queue,  # type: ignore[type-arg]
+    _result_queue: Queue,  # type: ignore[type-arg]
+    _send_message_queue: Queue,  # type: ignore[type-arg]
+    port: int = 9001,
 ) -> None:
     """
     Starts the websocket API.
