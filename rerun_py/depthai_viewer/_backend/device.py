@@ -611,10 +611,8 @@ class Device:
     def update(self) -> None:
         if self._oak is None:
             return
-        if not self._oak.device.isPipelineRunning():
+        if not self._oak.running():
             return
-        # self._oak.poll()
-
         for component, queue in self._queues:
             try:
                 packet = queue.get_queue().get_nowait()
