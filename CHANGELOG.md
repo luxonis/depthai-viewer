@@ -1,5 +1,9 @@
 # Depthai Viewer changelog
 
+## 0.1.8
+
+- Performance fix.
+
 ## 0.1.7
 
 - Added support for OAK-T
