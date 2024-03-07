@@ -110,10 +110,6 @@ jobs:
     container: ${{ matrix.container }}
 
     steps:
-      - name: Print IP
-        if: matrix.platform == 'aarch64'
-        run: apt install net-tools && ifconfig
-
       - uses: actions/checkout@v3
 
       # These should already be in the docker container, but run for good measure. A no-op install
@@ -129,6 +125,7 @@ jobs:
 
       - name: Set up cargo cache
         uses: Swatinem/rust-cache@v2
+        if: matrix.platform != 'aarch64'
         with:
           env-vars: CARGO CC CFLAGS CXX CMAKE RUST CACHE_KEY
           # Don't update the cache -- it will be updated by the lint job
@@ -199,6 +196,10 @@ jobs:
         # This call to version_util.py will assert version from Cargo.toml matches git tagged version vX.Y.Z
         run: |
           python3 scripts/version_util.py --check_version
+
+      - name: Install rust
+        if: matrix.platform == 'aarch64'
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
       - name: Build Wheel
         uses: PyO3/maturin-action@v1
