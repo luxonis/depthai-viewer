@@ -90,7 +90,7 @@ jobs:
             # MacOS build is really slow (>30 mins); uses up a lot of CI minutes
             matrix+=('{"platform": "macos", "runs_on": "macos-latest", "pip": "pip"},')
           fi
-          matrix+=('{"platform": "windows", "runs_on": "windows-latest"},')
+          matrix+=('{"platform": "windows", "runs_on": "windows-latest", "pip": "pip"},')
           matrix+=('{"platform": "linux", "runs_on": "ubuntu-latest", container: {"image": "rerunio/ci_docker:0.5"}, "pip": "pip"},')
           matrix+=('{"platform": "aarch64", "runs_on": ["self-hosted", "linux", "ARM64"], container: {"image": "quay.io/pypa/manylinux2014_aarch64:2022-10-30-402504a"}, "pip": "python3.8 -m pip"}')
 
