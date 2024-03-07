@@ -89,8 +89,8 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
 
 
 class AiModelConfiguration(BaseModel):  # type: ignore[misc]
-    display_name: str = "MobileNet SSD"
-    path: str = "mobilenet-ssd"
+    display_name: str = "Yolo V6"
+    path: str = "yolov6nr3_coco_640x352"
     camera: dai.CameraBoardSocket
 
     class Config:
@@ -116,8 +116,8 @@ ALL_NEURAL_NETWORKS = [
         camera=dai.CameraBoardSocket.CAM_A,
     ),
     AiModelConfiguration(
-        path="mobilenet-ssd",
-        display_name="MobileNet SSD",
+        path="yolov6nr3_coco_640x352",
+        display_name="Yolo V6",
         camera=dai.CameraBoardSocket.CAM_A,
     ),
     AiModelConfiguration(
