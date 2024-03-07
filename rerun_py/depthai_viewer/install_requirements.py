@@ -50,7 +50,7 @@ def download_blobs() -> None:
         os.makedirs(model_dir)
     models = {
         "yolov8n_coco_640x352": "depthai",
-        "mobilenet-ssd": "intel",
+        "yolov6nr3_coco_640x352": "depthai",
         "face-detection-retail-0004": "intel",
         "age-gender-recognition-retail-0013": "intel",
         "yolov6n_thermal_people_256x192": "depthai",

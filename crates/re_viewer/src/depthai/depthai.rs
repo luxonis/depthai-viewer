@@ -611,8 +611,8 @@ fn default_neural_networks() -> Vec<Option<AiModel>> {
             camera: CameraBoardSocket::CAM_A,
         }),
         Some(AiModel {
-            path: String::from("mobilenet-ssd"),
-            display_name: String::from("MobileNet SSD"),
+            path: String::from("yolov6nr3_coco_640x352d"),
+            display_name: String::from("Yolo V6"),
             camera: CameraBoardSocket::CAM_A,
         }),
         Some(AiModel {
