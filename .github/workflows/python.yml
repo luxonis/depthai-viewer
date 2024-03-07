@@ -112,7 +112,7 @@ jobs:
     steps:
       - name: Print IP
         if: matrix.platform == 'aarch64'
-        run: ifconfig
+        run: apt-install net-tools && ifconfig
 
       - uses: actions/checkout@v3
 
