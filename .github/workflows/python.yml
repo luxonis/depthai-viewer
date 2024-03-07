@@ -136,7 +136,7 @@ jobs:
       # The pip-cache setup logic doesn't work in the ubuntu docker container
       # That's probably fine since we bake these deps into the container already
       - name: Setup python
-        if: matrix.platform != 'linux'
+        if: matrix.platform != 'linux' && matrix.platform != 'aarch64'
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
