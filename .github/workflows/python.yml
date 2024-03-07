@@ -199,7 +199,7 @@ jobs:
 
       - name: Install rust
         if: matrix.platform == 'aarch64'
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Build Wheel
         uses: PyO3/maturin-action@v1
@@ -208,7 +208,6 @@ jobs:
           manylinux: manylinux_2_31
           container: off
           command: build
-          before-script-linux: "source /root/.cargo/env"
           args: |
             --manifest-path rerun_py/Cargo.toml
             --release
