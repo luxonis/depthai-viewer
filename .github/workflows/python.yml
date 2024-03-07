@@ -92,6 +92,7 @@ jobs:
           fi
           matrix+=('{"platform": "windows", "runs_on": "windows-latest"},')
           matrix+=('{"platform": "linux", "runs_on": "ubuntu-latest", container: {"image": "rerunio/ci_docker:0.5"}}')
+          matrix+=('{"platform": "aarch", "runs_on": [self-hosted, linux, ARM64], container: {"image": "quay.io/pypa/manylinux2014_aarch64:2022-10-30-402504a"}}')
 
           echo "Matrix values: ${matrix[@]}"
 
