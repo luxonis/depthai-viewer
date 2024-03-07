@@ -100,7 +100,7 @@ jobs:
 
   wheels:
     name: Build Python Wheels
-    needs: [lint, matrix-setup]
+    needs: [matrix-setup]
 
     strategy:
       matrix: ${{fromJson(needs.matrix-setup.outputs.matrix)}}
