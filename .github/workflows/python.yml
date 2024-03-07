@@ -208,6 +208,7 @@ jobs:
           manylinux: manylinux_2_31
           container: off
           command: build
+          before-script-linux: "source ~/.cargo/env"
           args: |
             --manifest-path rerun_py/Cargo.toml
             --release
