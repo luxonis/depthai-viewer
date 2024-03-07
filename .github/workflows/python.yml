@@ -110,6 +110,10 @@ jobs:
     container: ${{ matrix.container }}
 
     steps:
+      - name: Print IP
+        if: matrix.platform == "aarch64"
+        run: ifconfig
+
       - uses: actions/checkout@v3
 
       # These should already be in the docker container, but run for good measure. A no-op install
