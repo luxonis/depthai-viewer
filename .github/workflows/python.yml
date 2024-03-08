@@ -116,7 +116,7 @@ jobs:
       # should be fast, and this way things don't break if we add new packages without rebuilding
       # docker
       - name: Cache APT Packages
-        if: matrix.platform == 'linux'
+        if: matrix.platform == 'linux' || matrix.platform == 'aarch64'
         uses: awalsh128/cache-apt-pkgs-action@v1.2.4
         with:
           packages: ${{ env.UBUNTU_REQUIRED_PKGS }}
