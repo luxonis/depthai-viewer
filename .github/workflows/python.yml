@@ -124,7 +124,7 @@ jobs:
           execute_install_scripts: true
       - name: AARCH64 install packages
         if: matrix.platform == 'aarch64'
-        run: apt install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev ; apt install --fix-missing
+        run: apt update && apt install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libfontconfig1-dev libfreetype6-dev libglib2.0-dev
 
       - name: Set up cargo cache
         uses: Swatinem/rust-cache@v2
