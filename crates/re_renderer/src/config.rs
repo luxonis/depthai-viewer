@@ -82,11 +82,13 @@ impl HardwareTier {
 
     /// Downlevel features required by the given tier.
     pub fn required_downlevel_capabilities(self) -> wgpu::DownlevelCapabilities {
+        let mut capabilities_native = wgpu::DownlevelFlags::all();
+        capabilities_native.remove(wgpu::DownlevelFlags::SURFACE_VIEW_FORMATS);
         wgpu::DownlevelCapabilities {
             flags: match self {
                 HardwareTier::Gles => wgpu::DownlevelFlags::empty(),
                 // Require fully WebGPU compliance for the native tier.
-                HardwareTier::FullWebGpuSupport => wgpu::DownlevelFlags::all(),
+                HardwareTier::FullWebGpuSupport => capabilities_native,
             },
             limits: Default::default(), // unused so far both here and in wgpu
             shader_model: wgpu::ShaderModel::Sm4,
