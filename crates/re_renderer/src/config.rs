@@ -1,3 +1,5 @@
+use std::process::Command;
+
 /// Hardware tiers `re_renderer` distinguishes.
 ///
 /// To reduce complexity, we don't do fine-grained feature checks,
@@ -57,11 +59,23 @@ impl HardwareTier {
 
     /// Wgpu limits required by the given hardware tier.
     pub fn limits(self) -> wgpu::Limits {
+        // RPI are a specific platform where we know max texture size is 4096.
+        let mut is_rpi = false;
+        if cfg!(unix) {
+            if let Ok(cat_out) = Command::new("cat")
+                .arg("/sys/firmware/devicetree/base/model")
+                .output()
+            {
+                if let Ok(stdout) = String::from_utf8(cat_out.stdout) {
+                    is_rpi = stdout.find("Raspberry Pi").is_some();
+                }
+            }
+        }
         wgpu::Limits {
             // In any scenario require high texture resolution to facilitate rendering into large surfaces
             // (important for 4k screens and beyond)
             // 8192 is widely supported by now.
-            max_texture_dimension_2d: 8192,
+            max_texture_dimension_2d: if is_rpi { 4096 } else { 8192 },
             ..wgpu::Limits::downlevel_webgl2_defaults()
         }
     }
