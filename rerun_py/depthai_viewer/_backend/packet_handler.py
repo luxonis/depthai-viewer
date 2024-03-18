@@ -2,7 +2,6 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
-import depthai_viewer as viewer
 import numpy as np
 from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
@@ -23,11 +22,13 @@ from depthai_sdk.components import (
     StereoComponent,
 )
 from depthai_sdk.components.tof_component import ToFComponent
+from numpy.typing import NDArray
+from pydantic import BaseModel
+
+import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-from numpy.typing import NDArray
-from pydantic import BaseModel
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
