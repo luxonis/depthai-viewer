@@ -2,26 +2,32 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
+import depthai_viewer as viewer
 import numpy as np
 from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
     BasePacket,
+    BoundingBox,
     DepthPacket,
+    Detection,
     DetectionPacket,
     DisparityDepthPacket,
     FramePacket,
     IMUPacket,
     TwoStagePacket,
 )
-from depthai_sdk.components import CameraComponent, Component, NNComponent, StereoComponent
+from depthai_sdk.components import (
+    CameraComponent,
+    Component,
+    NNComponent,
+    StereoComponent,
+)
 from depthai_sdk.components.tof_component import ToFComponent
-from numpy.typing import NDArray
-from pydantic import BaseModel
-
-import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
+from numpy.typing import NDArray
+from pydantic import BaseModel
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
@@ -234,6 +240,18 @@ class PacketHandler:
             labels=labels,
         )
 
+    def _rect_from_sdk_detection(
+        self, packet_bbox: BoundingBox, detection: Detection, max_height: int, max_width: int
+    ) -> List[int]:
+        bbox = packet_bbox.get_relative_bbox(detection.bbox)
+        (x1, y1), (x2, y2) = bbox.denormalize((max_height, max_width))
+        return [
+            max(x1, 0),
+            max(y1, 0),
+            min(x2, max_width),
+            min(y2, max_height),
+        ]
+
     def _detections_to_rects_colors_labels(
         self, packet: DetectionPacket, omz_labels: Optional[List[str]] = None
     ) -> Tuple[List[List[int]], List[List[int]], List[str]]:
@@ -242,7 +260,7 @@ class PacketHandler:
         labels = []
         for detection in packet.detections:
             rects.append(
-                self._rect_from_detection(detection.img_detection, packet.frame.shape[0], packet.frame.shape[1])
+                self._rect_from_sdk_detection(packet.bbox, detection, packet.frame.shape[0], packet.frame.shape[1])
             )
             colors.append([0, 255, 0])
             label: str = detection.label_str
@@ -265,7 +283,7 @@ class PacketHandler:
             cam = "color_cam" if component._get_camera_comp().is_color() else "mono_cam"
             viewer.log_rect(
                 f"{component._get_camera_comp()._socket.name}/transform/{cam}/Detection",
-                self._rect_from_detection(det.img_detection, packet.frame.shape[0], packet.frame.shape[1]),
+                self._rect_from_sdk_detection(packet.bbox, det, packet.frame.shape[0], packet.frame.shape[1]),
                 rect_format=RectFormat.XYXY,
                 color=color,
                 label=label,

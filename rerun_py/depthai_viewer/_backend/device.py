@@ -6,17 +6,13 @@ from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
+import depthai_viewer as viewer
 import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
-from depthai_sdk.components.camera_helper import (
-    getClosestIspScale,
-)
+from depthai_sdk.components.camera_helper import getClosestIspScale
 from depthai_sdk.components.tof_component import Component
-from numpy.typing import NDArray
-
-import depthai_viewer as viewer
 from depthai_viewer._backend.device_configuration import (
     ALL_NEURAL_NETWORKS,
     CameraConfiguration,
@@ -40,9 +36,14 @@ from depthai_viewer._backend.messages import (
     Message,
     WarningMessage,
 )
-from depthai_viewer._backend.packet_handler import DetectionContext, PacketHandler, PacketHandlerContext
+from depthai_viewer._backend.packet_handler import (
+    DetectionContext,
+    PacketHandler,
+    PacketHandlerContext,
+)
 from depthai_viewer._backend.store import Store
 from depthai_viewer.install_requirements import model_dir
+from numpy.typing import NDArray
 
 
 class XlinkStatistics:
@@ -572,7 +573,7 @@ class Device:
                     WarningMessage(f"{config.ai_model.camera} is not configured, won't create NNET.")
                 )
             elif config.ai_model.path == "age-gender-recognition-retail-0013":
-                face_detection = self._oak.create_nn(model_path, cam_component)
+                face_detection = self._oak.create_nn("face-detection-retail-0004", cam_component)
                 self._nnet = self._oak.create_nn(model_path, input=face_detection)
             else:
                 self._nnet = self._oak.create_nn(model_path, cam_component)
