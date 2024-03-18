@@ -216,6 +216,7 @@ jobs:
         run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Build Wheel
+        if: matrix.platform != 'aarch64'
         uses: PyO3/maturin-action@v1
         with:
           maturin-version: "0.14.10"
@@ -230,6 +231,9 @@ jobs:
             --universal2
             --out pre-dist
             -i ${{ matrix.python }}
+      - name: Build Wheel (aarch64)
+        if: matrix.platform == 'aarch64'
+        run: python3.8 -m maturin build --manifest-path rerun_py/Cargo.toml --release --no-default-features --features pypi --universal2 --out pre-dist
 
       - name: Install built wheel
         run: |
