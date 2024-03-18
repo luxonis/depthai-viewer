@@ -156,7 +156,7 @@ jobs:
       - name: "Install build requirements"
         run: |
           if [ "${{ matrix.platform }}" = "aarch64" ]; then
-            ${{ matrix.pip }} install -r rerun_py/requirements-build.txt && echo "/opt/_internal/cpython-3.8.18/bin" >> $GITHUB_PATH
+            ${{ matrix.pip }} install -r rerun_py/requirements-build.txt # && echo "/opt/_internal/cpython-3.8.18/bin" >> $GITHUB_PATH
           else
             ${{ matrix.pip }} install -r rerun_py/requirements-build.txt
           fi
