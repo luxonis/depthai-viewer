@@ -247,7 +247,7 @@ jobs:
 
       - name: Install built wheel
         run: |
-          pip install depthai_viewer --find-links pre-dist --force-reinstall
+          ${{ matrix.pip }} install depthai_viewer --find-links pre-dist --force-reinstall
 
       - name: Run tests
         run: cd rerun_py/tests && pytest
