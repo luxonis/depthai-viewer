@@ -134,8 +134,6 @@ jobs:
           path: |
             /var/cache/dnf
           key: ${{ runner.os }}-dnf-aarch64s
-          restore-keys: |
-            ${{ runner.os }}-dnf-
 
       - name: AARCH64 install packages
         if: matrix.platform == 'aarch64'
