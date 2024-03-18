@@ -138,8 +138,8 @@ jobs:
       - name: AARCH64 install packages
         if: matrix.platform == 'aarch64'
         run: |
-          sudo dnf makecache --refresh
-          sudo dnf install -y gtk3-devel openssl-devel
+          dnf makecache --refresh
+          dnf install -y gtk3-devel openssl-devel
 
       - name: Set up cargo cache
         uses: Swatinem/rust-cache@v2
