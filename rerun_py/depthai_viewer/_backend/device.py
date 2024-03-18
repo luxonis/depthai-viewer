@@ -10,9 +10,7 @@ import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
-from depthai_sdk.components.camera_helper import (
-    getClosestIspScale,
-)
+from depthai_sdk.components.camera_helper import getClosestIspScale
 from depthai_sdk.components.tof_component import Component
 from numpy.typing import NDArray
 
@@ -40,7 +38,11 @@ from depthai_viewer._backend.messages import (
     Message,
     WarningMessage,
 )
-from depthai_viewer._backend.packet_handler import DetectionContext, PacketHandler, PacketHandlerContext
+from depthai_viewer._backend.packet_handler import (
+    DetectionContext,
+    PacketHandler,
+    PacketHandlerContext,
+)
 from depthai_viewer._backend.store import Store
 from depthai_viewer.install_requirements import model_dir
 
@@ -352,7 +354,7 @@ class Device:
             if nnet_cam_sock is not None:
                 nnet_cam_sock = nnet_cam_sock.board_socket
         if nnet_cam_sock is not None:
-            config.ai_model = ALL_NEURAL_NETWORKS[1]  # Mobilenet SSd
+            config.ai_model = ALL_NEURAL_NETWORKS[1]  # Yolo V6
             config.ai_model.camera = nnet_cam_sock
         else:
             config.ai_model = ALL_NEURAL_NETWORKS[1]
@@ -572,7 +574,7 @@ class Device:
                     WarningMessage(f"{config.ai_model.camera} is not configured, won't create NNET.")
                 )
             elif config.ai_model.path == "age-gender-recognition-retail-0013":
-                face_detection = self._oak.create_nn(model_path, cam_component)
+                face_detection = self._oak.create_nn("face-detection-retail-0004", cam_component)
                 self._nnet = self._oak.create_nn(model_path, input=face_detection)
             else:
                 self._nnet = self._oak.create_nn(model_path, cam_component)

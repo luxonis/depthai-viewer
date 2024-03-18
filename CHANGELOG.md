@@ -7,6 +7,7 @@
 ## 0.1.7
 
 - Added support for OAK-T
+- Support multi viewer windows at the same time: `depthai-viewer --port <your-port>`
 
 ## 0.1.6
 
