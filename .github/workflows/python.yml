@@ -126,9 +126,23 @@ jobs:
           packages: ${{ env.UBUNTU_REQUIRED_PKGS }}
           version: 2.0 # Increment this to pull newer packages
           execute_install_scripts: true
+
+      - name: Cache DNF packages
+        if: matrix.platform == 'aarch64'
+        uses: actions/cache@v2
+        with:
+          path: |
+            /var/cache/dnf
+          key: ${{ runner.os }}-dnf-aarch64s
+          restore-keys: |
+            ${{ runner.os }}-dnf-
+
       - name: AARCH64 install packages
         if: matrix.platform == 'aarch64'
-        run: yum install -y gtk3-devel openssl-devel
+        run: |
+          sudo dnf makecache --refresh
+          sudo dnf install -y gtk3-devel openssl-devel
+
       - name: Set up cargo cache
         uses: Swatinem/rust-cache@v2
         with:
