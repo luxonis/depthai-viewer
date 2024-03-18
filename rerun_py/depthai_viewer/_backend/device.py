@@ -574,7 +574,7 @@ class Device:
                     WarningMessage(f"{config.ai_model.camera} is not configured, won't create NNET.")
                 )
             elif config.ai_model.path == "age-gender-recognition-retail-0013":
-                face_detection = self._oak.create_nn(model_path, cam_component)
+                face_detection = self._oak.create_nn("face-detection-retail-0004", cam_component)
                 self._nnet = self._oak.create_nn(model_path, input=face_detection)
             else:
                 self._nnet = self._oak.create_nn(model_path, cam_component)
