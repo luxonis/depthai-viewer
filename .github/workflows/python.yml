@@ -92,7 +92,7 @@ jobs:
           fi
           matrix+=('{"platform": "windows", "runs_on": "windows-latest", "pip": "pip", "python": "python"},')
           matrix+=('{"platform": "linux", "runs_on": "ubuntu-latest", container: {"image": "rerunio/ci_docker:0.5"}, "pip": "pip", "python": "python3"},')
-          matrix+=('{"platform": "aarch64", "runs_on": ["self-hosted", "linux", "ARM64"], container: {"image": "quay.io/pypa/manylinux_2_28_aarch64"}, "pip": "python3 -m pip", "python": "python3.8"}')
+          matrix+=('{"platform": "aarch64", "runs_on": ["self-hosted", "linux", "ARM64"], container: {"image": "quay.io/pypa/manylinux_2_28_aarch64"}, "pip": "python3.8 -m pip", "python": "python3.8"}')
 
           echo "Matrix values: ${matrix[@]}"
 
