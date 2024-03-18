@@ -245,24 +245,18 @@ jobs:
         if: matrix.platform == 'aarch64'
         run: python3.8 -m maturin build --manifest-path rerun_py/Cargo.toml --release --no-default-features --features pypi --universal2 --out pre-dist
 
+      - name: Install built wheel
+        run: |
+          pip install depthai_viewer --find-links pre-dist --force-reinstall
+
+      - name: Run tests
+        run: cd rerun_py/tests && pytest
+
       - name: Unpack the wheel
         shell: bash
         run: |
           mkdir unpack-dist
           wheel unpack pre-dist/*.whl --dest unpack-dist
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v3
-        with:
-          name: wheels
-          path: dist
-
-      - name: Install built wheel
-        run: |
-          ${{ matrix.pip }} install depthai_viewer --find-links pre-dist --force-reinstall
-
-      - name: Run tests
-        run: cd rerun_py/tests && pytest
 
       - name: Get the folder name
         shell: bash
@@ -274,6 +268,12 @@ jobs:
         run: |
           mkdir dist
           wheel pack unpack-dist/${{ env.pkg_folder }} --dest dist/
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v3
+        with:
+          name: wheels
+          path: dist
 
   # ---------------------------------------------------------------------------
 
