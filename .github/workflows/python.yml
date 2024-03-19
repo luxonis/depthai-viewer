@@ -100,7 +100,7 @@ jobs:
 
   wheels:
     name: Build Python Wheels
-    needs: [matrix-setup]
+    needs: [lint, matrix-setup]
 
     strategy:
       matrix: ${{fromJson(needs.matrix-setup.outputs.matrix)}}
@@ -149,10 +149,6 @@ jobs:
           # TODO(jleibs): this job will likely run before rust.yml updates
           # the cache. Better cross-job sequencing would be nice here
           save-if: False
-
-      # - name: (aarch64) Set up default python
-      #   if: matrix.platform == 'aarch64'
-      #   run: rm /usr/bin/python3 && mv /usr/local/bin/python3.8 /usr/bin/python3
 
       # The pip-cache setup logic doesn't work in the ubuntu docker container
       # That's probably fine since we bake these deps into the container already
