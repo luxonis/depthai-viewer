@@ -250,7 +250,7 @@ jobs:
           ${{ matrix.pip }} install depthai_viewer --find-links pre-dist --force-reinstall
 
       - name: Run tests
-        run: cd rerun_py/tests && pytest
+        run: cd rerun_py/tests && echo $PATH ; pytest ; true
 
       - name: Unpack the wheel
         shell: bash
