@@ -250,7 +250,12 @@ jobs:
           ${{ matrix.pip }} install depthai_viewer --find-links pre-dist --force-reinstall
 
       - name: Run tests
-        run: cd rerun_py/tests && echo $PATH ; pytest ; true
+        run: |
+        if [ "${{ matrix.platform }}" = 'aarch64' ]; then
+          cd rerun_py/tests && python3.8 -m pytest
+        else
+          cd rerun_py/tests && pytest
+        fi
 
       - name: Unpack the wheel
         shell: bash
