@@ -251,11 +251,11 @@ jobs:
 
       - name: Run tests
         run: |
-        if [ "${{ matrix.platform }}" = "aarch64" ]; then
-          cd rerun_py/tests && python3.8 -m pytest
-        else
-          cd rerun_py/tests && pytest
-        fi
+          if [ "${{ matrix.platform }}" = "aarch64" ]; then
+            cd rerun_py/tests && python3.8 -m pytest
+          else
+            cd rerun_py/tests && pytest
+          fi
 
       - name: Unpack the wheel
         shell: bash
