@@ -261,7 +261,11 @@ jobs:
         shell: bash
         run: |
           mkdir unpack-dist
-          wheel unpack pre-dist/*.whl --dest unpack-dist
+          if [ "${{ matrix.platform }}" == "aarch64" ]; then
+            python3.8 -m wheel unpack pre-dist/*.whl --dest unpack-dist
+          else
+            wheel unpack pre-dist/*.whl --dest unpack-dist
+          fi
 
       - name: Get the folder name
         shell: bash
@@ -272,7 +276,11 @@ jobs:
         shell: bash
         run: |
           mkdir dist
-          wheel pack unpack-dist/${{ env.pkg_folder }} --dest dist/
+          if [ "${{ matrix.platform }}" == "aarch64" ]; then
+            python3.8 -m wheel pack unpack-dist/${{ env.pkg_folder }} --dest dist/
+          else
+            wheel pack unpack-dist/${{ env.pkg_folder }} --dest dist/
+          fi
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
