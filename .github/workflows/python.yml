@@ -246,6 +246,7 @@ jobs:
           ${{ matrix.pip }} install depthai_viewer --find-links pre-dist --force-reinstall
 
       - name: Run tests
+        shell: bash
         run: |
           if [ "${{ matrix.platform }}" = "aarch64" ]; then
             cd rerun_py/tests && python3.8 -m pytest
