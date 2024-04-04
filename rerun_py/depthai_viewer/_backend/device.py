@@ -113,9 +113,14 @@ class Device:
             return self.intrinsic_matrix.get((board_socket, width, height))  # type: ignore[return-value]
         if self.calibration_data is None:
             raise Exception("Missing calibration data!")
-        M_right = self.calibration_data.getCameraIntrinsics(  # type: ignore[union-attr]
-            board_socket, dai.Size2f(width, height)
-        )
+        try:
+            M_right = self.calibration_data.getCameraIntrinsics(  # type: ignore[union-attr]
+                board_socket, dai.Size2f(width, height)
+            )
+        except RuntimeError:
+            print("No intrinsics found for camera: ", board_socket, " assuming default.")
+            f_len = (height * width) ** 0.5
+            M_right = [[f_len, 0, width / 2], [0, f_len, height / 2], [0, 0, 1]]
         self.intrinsic_matrix[(board_socket, width, height)] = np.array(M_right).reshape(3, 3)
         return self.intrinsic_matrix[(board_socket, width, height)]
 
