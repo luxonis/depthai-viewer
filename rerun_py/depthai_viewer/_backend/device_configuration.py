@@ -56,7 +56,9 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
                 "align": (
                     "RECTIFIED_LEFT"
                     if self.align == dai.CameraBoardSocket.LEFT
-                    else "RECTIFIED_RIGHT" if self.align == dai.CameraBoardSocket.RIGHT else "CENTER"
+                    else "RECTIFIED_RIGHT"
+                    if self.align == dai.CameraBoardSocket.RIGHT
+                    else "CENTER"
                 ),
                 "lr_check": self.lr_check,
                 "lrc_check_threshold": self.lrc_threshold,
@@ -247,7 +249,7 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
                 v["median"] = getattr(dai.MedianFilter, v["median"])
         return super().__init__(**v)  # type: ignore[no-any-return]
 
-    def dict(self, *args, **kwargs) -> Dict[str, Any]:
+    def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
         return {
             "median": self.median.name if self.median else None,
             "phase_unwrapping_level": self.phase_unwrapping_level,
@@ -261,14 +263,14 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
 
     def to_dai(self) -> dai.RawToFConfig:
         cfg = dai.RawToFConfig()
-        cfg.median = self.median
-        cfg.phaseUnwrappingLevel = self.phase_unwrapping_level
-        cfg.phaseUnwrapErrorThreshold = self.phase_unwrap_error_threshold
-        cfg.enableFPPNCorrection = self.enable_fppn_correction
-        cfg.enableOpticalCorrection = self.enable_optical_correction
-        cfg.enableTemperatureCorrection = self.enable_temperature_correction
-        cfg.enableWiggleCorrection = self.enable_wiggle_correction
-        cfg.enablePhaseUnwrapping = self.enable_phase_unwrapping
+        cfg.median = self.median  # type: ignore[attr-defined]
+        cfg.phaseUnwrappingLevel = self.phase_unwrapping_level  # type: ignore[attr-defined]
+        cfg.phaseUnwrapErrorThreshold = self.phase_unwrap_error_threshold  # type: ignore[attr-defined]
+        cfg.enableFPPNCorrection = self.enable_fppn_correction  # type: ignore[attr-defined]
+        cfg.enableOpticalCorrection = self.enable_optical_correction  # type: ignore[attr-defined]
+        cfg.enableTemperatureCorrection = self.enable_temperature_correction  # type: ignore[attr-defined]
+        cfg.enableWiggleCorrection = self.enable_wiggle_correction  # type: ignore[attr-defined]
+        cfg.enablePhaseUnwrapping = self.enable_phase_unwrapping  # type: ignore[attr-defined]
         return cfg
 
 
@@ -321,9 +323,9 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     id: str
     cameras: List[CameraFeatures] = []
     imu: Optional[ImuKind]
-    stereo_pairs: List[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = (
-        []
-    )  # Which cameras can be paired for stereo
+    stereo_pairs: List[
+        Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
+    ] = []  # Which cameras can be paired for stereo
     default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
     info: DeviceInfo = DeviceInfo()
 
