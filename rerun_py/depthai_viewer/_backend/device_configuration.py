@@ -232,11 +232,11 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
     median: Optional[dai.MedianFilter] = dai.MedianFilter.MEDIAN_OFF
     phase_unwrapping_level: int = 4
     phase_unwrap_error_threshold: int = 100
+    enable_phase_unwrapping: Optional[bool] = True
     enable_fppn_correction: Optional[bool] = None
     enable_optical_correction: Optional[bool] = None
     enable_temperature_correction: Optional[bool] = None
     enable_wiggle_correction: Optional[bool] = None
-    enable_phase_unwrapping: Optional[bool] = None
 
     class Config:
         arbitrary_types_allowed = True

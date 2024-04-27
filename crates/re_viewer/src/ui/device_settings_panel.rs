@@ -273,7 +273,7 @@ impl DeviceSettingsPanel {
                                         None,
                                         "Phase unwrap error threshold",
                                         &mut phase_unwrap_error_threshold,
-                                        0..=100,
+                                        0..=u16::MAX,
                                     )
                                     .changed()
                                 {
