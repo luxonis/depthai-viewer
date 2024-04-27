@@ -1,5 +1,12 @@
 # Depthai Viewer changelog
 
+## 0.1.9
+
+- Added the new ToF decoding improvements.
+- The default AI model is now Yolo V6 instead of mobilenet-ssd.
+- Fixed OAK-D-SR-POE crashing on startup.
+- Fixed deformed bounding boxes.
+
 ## 0.1.8
 
 - Performance fix.
