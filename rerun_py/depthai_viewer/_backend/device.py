@@ -11,6 +11,7 @@ import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
+from depthai_sdk.components.tof_component import ToFComponent
 from depthai_sdk.components.camera_helper import getClosestIspScale
 from depthai_sdk.components.tof_component import Component, ToFComponent
 from depthai_viewer._backend.device_configuration import (
