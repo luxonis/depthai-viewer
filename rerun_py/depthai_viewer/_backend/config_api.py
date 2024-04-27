@@ -11,7 +11,7 @@ import depthai as dai
 import websockets
 from websockets.server import WebSocketServerProtocol
 
-from depthai_viewer._backend.device_configuration import PipelineConfiguration
+from depthai_viewer._backend.device_configuration import PipelineConfiguration, ToFConfig
 from depthai_viewer._backend.messages import (
     DevicesMessage,
     ErrorMessage,
@@ -45,6 +45,7 @@ class Action(Enum):
     SET_DOT_BRIGHTNESS = auto()
     RESET = auto()  # When anything bad happens, a reset occurs (like closing ws connection)
     GET_AVAILABLE_DEVICES = auto()
+    SET_TOF_CONFIG = auto()
 
 
 def dispatch_action(action: Action, **kwargs) -> Message:  # type: ignore[no-untyped-def]
@@ -141,6 +142,23 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
                     print("Missing dot", message_type)
                     continue
                 await send_message(websocket, dispatch_action(Action.SET_DOT_BRIGHTNESS, dot_brightness=dot_brightness))
+            elif message_type == MessageType.SET_TOF_CONFIG:
+                data = message.get("data", {})
+                tof_config = data.get(message_type, None)
+                if len(tof_config) == 2:  # Disregard the camera board socket for now. Only support one.
+                    tof_config = tof_config[1]
+                else:
+                    print("Invalid tof config: ", tof_config)
+                    continue
+                if tof_config is None:
+                    print("Missing tof config")
+                    continue
+                try:
+                    tof_config = ToFConfig(**tof_config)
+                except Exception as e:
+                    print(f"Failed to deserialize tof_config: {tof_config}: {e}")
+                    continue
+                await send_message(websocket, dispatch_action(Action.SET_TOF_CONFIG, tof_config=tof_config))
             else:
                 print("Unknown message type: ", message_type)
                 continue

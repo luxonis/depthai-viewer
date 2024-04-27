@@ -162,54 +162,210 @@ impl DeviceSettingsPanel {
     fn camera_config_ui(
         ctx: &mut ViewerContext<'_>,
         ui: &mut egui::Ui,
-        camera_features: &depthai::CameraFeatures,
-        camera_config: &mut depthai::CameraConfig,
+        device_config: &mut depthai::DeviceConfig,
     ) {
-        // let text_color = ctx.re_ui.design_tokens.primary_700;
-        let text_color = ui.style().visuals.strong_text_color();
-        egui::CollapsingHeader::new(
-            egui::RichText::new(camera_features.board_socket.display_name(ctx)).color(text_color),
-        )
-        .default_open(true)
-        .show(ui, |ui| {
-            ui.vertical(|ui| {
-                ui.set_width(CONFIG_UI_WIDTH);
-                ctx.re_ui.labeled_combo_box(
-                    ui,
-                    "Resolution",
-                    format!("{}", camera_config.resolution),
-                    false,
-                    true,
-                    |ui| {
-                        for res in camera_features.resolutions.clone() {
-                            let disabled = false;
-                            ui.add_enabled_ui(!disabled, |ui| {
-                                ui.selectable_value(
-                                    &mut camera_config.resolution,
-                                    res,
-                                    format!("{res}"),
-                                )
-                                .on_disabled_hover_ui(|ui| {
-                                    ui.label(format!(
-                                        "{res} will be available in a future release!"
-                                    ));
+        let mut connected_cameras_clone = ctx.depthai_state.get_connected_cameras().clone();
+        for mut camera_features in ctx.depthai_state.get_connected_cameras_mut() {
+            let Some(camera_config) = device_config
+                .cameras
+                .iter_mut()
+                .find(|conf| conf.board_socket == camera_features.board_socket)
+            else {
+                continue;
+            };
+            // let text_color = ctx.re_ui.design_tokens.primary_700;
+            let text_color = ui.style().visuals.strong_text_color();
+            egui::CollapsingHeader::new(
+                egui::RichText::new(
+                    camera_features
+                        .board_socket
+                        .display_name(&connected_cameras_clone),
+                )
+                .color(text_color),
+            )
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(CONFIG_UI_WIDTH);
+                    ctx.re_ui.labeled_combo_box(
+                        ui,
+                        "Resolution",
+                        format!("{}", camera_config.resolution),
+                        false,
+                        true,
+                        |ui| {
+                            for res in camera_features.resolutions.clone() {
+                                let disabled = false;
+                                ui.add_enabled_ui(!disabled, |ui| {
+                                    ui.selectable_value(
+                                        &mut camera_config.resolution,
+                                        res,
+                                        format!("{res}"),
+                                    )
+                                    .on_disabled_hover_ui(
+                                        |ui| {
+                                            ui.label(format!(
+                                                "{res} will be available in a future release!"
+                                            ));
+                                        },
+                                    );
                                 });
-                            });
-                        }
-                    },
-                );
-                ctx.re_ui.labeled_dragvalue(
-                    ui,
-                    egui::Id::from("fps"), // TODO(filip): using "fps" as id causes all fps sliders to be linked - This is a bug, but also kind of a feature
-                    None,
-                    "FPS",
-                    &mut camera_config.fps,
-                    0..=camera_features.max_fps,
-                );
-                ctx.re_ui
-                    .labeled_toggle_switch(ui, "Stream", &mut camera_config.stream_enabled);
+                            }
+                        },
+                    );
+                    ctx.re_ui.labeled_dragvalue(
+                        ui,
+                        egui::Id::from("fps"), // TODO(filip): using "fps" as id causes all fps sliders to be linked - This is a bug, but also kind of a feature
+                        None,
+                        "FPS",
+                        &mut camera_config.fps,
+                        0..=camera_features.max_fps,
+                    );
+                    if let Some(tof_config) = &mut camera_features.tof_config {
+                        // Add a UI that is hidden by default Drop
+                        ui.collapsing("ToF config", |mut ui| {
+                            ui.vertical(|ui| {
+                                ctx.re_ui.labeled_combo_box(
+                                    ui,
+                                    "Median Filter",
+                                    format!("{:?}", tof_config.get_median_filter()),
+                                    false,
+                                    true,
+                                    |ui| {
+                                        let mut median_filter = tof_config.get_median_filter();
+                                        for filter in depthai::MedianFilter::iter() {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut median_filter,
+                                                    filter,
+                                                    format!("{filter:?}"),
+                                                )
+                                                .changed()
+                                            {
+                                                tof_config.set_median_filter(median_filter);
+                                            }
+                                        }
+                                    },
+                                );
+                                let mut phase_unwrapping_level =
+                                    tof_config.get_phase_unwrapping_level();
+                                if ctx
+                                    .re_ui
+                                    .labeled_dragvalue(
+                                        ui,
+                                        egui::Id::new("tof-phase-unwrap-level"),
+                                        None,
+                                        "Phase unwrap level",
+                                        &mut phase_unwrapping_level,
+                                        0..=100,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config.set_phase_unwrapping_level(phase_unwrapping_level);
+                                }
+                                let mut phase_unwrap_error_threshold =
+                                    tof_config.get_phase_unwrap_error_threshold();
+                                if ctx
+                                    .re_ui
+                                    .labeled_dragvalue(
+                                        ui,
+                                        egui::Id::new("tof-phase-unwrap-error-threshold"),
+                                        None,
+                                        "Phase unwrap error threshold",
+                                        &mut phase_unwrap_error_threshold,
+                                        0..=100,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config.set_phase_unwrap_error_threshold(
+                                        phase_unwrap_error_threshold,
+                                    );
+                                }
+                                let mut enable_phase_unwrapping =
+                                    tof_config.get_enable_phase_unwrapping().unwrap_or(false);
+                                if ctx
+                                    .re_ui
+                                    .labeled_toggle_switch(
+                                        ui,
+                                        "Enable phase unwrapping",
+                                        &mut enable_phase_unwrapping,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config
+                                        .set_enable_phase_unwrapping(Some(enable_phase_unwrapping));
+                                }
+                                let mut enable_fppn_correction =
+                                    tof_config.get_enable_fppn_correction().unwrap_or(false);
+                                if ctx
+                                    .re_ui
+                                    .labeled_toggle_switch(
+                                        ui,
+                                        "Enable FPPN correction",
+                                        &mut enable_fppn_correction,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config
+                                        .set_enable_fppn_correction(Some(enable_fppn_correction));
+                                }
+                                let mut enable_optical_correction =
+                                    tof_config.get_enable_optical_correction().unwrap_or(false);
+                                if ctx
+                                    .re_ui
+                                    .labeled_toggle_switch(
+                                        ui,
+                                        "Enable optical correction",
+                                        &mut enable_optical_correction,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config.set_enable_optical_correction(Some(
+                                        enable_optical_correction,
+                                    ));
+                                }
+                                let mut enable_temperature_correction = tof_config
+                                    .get_enable_temperature_correction()
+                                    .unwrap_or(false);
+                                if ctx
+                                    .re_ui
+                                    .labeled_toggle_switch(
+                                        ui,
+                                        "Enable temperature correction",
+                                        &mut enable_temperature_correction,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config.set_enable_temperature_correction(Some(
+                                        enable_temperature_correction,
+                                    ));
+                                }
+                                let mut enable_wiggle_correction =
+                                    tof_config.get_enable_wiggle_correction().unwrap_or(false);
+                                if ctx
+                                    .re_ui
+                                    .labeled_toggle_switch(
+                                        ui,
+                                        "Enable wiggle correction",
+                                        &mut enable_wiggle_correction,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config.set_enable_wiggle_correction(Some(
+                                        enable_wiggle_correction,
+                                    ));
+                                }
+                            })
+                        });
+                    }
+                    ctx.re_ui.labeled_toggle_switch(
+                        ui,
+                        "Stream",
+                        &mut camera_config.stream_enabled,
+                    );
+                });
             });
-        });
+        }
     }
 
     fn device_configuration_ui(ctx: &mut ViewerContext<'_>, ui: &mut egui::Ui) {
@@ -217,7 +373,6 @@ impl DeviceSettingsPanel {
 
         let text_color = ui.style().visuals.strong_text_color();
         // let text_color = ctx.re_ui.design_tokens.primary_700;
-        let connected_cameras = ctx.depthai_state.get_connected_cameras().clone();
 
         ctx.re_ui.styled_scrollbar(
             ui,
@@ -231,19 +386,10 @@ impl DeviceSettingsPanel {
                     ..Default::default()
                 })
                 .show(ui, |ui| {
+
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            for cam in connected_cameras.clone() {
-                                let Some(config) = device_config
-                                    .cameras
-                                    .iter_mut()
-                                    .find(|conf| conf.board_socket == cam.board_socket)
-                                else {
-                                    continue;
-                                };
-                                Self::camera_config_ui(ctx, ui, &cam, config);
-                            }
-
+                            Self::camera_config_ui(ctx, ui, &mut device_config);
                             ui.collapsing(
                                 egui::RichText::new("AI settings").color(text_color),
                                 |ui| {
@@ -276,11 +422,11 @@ impl DeviceSettingsPanel {
                                                 ctx.re_ui.labeled_combo_box(
                                                     ui,
                                                     "Run on",
-                                                    model.camera.display_name(ctx),
+                                                    model.camera.display_name(ctx.depthai_state.get_connected_cameras()),
                                                     false,
                                                     true,
                                                     |ui| {
-                                                        let filtered_cameras: Vec<_> = connected_cameras
+                                                        let filtered_cameras: Vec<_> =  ctx.depthai_state.get_connected_cameras()
                                                             .iter() // iterates over references
                                                             .filter(|cam| {
                                                                 !(cam.supported_types.contains(
@@ -294,7 +440,7 @@ impl DeviceSettingsPanel {
                                                             ui.selectable_value(
                                                                 &mut model.camera,
                                                                 cam.board_socket,
-                                                                cam.board_socket.display_name(ctx),
+                                                                cam.board_socket.display_name(ctx.depthai_state.get_connected_cameras()),
                                                             );
                                                         }
                                                     },
@@ -306,7 +452,7 @@ impl DeviceSettingsPanel {
                                     });
                             });
 
-                            let mut depth = device_config.depth.unwrap_or_default();
+                            let mut stereo: depthai::StereoDepthConfig = device_config.stereo.unwrap_or_default();
                             ui.add_enabled_ui(
                                 ctx.depthai_state.selected_device.has_stereo_pairs(),
                                 |ui| {
@@ -323,14 +469,14 @@ impl DeviceSettingsPanel {
                                     .show(ui, |ui| {
                                         ui.vertical(|ui| {
                                             ui.set_width(CONFIG_UI_WIDTH);
-                                            let (cam1, cam2) = depth.stereo_pair;
+                                            let (cam1, cam2) = stereo.stereo_pair;
                                             ctx.re_ui.labeled_combo_box(
                                                 ui,
                                                 "Camera Pair",
                                                 format!(
                                                     "{}, {}",
-                                                    cam1.display_name(ctx),
-                                                    cam2.display_name(ctx)
+                                                    cam1.display_name(ctx.depthai_state.get_connected_cameras()),
+                                                    cam2.display_name(ctx.depthai_state.get_connected_cameras())
                                                 ),
                                                 false,
                                                 true,
@@ -341,12 +487,12 @@ impl DeviceSettingsPanel {
                                                         .stereo_pairs
                                                     {
                                                         ui.selectable_value(
-                                                            &mut depth.stereo_pair,
+                                                            &mut stereo.stereo_pair,
                                                             *pair,
                                                             format!(
                                                                 "{} {}",
-                                                                pair.0.display_name(ctx),
-                                                                pair.1.display_name(ctx)
+                                                                pair.0.display_name(ctx.depthai_state.get_connected_cameras()),
+                                                                pair.1.display_name(ctx.depthai_state.get_connected_cameras())
                                                             ),
                                                         );
                                                     }
@@ -382,20 +528,20 @@ impl DeviceSettingsPanel {
                                             ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "LR Check",
-                                                &mut depth.lr_check,
+                                                &mut stereo.lr_check,
                                             );
                                             ctx.re_ui.labeled_combo_box(
                                                 ui,
                                                 "Align to",
-                                                depth.align.display_name(ctx),
+                                                stereo.align.display_name(ctx.depthai_state.get_connected_cameras()),
                                                 false,
                                                 true,
                                                 |ui| {
-                                                    for align in &connected_cameras {
+                                                    for align in ctx.depthai_state.get_connected_cameras() {
                                                         ui.selectable_value(
-                                                            &mut depth.align,
+                                                            &mut stereo.align,
                                                             align.board_socket,
-                                                            align.board_socket.display_name(ctx),
+                                                            align.board_socket.display_name(ctx.depthai_state.get_connected_cameras()),
                                                         );
                                                     }
                                                 },
@@ -403,14 +549,14 @@ impl DeviceSettingsPanel {
                                             ctx.re_ui.labeled_combo_box(
                                                 ui,
                                                 "Median Filter",
-                                                format!("{:?}", depth.median),
+                                                format!("{:?}", stereo.median),
                                                 false,
                                                 true,
                                                 |ui| {
-                                                    for filter in depthai::DepthMedianFilter::iter()
+                                                    for filter in depthai::MedianFilter::iter()
                                                     {
                                                         ui.selectable_value(
-                                                            &mut depth.median,
+                                                            &mut stereo.median,
                                                             filter,
                                                             format!("{filter:?}"),
                                                         );
@@ -422,25 +568,25 @@ impl DeviceSettingsPanel {
                                                 egui::Id::from("LR Threshold"),
                                                 Some(100.0),
                                                 "LR Threshold",
-                                                &mut depth.lrc_threshold,
+                                                &mut stereo.lrc_threshold,
                                                 0..=10,
                                             );
                                             ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "Extended Disparity",
-                                                &mut depth.extended_disparity,
+                                                &mut stereo.extended_disparity,
                                             );
                                             ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "Subpixel Disparity",
-                                                &mut depth.subpixel_disparity,
+                                                &mut stereo.subpixel_disparity,
                                             );
                                             ctx.re_ui.labeled_dragvalue(
                                                 ui,
                                                 egui::Id::from("Sigma"),
                                                 Some(100.0),
                                                 "Sigma",
-                                                &mut depth.sigma,
+                                                &mut stereo.sigma,
                                                 0..=65535,
                                             );
                                             ctx.re_ui.labeled_dragvalue(
@@ -448,7 +594,7 @@ impl DeviceSettingsPanel {
                                                 egui::Id::from("Confidence"),
                                                 Some(100.0),
                                                 "Confidence",
-                                                &mut depth.confidence,
+                                                &mut stereo.confidence,
                                                 0..=255,
                                             );
                                             ctx.re_ui.labeled_toggle_switch(
@@ -469,8 +615,9 @@ impl DeviceSettingsPanel {
                                 },
                             );
 
-                            device_config.depth = Some(depth);
+                            device_config.stereo = Some(stereo);
                             ctx.depthai_state.modified_device_config = device_config.clone();
+
                             ui.vertical(|ui| {
                                 ui.horizontal(|ui| {
                                     let apply_enabled = {

@@ -113,10 +113,18 @@ impl SpaceView {
                 {
                     if is_3d {
                         is_depthai_spaceview = true;
-                        format!("{} ({})", camera.board_socket.display_name(ctx), "3D")
+                        format!(
+                            "{} ({})",
+                            camera.board_socket.display_name(camera_features),
+                            "3D"
+                        )
                     } else if is_2d {
                         is_depthai_spaceview = true;
-                        format!("{} ({})", camera.board_socket.display_name(ctx), "2D")
+                        format!(
+                            "{} ({})",
+                            camera.board_socket.display_name(camera_features),
+                            "2D"
+                        )
                     } else {
                         space_path.iter().last().unwrap().to_string()
                     }
@@ -146,9 +154,18 @@ impl SpaceView {
         }
     }
 
-
     pub fn duplicate(&self, ctx: &ViewerContext<'_>) -> Self {
-        Self::new(ctx, self.category, &self.space_path, self.data_blueprint.entity_paths().iter().cloned().collect_vec().as_slice())
+        Self::new(
+            ctx,
+            self.category,
+            &self.space_path,
+            self.data_blueprint
+                .entity_paths()
+                .iter()
+                .cloned()
+                .collect_vec()
+                .as_slice(),
+        )
     }
 
     pub fn on_frame_start(

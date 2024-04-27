@@ -14,6 +14,7 @@ class MessageType:
     DEVICE = "DeviceProperties"  # Get or set device
     SET_FLOOD_BRIGHTNESS = "SetFloodBrightness"  # Set floodlight
     SET_DOT_BRIGHTNESS = "SetDotBrightness"  # Set floodlight
+    SET_TOF_CONFIG = "SetToFConfig"  # Set ToF config
     ERROR = "Error"  # Error message
     INFO = "Info"  # Info message
     WARNING = "Warning"  # Warning message

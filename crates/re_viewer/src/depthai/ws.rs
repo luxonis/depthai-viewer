@@ -89,6 +89,7 @@ pub enum WsMessageData {
     Error(depthai::Error),
     Info(depthai::Info),
     Warning(depthai::Warning),
+    SetToFConfig((depthai::CameraBoardSocket, depthai::ToFConfig)),
 }
 
 #[derive(Deserialize, Serialize, fmt::Debug)]
@@ -102,6 +103,7 @@ pub enum WsMessageType {
     Error,
     Info,
     Warning,
+    SetToFConfig,
 }
 
 impl Default for WsMessageType {
@@ -160,6 +162,9 @@ impl<'de> Deserialize<'de> for BackWsMessage {
             WsMessageType::SetFloodBrightness => {
                 WsMessageData::SetFloodBrightness(serde_json::from_value(message.data).unwrap())
             }
+            WsMessageType::SetToFConfig => {
+                WsMessageData::SetToFConfig(serde_json::from_value(message.data).unwrap())
+            }
         };
 
         Ok(Self {
@@ -173,7 +178,7 @@ impl<'de> Deserialize<'de> for BackWsMessage {
 impl Default for BackWsMessage {
     fn default() -> Self {
         Self {
-            kind: WsMessageType::Error.into(),
+            kind: WsMessageType::Error,
             data: WsMessageData::Error(depthai::Error::default()),
             message: None,
         }
@@ -194,15 +199,14 @@ pub struct WebSocket {
 
 impl Default for WebSocket {
     fn default() -> Self {
-        Self {
-            inner: None
-        }
+        Self { inner: None }
     }
 }
 
 impl WebSocket {
-
-    pub fn is_initialized(&self) -> bool {self.inner.is_some()}
+    pub fn is_initialized(&self) -> bool {
+        self.inner.is_some()
+    }
 
     pub fn connect(&mut self, port: u32) {
         re_log::debug!("Creating websocket client");
@@ -236,30 +240,28 @@ impl WebSocket {
                 ));
         }
 
-        self.inner = Some(
-            WsInner {
-                receiver: recv_rx,
-                sender: send_tx,
-                shutdown,
-                task,
-                connected
-            }
-        );
+        self.inner = Some(WsInner {
+            receiver: recv_rx,
+            sender: send_tx,
+            shutdown,
+            task,
+            connected,
+        });
     }
 
     pub fn is_connected(&self) -> bool {
         match &self.inner {
-            Some(ws_state) => {
-                ws_state.connected.load(std::sync::atomic::Ordering::SeqCst)
-            },
-            None => false
+            Some(ws_state) => ws_state.connected.load(std::sync::atomic::Ordering::SeqCst),
+            None => false,
         }
     }
 
     pub fn shutdown(&mut self) {
         match &mut self.inner {
-            Some(ws_state) => ws_state.shutdown.store(true, std::sync::atomic::Ordering::SeqCst),
-            None => ()
+            Some(ws_state) => ws_state
+                .shutdown
+                .store(true, std::sync::atomic::Ordering::SeqCst),
+            None => (),
         }
     }
 
@@ -287,8 +289,8 @@ impl WebSocket {
                 } else {
                     None
                 }
-            },
-            None => None
+            }
+            None => None,
         }
     }
 
@@ -300,9 +302,8 @@ impl WebSocket {
                 // This makes the websocket actually send the previous msg
                 // It has to be something related to tokio::spawn, because it works fine when just running in the current thread
                 ws_state.sender.send(WsMessage::Text("".to_string()));
-            },
-            None => ()
+            }
+            None => (),
         }
-
     }
 }

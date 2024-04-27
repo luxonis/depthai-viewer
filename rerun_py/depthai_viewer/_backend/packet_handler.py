@@ -205,7 +205,7 @@ class PacketHandler:
         depth_frame = packet.frame
         cam = "color_cam" if component._align_component.is_color() else "mono_cam"
         path = f"{component._align_component._socket.name}/transform/{cam}" + "/Depth"
-        if not self.store.pipeline_config or not self.store.pipeline_config.depth:
+        if not self.store.pipeline_config or not self.store.pipeline_config.stereo:
             # Essentially impossible to get here
             return
         viewer.log_depth_image(path, depth_frame, meter=1e3)

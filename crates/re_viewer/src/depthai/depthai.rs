@@ -101,8 +101,7 @@ impl Default for CameraBoardSocket {
 }
 
 impl CameraBoardSocket {
-    pub fn display_name(&self, ctx: &ViewerContext<'_>) -> String {
-        let camera_features = ctx.depthai_state.get_connected_cameras();
+    pub fn display_name(&self, camera_features: &Vec<CameraFeatures>) -> String {
         if let Some(cam) = camera_features.iter().find(|cam| cam.board_socket == *self) {
             if !cam.name.is_empty() {
                 return format!("{} ({self:?})", cam.name);
@@ -186,6 +185,7 @@ pub struct CameraFeatures {
     pub stereo_pairs: Vec<CameraBoardSocket>, // Which cameras can be paired with this one
     pub name: String,
     pub intrinsics: Option<[[f32; 3]; 3]>,
+    pub tof_config: Option<ToFConfig>,
 }
 
 impl CameraFeatures {
@@ -234,14 +234,14 @@ impl fmt::Display for DepthProfilePreset {
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Debug, EnumIter)]
 #[allow(non_camel_case_types)]
-pub enum DepthMedianFilter {
+pub enum MedianFilter {
     MEDIAN_OFF,
     KERNEL_3x3,
     KERNEL_5x5,
     KERNEL_7x7,
 }
 
-impl Default for DepthMedianFilter {
+impl Default for MedianFilter {
     fn default() -> Self {
         Self::KERNEL_7x7
     }
@@ -249,7 +249,7 @@ impl Default for DepthMedianFilter {
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Debug)]
 pub struct StereoDepthConfig {
-    pub median: DepthMedianFilter,
+    pub median: MedianFilter,
     pub lr_check: bool,
     pub lrc_threshold: u64,
     pub extended_disparity: bool,
@@ -263,7 +263,7 @@ pub struct StereoDepthConfig {
 impl Default for StereoDepthConfig {
     fn default() -> Self {
         Self {
-            median: DepthMedianFilter::default(),
+            median: MedianFilter::default(),
             lr_check: true,
             lrc_threshold: 5,
             extended_disparity: false,
@@ -303,7 +303,7 @@ impl From<&DeviceProperties> for Option<StereoDepthConfig> {
         if let Some((cam_a, cam_b)) = props.default_stereo_pair {
             config.stereo_pair = (cam_a, cam_b);
         } else {
-            // Better to not configure depth if there's no default stereo pair - let the user do it if they really want to...
+            // Better to not configure stereo if there's no default stereo pair - let the user do it if they really want to...
             return None;
         }
         config.align =
@@ -323,7 +323,7 @@ pub struct DeviceConfig {
     #[serde(default = "bool_true")]
     pub depth_enabled: bool, // Much easier to have an explicit bool for checkbox
     #[serde(default = "StereoDepthConfig::default_as_option")]
-    pub depth: Option<StereoDepthConfig>,
+    pub stereo: Option<StereoDepthConfig>,
     pub ai_model: Option<AiModel>,
     #[serde(skip)]
     pub dot_brightness: u32,
@@ -337,11 +337,135 @@ impl Default for DeviceConfig {
             auto: false,
             cameras: Vec::new(),
             depth_enabled: true,
-            depth: Some(StereoDepthConfig::default()),
+            stereo: Some(StereoDepthConfig::default()),
             ai_model: None,
             dot_brightness: 0,
             flood_brightness: 0,
         }
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Debug)]
+pub struct ToFConfig {
+    median: MedianFilter,
+    phase_unwrapping_level: i32,
+    phase_unwrap_error_threshold: u16,
+    enable_fppn_correction: Option<bool>,
+    enable_optical_correction: Option<bool>,
+    enable_temperature_correction: Option<bool>,
+    enable_wiggle_correction: Option<bool>,
+    enable_phase_unwrapping: Option<bool>,
+    #[serde(skip)]
+    modified: bool,
+}
+
+impl Default for ToFConfig {
+    fn default() -> Self {
+        Self {
+            median: MedianFilter::MEDIAN_OFF,
+            phase_unwrapping_level: 4,
+            phase_unwrap_error_threshold: 100,
+            enable_fppn_correction: None,
+            enable_optical_correction: None,
+            enable_temperature_correction: None,
+            enable_wiggle_correction: None,
+            enable_phase_unwrapping: None,
+            modified: false,
+        }
+    }
+}
+
+impl ToFConfig {
+    pub fn get_median_filter(&self) -> MedianFilter {
+        self.median
+    }
+
+    pub fn get_phase_unwrapping_level(&self) -> i32 {
+        self.phase_unwrapping_level
+    }
+
+    pub fn get_phase_unwrap_error_threshold(&self) -> u16 {
+        self.phase_unwrap_error_threshold
+    }
+
+    pub fn get_enable_fppn_correction(&self) -> Option<bool> {
+        self.enable_fppn_correction
+    }
+
+    pub fn get_enable_optical_correction(&self) -> Option<bool> {
+        self.enable_optical_correction
+    }
+
+    pub fn get_enable_temperature_correction(&self) -> Option<bool> {
+        self.enable_temperature_correction
+    }
+
+    pub fn get_enable_wiggle_correction(&self) -> Option<bool> {
+        self.enable_wiggle_correction
+    }
+
+    pub fn get_enable_phase_unwrapping(&self) -> Option<bool> {
+        self.enable_phase_unwrapping
+    }
+
+    pub fn set_median_filter(&mut self, median: MedianFilter) {
+        if self.median != median {
+            self.modified = true;
+        }
+        self.median = median;
+    }
+
+    pub fn set_phase_unwrapping_level(&mut self, level: i32) {
+        if self.phase_unwrapping_level != level {
+            self.modified = true;
+        }
+        self.phase_unwrapping_level = level;
+    }
+
+    pub fn set_phase_unwrap_error_threshold(&mut self, threshold: u16) {
+        if self.phase_unwrap_error_threshold != threshold {
+            self.modified = true;
+        }
+        self.phase_unwrap_error_threshold = threshold;
+    }
+
+    pub fn set_enable_fppn_correction(&mut self, enable: Option<bool>) {
+        if self.enable_fppn_correction != enable {
+            self.modified = true;
+        }
+        self.enable_fppn_correction = enable;
+    }
+
+    pub fn set_enable_optical_correction(&mut self, enable: Option<bool>) {
+        if self.enable_optical_correction != enable {
+            self.modified = true;
+        }
+        self.enable_optical_correction = enable;
+    }
+
+    pub fn set_enable_temperature_correction(&mut self, enable: Option<bool>) {
+        if self.enable_temperature_correction != enable {
+            self.modified = true;
+        }
+        self.enable_temperature_correction = enable;
+    }
+
+    pub fn set_enable_wiggle_correction(&mut self, enable: Option<bool>) {
+        if self.enable_wiggle_correction != enable {
+            self.modified = true;
+        }
+        self.enable_wiggle_correction = enable;
+    }
+
+    pub fn set_enable_phase_unwrapping(&mut self, enable: Option<bool>) {
+        if self.enable_phase_unwrapping != enable {
+            self.modified = true;
+        }
+        self.enable_phase_unwrapping = enable;
+    }
+
+    pub fn is_modified(&self) -> bool {
+        self.modified
     }
 }
 
@@ -371,7 +495,7 @@ impl From<&DeviceProperties> for DeviceConfig {
                 kind: *cam.supported_types.first().unwrap(),
             })
             .collect();
-        config.depth = Option::<StereoDepthConfig>::from(props);
+        config.stereo = Option::<StereoDepthConfig>::from(props);
         config.ai_model = Option::<AiModel>::from(props);
         config
     }
@@ -410,7 +534,7 @@ pub enum CameraImageOrientation {
 
 impl PartialEq for DeviceConfig {
     fn eq(&self, other: &Self) -> bool {
-        let depth_eq = match (&self.depth, &other.depth) {
+        let depth_eq = match (&self.stereo, &other.stereo) {
             (Some(a), Some(b)) => a == b,
             _ => true, // If one is None, it's only different if depth_enabled is different
         };
@@ -438,8 +562,8 @@ impl fmt::Debug for DeviceConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Device config: cams: {:?}, depth: {:?}, ai_model: {:?}, depth_enabled: {:?}",
-            self.cameras, self.depth, self.ai_model, self.depth_enabled
+            "Device config: cams: {:?}, stereo: {:?}, ai_model: {:?}, depth_enabled: {:?}",
+            self.cameras, self.stereo, self.ai_model, self.depth_enabled
         )
     }
 }
@@ -502,7 +626,7 @@ impl Default for AiModel {
     fn default() -> Self {
         match default_neural_networks()[2].clone() {
             Some(model) => model,
-            None => panic!("Default neural network not found!")
+            None => panic!("Default neural network not found!"),
         }
     }
 }
@@ -628,7 +752,7 @@ fn default_neural_networks() -> Vec<Option<AiModel>> {
         Some(AiModel {
             path: String::from("yolov6n_thermal_people_256x192"),
             display_name: String::from("Thermal Person Detection"),
-            camera: CameraBoardSocket::CAM_E
+            camera: CameraBoardSocket::CAM_E,
         }),
     ]
 }
@@ -669,7 +793,7 @@ impl State {
         old_config: &DeviceConfig,
         new_config: &DeviceConfig,
     ) -> bool {
-        let any_runtime_conf_changed = match (&old_config.depth, &new_config.depth) {
+        let any_runtime_conf_changed = match (&old_config.stereo, &new_config.stereo) {
             (Some(old_depth), Some(new_depth)) => old_depth.only_runtime_configs_differ(new_depth),
             _ => false,
         };
@@ -704,6 +828,9 @@ impl State {
     pub fn get_connected_cameras(&self) -> &Vec<CameraFeatures> {
         &self.selected_device.cameras
     }
+    pub fn get_connected_cameras_mut(&mut self) -> &mut Vec<CameraFeatures> {
+        &mut self.selected_device.cameras
+    }
 
     pub fn shutdown(&mut self) {
         self.backend_comms.shutdown();
@@ -723,7 +850,9 @@ impl State {
                 self.set_update_in_progress(false);
             }
         }
-
+        // TODO(filip): this architecture is suboptimal..
+        // no concise way to get a reply for a specific message.
+        // Each SET should be ack or nack(message) by backend... this is very hacky I don't like it.
         if let Some(ws_message) = self.backend_comms.receive() {
             re_log::debug!("Received message: {:?}", ws_message);
             match ws_message.data {
@@ -758,7 +887,7 @@ impl State {
                 }
                 WsMessageData::Pipeline((config, _)) => {
                     let mut subs = self.subscriptions.clone();
-                    if config.depth.is_some() {
+                    if config.stereo.is_some() {
                         subs.push(ChannelId::DepthImage);
                     }
                     if let Some(color_camera) =
@@ -787,9 +916,9 @@ impl State {
                         self.applied_device_config.update_in_progress = false;
                         return;
                     };
-                    applied_device_config.depth_enabled = config.depth.is_some();
+                    applied_device_config.depth_enabled = config.stereo.is_some();
                     self.modified_device_config.depth_enabled =
-                        self.modified_device_config.depth.is_some();
+                        self.modified_device_config.stereo.is_some();
                     self.modified_device_config.auto = false; // Always reset auto
                     self.set_subscriptions(&subs);
                     self.set_update_in_progress(false);
@@ -830,6 +959,32 @@ impl State {
                 }
                 WsMessageData::SetFloodBrightness(_brightness) => {
                     re_log::debug!("Set flood brightness received from backend.")
+                }
+                WsMessageData::SetToFConfig((_board_socket, _config)) => {
+                    re_log::debug!("SetToFConfig received from backend.")
+                }
+            }
+        }
+
+        if let Some(active_config) = &self.applied_device_config.config {
+            for tof in active_config
+                .cameras
+                .iter()
+                .filter(|cam| cam.kind == CameraSensorKind::TOF)
+            {
+                if let Some(cam) = self
+                    .selected_device
+                    .cameras
+                    .iter_mut()
+                    .find(|c| c.board_socket == tof.board_socket)
+                {
+                    if let Some(tof_config) = &mut cam.tof_config {
+                        if tof_config.is_modified() {
+                            tof_config.modified = false;
+                            self.backend_comms
+                                .set_tof_config(cam.board_socket, *tof_config);
+                        }
+                    }
                 }
             }
         }
@@ -876,11 +1031,11 @@ impl State {
             return;
         }
         if !config.depth_enabled {
-            config.depth = None;
+            config.stereo = None;
         }
 
         if !self.selected_device.has_stereo_pairs() {
-            config.depth = None;
+            config.stereo = None;
         }
 
         if self.selected_device.id.is_empty() {

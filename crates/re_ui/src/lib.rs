@@ -316,20 +316,27 @@ impl ReUi {
         response
     }
 
-    pub fn labeled_toggle_switch(&self, ui: &mut egui::Ui, label: &str, value: &mut bool) {
+    pub fn labeled_toggle_switch(
+        &self,
+        ui: &mut egui::Ui,
+        label: &str,
+        value: &mut bool,
+    ) -> egui::Response {
         let text_color = ui.style().visuals.weak_text_color();
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_sized(
+            let toggle_response = ui.add_sized(
                 [Self::box_width(), Self::box_height()],
                 |ui: &mut egui::Ui| {
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                        ui.add(toggle_switch(value));
+                        ui.add(toggle_switch(value))
                     })
-                    .response
+                    .inner
                 },
             );
             ui.label(egui::RichText::new(label).color(text_color));
-        });
+            toggle_response
+        })
+        .inner
     }
 
     pub fn top_panel_frame(&self) -> egui::Frame {

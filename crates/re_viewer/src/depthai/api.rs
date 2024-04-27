@@ -1,5 +1,5 @@
 use super::depthai;
-use super::ws::{ BackWsMessage as WsMessage, WebSocket, WsMessageData, WsMessageType };
+use super::ws::{BackWsMessage as WsMessage, WebSocket, WsMessageData, WsMessageType};
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ApiError {
@@ -26,57 +26,53 @@ impl BackendCommChannel {
 
     pub fn set_subscriptions(&mut self, subscriptions: &Vec<depthai::ChannelId>) {
         self.ws.send(
-            serde_json
-                ::to_string(
-                    &(WsMessage {
-                        kind: WsMessageType::Subscriptions,
-                        data: WsMessageData::Subscriptions(subscriptions.clone()),
-                        ..Default::default()
-                    })
-                )
-                .unwrap()
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Subscriptions,
+                    data: WsMessageData::Subscriptions(subscriptions.clone()),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
         );
     }
 
     pub fn set_pipeline(&mut self, config: &depthai::DeviceConfig, runtime_only: bool) {
         self.ws.send(
-            serde_json
-                ::to_string(
-                    &(WsMessage {
-                        kind: WsMessageType::Pipeline,
-                        data: WsMessageData::Pipeline((config.clone(), runtime_only)),
-                        ..Default::default()
-                    })
-                )
-                .unwrap()
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Pipeline,
+                    data: WsMessageData::Pipeline((config.clone(), runtime_only)),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
         );
     }
 
     pub fn set_dot_brightness(&mut self, brightness: u32) {
         self.ws.send(
-            serde_json
-                ::to_string(
-                    &(WsMessage {
-                        kind: WsMessageType::SetDotBrightness,
-                        data: WsMessageData::SetDotBrightness(brightness),
-                        ..Default::default()
-                    })
-                )
-                .unwrap()
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::SetDotBrightness,
+                    data: WsMessageData::SetDotBrightness(brightness),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
         );
     }
 
     pub fn set_flood_brightness(&mut self, brightness: u32) {
         self.ws.send(
-            serde_json
-                ::to_string(
-                    &(WsMessage {
-                        kind: WsMessageType::SetFloodBrightness,
-                        data: WsMessageData::SetFloodBrightness(brightness),
-                        ..Default::default()
-                    })
-                )
-                .unwrap()
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::SetFloodBrightness,
+                    data: WsMessageData::SetFloodBrightness(brightness),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
         );
     }
 
@@ -86,32 +82,47 @@ impl BackendCommChannel {
 
     pub fn get_devices(&mut self) {
         self.ws.send(
-            serde_json
-                ::to_string(
-                    &(WsMessage {
-                        kind: WsMessageType::Devices,
-                        data: WsMessageData::Devices(Vec::new()),
-                        ..Default::default()
-                    })
-                )
-                .unwrap()
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Devices,
+                    data: WsMessageData::Devices(Vec::new()),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
         );
     }
 
     pub fn select_device(&mut self, device_id: depthai::DeviceId) {
         self.ws.send(
-            serde_json
-                ::to_string(
-                    &(WsMessage {
-                        kind: WsMessageType::DeviceProperties,
-                        data: WsMessageData::DeviceProperties(depthai::DeviceProperties {
-                            id: device_id,
-                            ..Default::default()
-                        }),
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::DeviceProperties,
+                    data: WsMessageData::DeviceProperties(depthai::DeviceProperties {
+                        id: device_id,
                         ..Default::default()
-                    })
-                )
-                .unwrap()
+                    }),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
+        );
+    }
+
+    pub fn set_tof_config(
+        &mut self,
+        socket: depthai::CameraBoardSocket,
+        config: depthai::ToFConfig,
+    ) {
+        self.ws.send(
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::SetToFConfig,
+                    data: WsMessageData::SetToFConfig((socket, config)),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
         );
     }
 }

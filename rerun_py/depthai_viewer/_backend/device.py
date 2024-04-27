@@ -10,6 +10,7 @@ import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
+from depthai_sdk.components.tof_component import ToFComponent
 from depthai_sdk.components.camera_helper import getClosestIspScale
 from depthai_sdk.components.tof_component import Component
 from numpy.typing import NDArray
@@ -25,6 +26,7 @@ from depthai_viewer._backend.device_configuration import (
     ImuKind,
     PipelineConfiguration,
     StereoDepthConfiguration,
+    ToFConfig,
     XLinkConnection,
     calculate_isp_scale,
     compare_dai_camera_configs,
@@ -87,6 +89,7 @@ class Device:
     _pipeline_start_t: Optional[float] = None
     _queues: List[Tuple[Component, ComponentOutput]] = []
     _dai_queues: List[Tuple[dai.Node, dai.DataOutputQueue, Optional[PacketHandlerContext]]] = []
+    _tof_component: Optional[ToFComponent] = None
 
     # _profiler = cProfile.Profile()
 
@@ -235,6 +238,7 @@ class Device:
                     supported_types=cam.supportedTypes,
                     stereo_pairs=self._get_possible_stereo_pairs_for_cam(cam, connected_cam_features),
                     name=cam.name.capitalize(),
+                    tof_config=ToFConfig() if dai.CameraSensorType.TOF in cam.supportedTypes else None,
                 )
             )
         device_properties.stereo_pairs = list(
@@ -337,14 +341,14 @@ class Device:
                 left_cam = calibration.getStereoLeftCameraId()
                 right_cam = calibration.getStereoRightCameraId()
                 if left_cam.value != 255 and right_cam.value != 255:
-                    config.depth = StereoDepthConfiguration(
+                    config.stereo = StereoDepthConfiguration(
                         stereo_pair=(left_cam, right_cam),
                         align=rgb_cam_socket if rgb_cam_socket is not None else left_cam,
                     )
             except RuntimeError:
                 calibration = None
         else:
-            config.depth = None
+            config.stereo = None
         # 3. Create YOLO
         nnet_cam_sock = rgb_cam_socket
         if nnet_cam_sock is None:
@@ -375,8 +379,8 @@ class Device:
 
         if self._oak.device.isPipelineRunning():
             if runtime_only:
-                if config.depth is not None:
-                    self._stereo.control.send_controls(config.depth.to_runtime_controls())
+                if config.stereo is not None:
+                    self._stereo.control.send_controls(config.stereo.to_runtime_controls())
                     return InfoMessage("")
                 return ErrorMessage("Depth is disabled, can't send runtime controls!")
             print("Cam running, closing...")
@@ -446,8 +450,8 @@ class Device:
                 sensor_resolution = size_to_resolution.get(
                     (smallest_supported_resolution.width, smallest_supported_resolution.height), None
                 )
-            is_used_by_depth = config.depth is not None and (
-                cam.board_socket == config.depth.align or cam.board_socket in config.depth.stereo_pair
+            is_used_by_depth = config.stereo is not None and (
+                cam.board_socket == config.stereo.align or cam.board_socket in config.stereo.stereo_pair
             )
             is_used_by_ai = config.ai_model is not None and cam.board_socket == config.ai_model.camera
             cam.stream_enabled |= is_used_by_depth or is_used_by_ai
@@ -456,6 +460,7 @@ class Device:
             if cam.stream_enabled:
                 if dai.CameraSensorType.TOF in camera_features.supportedTypes:
                     sdk_cam = self._oak.create_tof(cam.board_socket)
+                    self._tof_component = sdk_cam
                     self._queues.append((sdk_cam, self._oak.queue(sdk_cam.out.main)))
                 elif dai.CameraSensorType.THERMAL in camera_features.supportedTypes:
                     thermal_cam = self._oak.pipeline.create(dai.node.Camera)
@@ -485,9 +490,9 @@ class Device:
                     print("Skipped creating camera:", cam.board_socket, "because no valid sensor resolution was found.")
                     continue
 
-        if config.depth:
+        if config.stereo:
             print("Creating depth")
-            stereo_pair = config.depth.stereo_pair
+            stereo_pair = config.stereo.stereo_pair
             left_cam = self._get_component_by_socket(stereo_pair[0])
             right_cam = self._get_component_by_socket(stereo_pair[1])
             if not left_cam or not right_cam:
@@ -501,21 +506,21 @@ class Device:
                 right_cam.config_color_camera(isp_scale=calculate_isp_scale(right_cam.node.getResolutionWidth()))
             self._stereo = self._oak.create_stereo(left=left_cam, right=right_cam, name="depth")
 
-            align_component = self._get_component_by_socket(config.depth.align)
+            align_component = self._get_component_by_socket(config.stereo.align)
             if not align_component:
-                return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
+                return ErrorMessage(f"{config.stereo.align} is not configured. Couldn't create stereo pair.")
             self._stereo.config_stereo(
-                lr_check=config.depth.lr_check,
-                subpixel=config.depth.subpixel_disparity,
-                confidence=config.depth.confidence,
+                lr_check=config.stereo.lr_check,
+                subpixel=config.stereo.subpixel_disparity,
+                confidence=config.stereo.confidence,
                 align=align_component,
-                lr_check_threshold=config.depth.lrc_threshold,
-                median=config.depth.median,
+                lr_check_threshold=config.stereo.lrc_threshold,
+                median=config.stereo.median,
             )
 
-            aligned_camera = self._get_camera_config_by_socket(config, config.depth.align)
+            aligned_camera = self._get_camera_config_by_socket(config, config.stereo.align)
             if not aligned_camera:
-                return ErrorMessage(f"{config.depth.align} is not configured. Couldn't create stereo pair.")
+                return ErrorMessage(f"{config.stereo.align} is not configured. Couldn't create stereo pair.")
             self._queues.append((self._stereo, self._oak.queue(self._stereo.out.main)))
 
         if self._oak.device.getConnectedIMU() != "NONE" and self._oak.device.getConnectedIMU() != "":
@@ -649,6 +654,9 @@ class Device:
         #     self._profiler.disable()
         #     self._profiler.enable()
         #     self.start = time.time()
+
+    def get_tof_component(self) -> Optional[ToFComponent]:
+        return self._tof_component
 
 
 def print_system_information(info: dai.SystemInformation) -> None:

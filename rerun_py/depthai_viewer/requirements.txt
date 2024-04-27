@@ -4,7 +4,7 @@ setuptools
 ahrs
 # depthai_sdk conflicts with depthai, so it's installed seperatelly in __main__.py
 --extra-index-url https://artifacts.luxonis.com/artifactory/luxonis-python-snapshot-local
-depthai==2.25.0.0
+depthai==2.25.0.0.dev0+dca8245b0b1c52349b73e5a0bf23589b7c4ac3e8
 websockets
 pydantic==1.9
 deprecated
