@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
-
 from depthai_viewer import bindings
 from depthai_viewer.components.tensor import Colormap, ImageEncoding
 from depthai_viewer.log.error_utils import _send_warning
@@ -89,6 +88,8 @@ def log_depth_image(
     entity_path: str,
     image: Tensor,
     *,
+    min: Optional[float] = None,
+    max: Optional[float] = None,
     meter: Optional[float] = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
@@ -144,6 +145,8 @@ def log_depth_image(
             ext=ext,
             timeless=timeless,
             meaning=bindings.TensorDataMeaning.Depth,
+            depth_min=min,
+            depth_max=max,
         )
 
 

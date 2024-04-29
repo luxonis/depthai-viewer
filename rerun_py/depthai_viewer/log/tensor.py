@@ -2,7 +2,6 @@ from typing import Any, Dict, Iterable, Optional, Protocol, Union
 
 import numpy as np
 import numpy.typing as npt
-
 from depthai_viewer import bindings
 from depthai_viewer.components.instance import InstanceArray
 from depthai_viewer.components.tensor import Colormap, ImageEncoding, TensorArray
@@ -18,8 +17,7 @@ __all__ = [
 class TorchTensorLike(Protocol):
     """Describes what is need from a Torch Tensor to be loggable to Rerun."""
 
-    def numpy(self, force: bool) -> npt.NDArray[Any]:
-        ...
+    def numpy(self, force: bool) -> npt.NDArray[Any]: ...
 
 
 Tensor = Union[npt.ArrayLike, TorchTensorLike]
@@ -88,6 +86,8 @@ def _log_tensor(
     encoding: Optional[ImageEncoding] = None,
     colormap: Optional[Colormap] = None,
     unit: Optional[str] = None,
+    depth_min: Optional[float] = None,
+    depth_max: Optional[float] = None,
 ) -> None:
     """Log a general tensor, perhaps with named dimensions."""
 
@@ -130,7 +130,9 @@ def _log_tensor(
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
 
-    instanced["rerun.tensor"] = TensorArray.from_numpy(tensor, encoding, colormap, names, meaning, meter, unit)
+    instanced["rerun.tensor"] = TensorArray.from_numpy(
+        tensor, encoding, colormap, names, meaning, meter, unit, depth_min, depth_max
+    )
 
     if ext:
         _add_extension_components(instanced, splats, ext, None)

@@ -945,6 +945,8 @@ fn log_image_file(
         meter: None,
         colormap: TensorColormap::None,
         unit: None,
+        depth_min: None,
+        depth_max: None,
     };
 
     let row = DataRow::from_cells1(

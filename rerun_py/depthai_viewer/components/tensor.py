@@ -7,7 +7,6 @@ from typing import Final, Iterable, Union, cast
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
-
 from depthai_viewer import bindings
 from depthai_viewer.components import (
     REGISTERED_COMPONENT_NAMES,
@@ -75,6 +74,8 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
         meaning: bindings.TensorDataMeaning = None,
         meter: float | None = None,
         unit: str | None = None,
+        depth_min: float | None = None,
+        depth_max: float | None = None,
     ) -> TensorArray:
         """Build a `TensorArray` from an numpy array."""
         # Build a random tensor_id
@@ -122,9 +123,17 @@ class TensorArray(pa.ExtensionArray):  # type: ignore[misc]
             meter = pa.array([meter], mask=[False], type=pa.float32())
 
         unit = pa.array([unit if unit is not None else ""], type=pa.string())
+        if depth_min is not None:
+            depth_min = pa.array([depth_min], type=pa.float64())
+        else:
+            depth_min = pa.array([0.0], mask=[True], type=pa.float64())
+        if depth_max is not None:
+            depth_max = pa.array([depth_max], type=pa.float64())
+        else:
+            depth_max = pa.array([0.0], mask=[True], type=pa.float64())
 
         storage = pa.StructArray.from_arrays(
-            [tensor_id, shape, data, meaning, meter, colormap, unit],
+            [tensor_id, shape, data, meaning, meter, colormap, unit, depth_min, depth_max],
             fields=list(TensorType.storage_type),
         ).cast(TensorType.storage_type)
         storage.validate(full=True)

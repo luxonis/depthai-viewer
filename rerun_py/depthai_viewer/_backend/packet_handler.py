@@ -2,6 +2,7 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
+import depthai_viewer as viewer
 import numpy as np
 from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
@@ -22,13 +23,11 @@ from depthai_sdk.components import (
     StereoComponent,
 )
 from depthai_sdk.components.tof_component import ToFComponent
-from numpy.typing import NDArray
-from pydantic import BaseModel
-
-import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
+from numpy.typing import NDArray
+from pydantic import BaseModel
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
@@ -219,7 +218,10 @@ class PacketHandler:
         viewer.log_rigid3(
             f"{component.camera_socket.name}/transform", child_from_parent=([0, 0, 0], [1, 0, 0, 0]), xyz="RDF"
         )
-        intrinsics = np.array([[471.451, 0.0, 317.897], [0.0, 471.539, 245.027], [0.0, 0.0, 1.0]])
+        try:
+            intrinsics = self._get_camera_intrinsics(component.camera_socket, 640, 480)
+        except:
+            intrinsics = np.array([[471.451, 0.0, 317.897], [0.0, 471.539, 245.027], [0.0, 0.0, 1.0]])
         viewer.log_pinhole(
             f"{component.camera_socket.name}/transform/tof",
             child_from_parent=intrinsics,
@@ -228,7 +230,13 @@ class PacketHandler:
         )
 
         path = f"{component.camera_socket.name}/transform/tof/Depth"
-        viewer.log_depth_image(path, depth_frame, meter=1e3)
+        viewer.log_depth_image(
+            path,
+            depth_frame,
+            meter=1e3,
+            min=200.0,
+            max=1874 * ((self.store.tof_config.phaseUnwrappingLevel if self.store.tof_config else 4.0) + 1),
+        )
 
     def _on_detections(self, packet: DetectionPacket, component: NNComponent) -> None:
         rects, colors, labels = self._detections_to_rects_colors_labels(packet, component.get_labels())

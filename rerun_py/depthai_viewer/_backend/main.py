@@ -5,7 +5,6 @@ from queue import Empty as QueueEmptyException
 from typing import Optional
 
 import sentry_sdk
-
 from depthai_viewer import version as depthai_viewer_version
 from depthai_viewer._backend.config_api import Action, start_api
 from depthai_viewer._backend.device import Device
@@ -151,7 +150,9 @@ class DepthaiViewerBack:
             if self._device and self._device._oak:
                 if tof_component := self._device.get_tof_component():
                     if tof_config := kwargs.get("tof_config", None):
-                        tof_component.control.send_controls(tof_config.to_dai())
+                        tof_cfg = tof_config.to_dai()
+                        self.store.set_tof_config(tof_cfg)
+                        tof_component.control.send_controls(tof_cfg)
                         return InfoMessage("ToF config updated successfully")
                     return ErrorMessage("ToF config not provided")
                 return ErrorMessage("Failed to update ToF config. ToF node wasn't found.")

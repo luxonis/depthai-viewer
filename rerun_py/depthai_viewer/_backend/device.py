@@ -6,15 +6,13 @@ from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
+import depthai_viewer as viewer
 import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
 from depthai_sdk.components.camera_helper import getClosestIspScale
 from depthai_sdk.components.tof_component import Component, ToFComponent
-from numpy.typing import NDArray
-
-import depthai_viewer as viewer
 from depthai_viewer._backend.device_configuration import (
     ALL_NEURAL_NETWORKS,
     CameraConfiguration,
@@ -32,7 +30,7 @@ from depthai_viewer._backend.device_configuration import (
     get_size_from_resolution,
     size_to_resolution,
 )
-from depthai_viewer._backend.device_defaults import oak_t_default
+from depthai_viewer._backend.device_defaults import oak_d_sr_poe_default, oak_t_default
 from depthai_viewer._backend.messages import (
     ErrorMessage,
     InfoMessage,
@@ -46,6 +44,7 @@ from depthai_viewer._backend.packet_handler import (
 )
 from depthai_viewer._backend.store import Store
 from depthai_viewer.install_requirements import model_dir
+from numpy.typing import NDArray
 
 
 class XlinkStatistics:
@@ -223,7 +222,8 @@ class Device:
                         [
                             size_to_resolution.get((w, h), None)
                             for w, h in ordered_resolutions
-                            if (w * h) <= (biggest_height * biggest_width)
+                            if (w, h)
+                            in [(conf.width, conf.height) for conf in cam.configs if conf.type == prioritized_type]
                         ],
                     )
                 )
@@ -394,6 +394,8 @@ class Device:
         if config.auto:
             if self._oak.device.getDeviceName() == "OAK-T":
                 config = oak_t_default.config
+            elif self._oak.device.getDeviceName() == "OAK-D-SR-POE":
+                config = oak_d_sr_poe_default.config
             else:
                 self._create_auto_pipeline_config(config)
 
