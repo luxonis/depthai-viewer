@@ -2,7 +2,6 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
-import depthai_viewer as viewer
 import numpy as np
 from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
@@ -23,11 +22,13 @@ from depthai_sdk.components import (
     StereoComponent,
 )
 from depthai_sdk.components.tof_component import ToFComponent
+from numpy.typing import NDArray
+from pydantic import BaseModel
+
+import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-from numpy.typing import NDArray
-from pydantic import BaseModel
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
@@ -220,7 +221,7 @@ class PacketHandler:
         )
         try:
             intrinsics = self._get_camera_intrinsics(component.camera_socket, 640, 480)
-        except:
+        except Exception:
             intrinsics = np.array([[471.451, 0.0, 317.897], [0.0, 471.539, 245.027], [0.0, 0.0, 1.0]])
         viewer.log_pinhole(
             f"{component.camera_socket.name}/transform/tof",
@@ -235,7 +236,15 @@ class PacketHandler:
             depth_frame,
             meter=1e3,
             min=200.0,
-            max=1874 * ((self.store.tof_config.phaseUnwrappingLevel if self.store.tof_config else 4.0) + 1),
+            max=1874
+            * (
+                (
+                    self.store.tof_config.phaseUnwrappingLevel  # type: ignore[attr-defined]
+                    if self.store.tof_config
+                    else 4.0
+                )
+                + 1
+            ),
         )
 
     def _on_detections(self, packet: DetectionPacket, component: NNComponent) -> None:

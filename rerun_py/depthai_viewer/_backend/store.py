@@ -2,6 +2,7 @@ from multiprocessing import Queue
 from typing import List, Optional
 
 import depthai as dai
+
 from depthai_viewer._backend.device_configuration import PipelineConfiguration
 from depthai_viewer._backend.messages import Message
 from depthai_viewer._backend.topic import Topic

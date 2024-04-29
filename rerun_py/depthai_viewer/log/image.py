@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
+
 from depthai_viewer import bindings
 from depthai_viewer.components.tensor import Colormap, ImageEncoding
 from depthai_viewer.log.error_utils import _send_warning
@@ -109,6 +110,10 @@ def log_depth_image(
         Path to the image in the space hierarchy.
     image:
         A [Tensor][rerun.log.tensor.Tensor] representing the depth image to log.
+    min:
+        Optional minimum depth value.
+    max:
+        Optional maximum depth value.
     meter:
         How long is a meter in the given dtype?
         For instance: with uint16, perhaps meter=1000 which would mean

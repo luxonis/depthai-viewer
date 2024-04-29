@@ -2,6 +2,7 @@ from typing import Any, Dict, Iterable, Optional, Protocol, Union
 
 import numpy as np
 import numpy.typing as npt
+
 from depthai_viewer import bindings
 from depthai_viewer.components.instance import InstanceArray
 from depthai_viewer.components.tensor import Colormap, ImageEncoding, TensorArray
@@ -17,7 +18,8 @@ __all__ = [
 class TorchTensorLike(Protocol):
     """Describes what is need from a Torch Tensor to be loggable to Rerun."""
 
-    def numpy(self, force: bool) -> npt.NDArray[Any]: ...
+    def numpy(self, force: bool) -> npt.NDArray[Any]:
+        ...
 
 
 Tensor = Union[npt.ArrayLike, TorchTensorLike]
