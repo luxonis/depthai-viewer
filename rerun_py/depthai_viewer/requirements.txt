@@ -1,5 +1,5 @@
 numpy>=1.23
-pyarrow==10.0.1
+pyarrow==16.0.0
 setuptools
 ahrs
 # depthai_sdk conflicts with depthai, so it's installed seperatelly in __main__.py

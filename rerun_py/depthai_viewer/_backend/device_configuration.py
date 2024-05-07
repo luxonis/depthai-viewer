@@ -56,9 +56,7 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
                 "align": (
                     "RECTIFIED_LEFT"
                     if self.align == dai.CameraBoardSocket.LEFT
-                    else "RECTIFIED_RIGHT"
-                    if self.align == dai.CameraBoardSocket.RIGHT
-                    else "CENTER"
+                    else "RECTIFIED_RIGHT" if self.align == dai.CameraBoardSocket.RIGHT else "CENTER"
                 ),
                 "lr_check": self.lr_check,
                 "lrc_check_threshold": self.lrc_threshold,
@@ -235,10 +233,10 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
     phase_unwrapping_level: int = 4
     phase_unwrap_error_threshold: int = 100
     enable_phase_unwrapping: Optional[bool] = True
-    enable_fppn_correction: Optional[bool] = None
-    enable_optical_correction: Optional[bool] = None
-    enable_temperature_correction: Optional[bool] = None
-    enable_wiggle_correction: Optional[bool] = None
+    enable_fppn_correction: Optional[bool] = True
+    enable_optical_correction: Optional[bool] = True
+    enable_temperature_correction: Optional[bool] = False
+    enable_wiggle_correction: Optional[bool] = True
 
     class Config:
         arbitrary_types_allowed = True
@@ -323,9 +321,9 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     id: str
     cameras: List[CameraFeatures] = []
     imu: Optional[ImuKind]
-    stereo_pairs: List[
-        Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
-    ] = []  # Which cameras can be paired for stereo
+    stereo_pairs: List[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = (
+        []
+    )  # Which cameras can be paired for stereo
     default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
     info: DeviceInfo = DeviceInfo()
 
