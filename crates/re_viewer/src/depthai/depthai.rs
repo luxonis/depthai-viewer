@@ -860,10 +860,6 @@ impl State {
         &mut self.selected_device.cameras
     }
 
-    pub fn get_connected_cameras_mut(&mut self) -> &mut Vec<CameraFeatures> {
-        &mut self.selected_device.cameras
-    }
-
     pub fn shutdown(&mut self) {
         self.backend_comms.shutdown();
     }
