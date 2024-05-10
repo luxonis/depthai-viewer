@@ -31,7 +31,7 @@ from depthai_viewer._backend.device_configuration import (
     get_size_from_resolution,
     size_to_resolution,
 )
-from depthai_viewer._backend.device_defaults import oak_t_default
+from depthai_viewer._backend.device_defaults import oak_d_sr_poe_default, oak_t_default
 from depthai_viewer._backend.messages import (
     ErrorMessage,
     InfoMessage,
@@ -223,7 +223,8 @@ class Device:
                         [
                             size_to_resolution.get((w, h), None)
                             for w, h in ordered_resolutions
-                            if (w * h) <= (biggest_height * biggest_width)
+                            if (w, h)
+                            in [(conf.width, conf.height) for conf in cam.configs if conf.type == prioritized_type]
                         ],
                     )
                 )
@@ -394,6 +395,8 @@ class Device:
         if config.auto:
             if self._oak.device.getDeviceName() == "OAK-T":
                 config = oak_t_default.config
+            elif self._oak.device.getDeviceName() == "OAK-D-SR-POE":
+                config = oak_d_sr_poe_default.config
             else:
                 self._create_auto_pipeline_config(config)
 

@@ -2,24 +2,25 @@ use egui::NumExt;
 use glam::Vec3;
 use itertools::Itertools;
 
-use re_data_store::{ query_latest_single, EntityPath, EntityProperties, EditableAutoValue };
+use re_data_store::{query_latest_single, EditableAutoValue, EntityPath, EntityProperties};
 use re_log_types::{
-    component_types::{ ColorRGBA, InstanceKey, Tensor, TensorData, TensorDataMeaning },
-    Component,
-    DecodedTensor,
-    Transform,
+    component_types::{ColorRGBA, InstanceKey, Tensor, TensorData, TensorDataMeaning},
+    Component, DecodedTensor, Transform,
 };
-use re_query::{ query_primary_with_history, EntityView, QueryError };
+use re_query::{query_primary_with_history, EntityView, QueryError};
 use re_renderer::{
-    renderer::{ DepthCloud, RectangleOptions, ColormappedTexture },
+    renderer::{ColormappedTexture, DepthCloud, RectangleOptions},
     resource_managers::Texture2DCreationDesc,
-    Colormap,
-    OutlineMaskPreference,
+    Colormap, OutlineMaskPreference,
 };
 
 use crate::{
-    misc::{ SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache, ViewerContext },
-    ui::{ scene::SceneQuery, view_spatial::{ Image, SceneSpatial }, Annotations, DefaultColor },
+    misc::{SpaceViewHighlights, SpaceViewOutlineMasks, TransformCache, ViewerContext},
+    ui::{
+        scene::SceneQuery,
+        view_spatial::{Image, SceneSpatial},
+        Annotations, DefaultColor,
+    },
 };
 
 use super::ScenePart;
@@ -31,7 +32,7 @@ fn to_textured_rect(
     ent_path: &EntityPath,
     tensor: &DecodedTensor,
     multiplicative_tint: egui::Rgba,
-    outline_mask: OutlineMaskPreference
+    outline_mask: OutlineMaskPreference,
 ) -> Option<re_renderer::renderer::TexturedRect> {
     crate::profile_function!();
 
@@ -42,15 +43,13 @@ fn to_textured_rect(
     let debug_name = ent_path.to_string();
     let tensor_stats = ctx.cache.tensor_stats(tensor);
 
-    match
-        crate::gpu_bridge::tensor_to_gpu(
-            ctx.render_ctx,
-            &debug_name,
-            tensor,
-            tensor_stats,
-            annotations
-        )
-    {
+    match crate::gpu_bridge::tensor_to_gpu(
+        ctx.render_ctx,
+        &debug_name,
+        tensor,
+        tensor_stats,
+        annotations,
+    ) {
         Ok(colormapped_texture) => {
             // TODO(emilk): let users pick texture filtering.
             // Always use nearest for magnification: let users see crisp individual pixels when they zoom
@@ -95,44 +94,41 @@ fn handle_image_layering(scene: &mut SceneSpatial) {
     // Handle layered rectangles that are on (roughly) the same plane and were logged in sequence.
     // First, group by similar plane.
     // TODO(andreas): Need planes later for picking as well!
-    let images_grouped_by_plane = (
-        {
-            let mut cur_plane = macaw::Plane3::from_normal_dist(Vec3::NAN, std::f32::NAN);
-            let mut rectangle_group = Vec::new();
-            scene.primitives.images
-                .drain(..) // We rebuild the list as we might reorder as well!
-                .batching(move |it| {
-                    for image in it {
-                        let rect = &image.textured_rect;
+    let images_grouped_by_plane = ({
+        let mut cur_plane = macaw::Plane3::from_normal_dist(Vec3::NAN, std::f32::NAN);
+        let mut rectangle_group = Vec::new();
+        scene
+            .primitives
+            .images
+            .drain(..) // We rebuild the list as we might reorder as well!
+            .batching(move |it| {
+                for image in it {
+                    let rect = &image.textured_rect;
 
-                        let prev_plane = cur_plane;
-                        cur_plane = macaw::Plane3::from_normal_point(
-                            rect.extent_u.cross(rect.extent_v).normalize(),
-                            rect.top_left_corner_position
-                        );
+                    let prev_plane = cur_plane;
+                    cur_plane = macaw::Plane3::from_normal_point(
+                        rect.extent_u.cross(rect.extent_v).normalize(),
+                        rect.top_left_corner_position,
+                    );
 
-                        // Are the image planes too unsimilar? Then this is a new group.
-                        if
-                            !rectangle_group.is_empty() &&
-                            prev_plane.normal.dot(cur_plane.normal) < 0.99 &&
-                            prev_plane.d - cur_plane.d < 0.01
-                        {
-                            let previous_group = std::mem::replace(
-                                &mut rectangle_group,
-                                vec![image]
-                            );
-                            return Some(previous_group);
-                        }
-                        rectangle_group.push(image);
+                    // Are the image planes too unsimilar? Then this is a new group.
+                    if !rectangle_group.is_empty()
+                        && prev_plane.normal.dot(cur_plane.normal) < 0.99
+                        && prev_plane.d - cur_plane.d < 0.01
+                    {
+                        let previous_group = std::mem::replace(&mut rectangle_group, vec![image]);
+                        return Some(previous_group);
                     }
-                    if !rectangle_group.is_empty() {
-                        Some(rectangle_group.drain(..).collect())
-                    } else {
-                        None
-                    }
-                })
-        }
-    ).collect_vec();
+                    rectangle_group.push(image);
+                }
+                if !rectangle_group.is_empty() {
+                    Some(rectangle_group.drain(..).collect())
+                } else {
+                    None
+                }
+            })
+    })
+    .collect_vec();
 
     // Then, for each planar group do resorting and change transparency.
     for mut grouped_images in images_grouped_by_plane {
@@ -143,13 +139,20 @@ fn handle_image_layering(scene: &mut SceneSpatial) {
         for (idx, image) in grouped_images.iter_mut().enumerate() {
             // Set depth offset for correct order and avoid z fighting when there is a 3d camera.
             // Keep behind depth offset 0 for correct picking order.
-            image.textured_rect.options.depth_offset = ((idx as isize) -
-                (total_num_images as isize)) as re_renderer::DepthOffset;
+            image.textured_rect.options.depth_offset =
+                ((idx as isize) - (total_num_images as isize)) as re_renderer::DepthOffset;
 
             // make top images transparent
-            let opacity = if idx == 0 { 1.0 } else { 1.0 / (total_num_images.at_most(20) as f32) }; // avoid precision problems in framebuffer
-            image.textured_rect.options.multiplicative_tint =
-                image.textured_rect.options.multiplicative_tint.multiply(opacity);
+            let opacity = if idx == 0 {
+                1.0
+            } else {
+                1.0 / (total_num_images.at_most(20) as f32)
+            }; // avoid precision problems in framebuffer
+            image.textured_rect.options.multiplicative_tint = image
+                .textured_rect
+                .options
+                .multiplicative_tint
+                .multiply(opacity);
         }
 
         scene.primitives.images.extend(grouped_images);
@@ -168,7 +171,7 @@ impl ImagesPart {
         properties: &mut EntityProperties,
         ent_path: &EntityPath,
         world_from_obj: glam::Mat4,
-        highlights: &SpaceViewHighlights
+        highlights: &SpaceViewHighlights,
     ) -> Result<(), QueryError> {
         crate::profile_function!();
 
@@ -201,28 +204,23 @@ impl ImagesPart {
 
             if *properties.backproject_depth.get() && tensor.meaning == TensorDataMeaning::Depth {
                 let query = ctx.current_query();
-                let pinhole_ent_path = crate::misc::queries::closest_pinhole_transform(
-                    ctx,
-                    ent_path,
-                    &query
-                );
+                let pinhole_ent_path =
+                    crate::misc::queries::closest_pinhole_transform(ctx, ent_path, &query);
 
                 if let Some(pinhole_ent_path) = pinhole_ent_path {
                     // NOTE: we don't pass in `world_from_obj` because this corresponds to the
                     // transform of the projection plane, which is of no use to us here.
                     // What we want are the extrinsics of the depth camera!
-                    match
-                        Self::process_entity_view_as_depth_cloud(
-                            scene,
-                            ctx,
-                            transforms,
-                            properties,
-                            &tensor,
-                            ent_path,
-                            &pinhole_ent_path,
-                            entity_highlight
-                        )
-                    {
+                    match Self::process_entity_view_as_depth_cloud(
+                        scene,
+                        ctx,
+                        transforms,
+                        properties,
+                        &tensor,
+                        ent_path,
+                        &pinhole_ent_path,
+                        entity_highlight,
+                    ) {
                         Ok(()) => {
                             return Ok(());
                         }
@@ -233,22 +231,20 @@ impl ImagesPart {
                 }
             }
 
-            let color = annotations
-                .class_description(None)
-                .annotation_info()
-                .color(color.map(|c| c.to_array()).as_ref(), DefaultColor::OpaqueWhite);
+            let color = annotations.class_description(None).annotation_info().color(
+                color.map(|c| c.to_array()).as_ref(),
+                DefaultColor::OpaqueWhite,
+            );
 
-            if
-                let Some(textured_rect) = to_textured_rect(
-                    ctx,
-                    &annotations,
-                    world_from_obj,
-                    ent_path,
-                    &tensor,
-                    color.into(),
-                    entity_highlight.overall
-                )
-            {
+            if let Some(textured_rect) = to_textured_rect(
+                ctx,
+                &annotations,
+                world_from_obj,
+                ent_path,
+                &tensor,
+                color.into(),
+                entity_highlight.overall,
+            ) {
                 scene.primitives.images.push(Image {
                     ent_path: ent_path.clone(),
                     tensor,
@@ -269,16 +265,18 @@ impl ImagesPart {
         tensor: &DecodedTensor,
         ent_path: &EntityPath,
         pinhole_ent_path: &EntityPath,
-        entity_highlight: &SpaceViewOutlineMasks
+        entity_highlight: &SpaceViewOutlineMasks,
     ) -> Result<(), String> {
         crate::profile_function!();
 
         let Some(re_log_types::Transform::Pinhole(intrinsics)) = query_latest_single::<Transform>(
             &ctx.log_db.entity_db,
             pinhole_ent_path,
-            &ctx.current_query()
+            &ctx.current_query(),
         ) else {
-            return Err(format!("Couldn't fetch pinhole intrinsics at {pinhole_ent_path:?}"));
+            return Err(format!(
+                "Couldn't fetch pinhole intrinsics at {pinhole_ent_path:?}"
+            ));
         };
 
         // TODO(cmc): getting to those extrinsics is no easy task :|
@@ -286,7 +284,9 @@ impl ImagesPart {
             .parent()
             .and_then(|ent_path| transforms.reference_from_entity(&ent_path));
         let Some(world_from_obj) = world_from_obj else {
-            return Err(format!("Couldn't fetch pinhole extrinsics at {pinhole_ent_path:?}"));
+            return Err(format!(
+                "Couldn't fetch pinhole extrinsics at {pinhole_ent_path:?}"
+            ));
         };
 
         let Some([height, width, _]) = tensor.image_height_width_channels() else {
@@ -297,47 +297,47 @@ impl ImagesPart {
         let tensor_stats = ctx.cache.tensor_stats(tensor).clone();
         let debug_name = ent_path.to_string();
 
-        let depth_texture = crate::gpu_bridge
-            ::tensor_to_gpu(ctx.render_ctx, &debug_name, tensor, &tensor_stats, &annotations)
-            .map_err(|_| format!("Couldn't create depth texture"))?;
+        let depth_texture = crate::gpu_bridge::tensor_to_gpu(
+            ctx.render_ctx,
+            &debug_name,
+            tensor,
+            &tensor_stats,
+            &annotations,
+        )
+        .map_err(|_| format!("Couldn't create depth texture"))?;
         let depth_from_world_scale = *properties.depth_from_world_scale.get();
 
         let world_depth_from_texture_depth = 1.0 / depth_from_world_scale;
 
         let mut colormap = match *properties.color_mapper.get() {
-            re_data_store::ColorMapper::Colormap(colormap) =>
-                match colormap {
-                    re_data_store::Colormap::Grayscale => Colormap::Grayscale,
-                    re_data_store::Colormap::Turbo => Colormap::Turbo,
-                    re_data_store::Colormap::Viridis => Colormap::Viridis,
-                    re_data_store::Colormap::Plasma => Colormap::Plasma,
-                    re_data_store::Colormap::Magma => Colormap::Magma,
-                    re_data_store::Colormap::Inferno => Colormap::Inferno,
-                }
+            re_data_store::ColorMapper::Colormap(colormap) => match colormap {
+                re_data_store::Colormap::Grayscale => Colormap::Grayscale,
+                re_data_store::Colormap::Turbo => Colormap::Turbo,
+                re_data_store::Colormap::Viridis => Colormap::Viridis,
+                re_data_store::Colormap::Plasma => Colormap::Plasma,
+                re_data_store::Colormap::Magma => Colormap::Magma,
+                re_data_store::Colormap::Inferno => Colormap::Inferno,
+            },
             re_data_store::ColorMapper::AlbedoTexture => Colormap::AlbedoTexture,
         };
 
         let mut albedo_texture: Option<ColormappedTexture> = None;
         if colormap == Colormap::AlbedoTexture {
-            let tensor = properties.albedo_texture
-                .as_ref()
-                .and_then(|path| {
-                    query_latest_single::<Tensor>(&ctx.log_db.entity_db, path, &ctx.current_query())
-                });
+            let tensor = properties.albedo_texture.as_ref().and_then(|path| {
+                query_latest_single::<Tensor>(&ctx.log_db.entity_db, path, &ctx.current_query())
+            });
             if let Some(tensor) = tensor {
-                albedo_texture = match
-                    crate::gpu_bridge::tensor_to_gpu(
-                        ctx.render_ctx,
-                        &debug_name,
-                        &tensor
-                            .try_into()
-                            .map_err(|_| format!("Couldn't convert albedo texture to RGB"))?,
-                        &tensor_stats,
-                        &annotations
-                    )
-                {
+                albedo_texture = match crate::gpu_bridge::tensor_to_gpu(
+                    ctx.render_ctx,
+                    &debug_name,
+                    &tensor
+                        .try_into()
+                        .map_err(|_| format!("Couldn't convert albedo texture to RGB"))?,
+                    &tensor_stats,
+                    &annotations,
+                ) {
                     anyhow::Result::Ok(texture) => Some(texture),
-                    anyhow::Result::Err(_) => { None }
+                    anyhow::Result::Err(_) => None,
                 };
             } else {
                 re_log::debug_once!(
@@ -346,7 +346,7 @@ impl ImagesPart {
                 );
                 colormap = Colormap::Turbo;
                 // Would need some way to update the space view blueprint properties here - to reflect the change in colormap.
-                // For now set the matching default in selection_panel.rs 
+                // For now set the matching default in selection_panel.rs
             }
         }
 
@@ -358,7 +358,7 @@ impl ImagesPart {
         let radius_scale = *properties.backproject_radius_scale.get();
         let point_radius_from_world_depth = radius_scale * pixel_width_from_depth;
 
-        let max_data_value = if let Some((_min, max)) = ctx.cache.tensor_stats(tensor).range {
+        let mut max_data_value = if let Some((_min, max)) = ctx.cache.tensor_stats(tensor).range {
             max as f32
         } else {
             // This could only happen for Jpegs, and we should never get here.
@@ -369,6 +369,9 @@ impl ImagesPart {
                 _ => 10.0,
             }
         };
+        if let Some(depth_max) = tensor.inner().depth_max {
+            max_data_value = depth_max as f32;
+        }
 
         scene.primitives.depth_clouds.clouds.push(DepthCloud {
             world_from_obj,
@@ -395,7 +398,7 @@ impl ScenePart for ImagesPart {
         ctx: &mut ViewerContext<'_>,
         query: &SceneQuery<'_>,
         transforms: &TransformCache,
-        highlights: &SpaceViewHighlights
+        highlights: &SpaceViewHighlights,
     ) {
         crate::profile_scope!("ImagesPart");
 
@@ -404,30 +407,29 @@ impl ScenePart for ImagesPart {
                 continue;
             };
 
-            match
-                query_primary_with_history::<Tensor, 3>(
-                    &ctx.log_db.entity_db.data_store,
-                    &query.timeline,
-                    &query.latest_at,
-                    &props.visible_history,
-                    ent_path,
-                    [Tensor::name(), InstanceKey::name(), ColorRGBA::name()]
-                ).and_then(|entities| {
-                    for entity in entities {
-                        Self::process_entity_view(
-                            &entity,
-                            scene,
-                            ctx,
-                            transforms,
-                            &mut props,
-                            ent_path,
-                            world_from_obj,
-                            highlights
-                        )?;
-                    }
-                    Ok(())
-                })
-            {
+            match query_primary_with_history::<Tensor, 3>(
+                &ctx.log_db.entity_db.data_store,
+                &query.timeline,
+                &query.latest_at,
+                &props.visible_history,
+                ent_path,
+                [Tensor::name(), InstanceKey::name(), ColorRGBA::name()],
+            )
+            .and_then(|entities| {
+                for entity in entities {
+                    Self::process_entity_view(
+                        &entity,
+                        scene,
+                        ctx,
+                        transforms,
+                        &mut props,
+                        ent_path,
+                        world_from_obj,
+                        highlights,
+                    )?;
+                }
+                Ok(())
+            }) {
                 Ok(_) | Err(QueryError::PrimaryNotFound) => {}
                 Err(err) => {
                     re_log::error_once!("Unexpected error querying {ent_path:?}: {err}");

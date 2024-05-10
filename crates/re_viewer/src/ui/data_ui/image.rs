@@ -220,7 +220,7 @@ pub fn tensor_summary_ui_grid_contents(
     tensor: &Tensor,
     tensor_stats: &TensorStats
 ) {
-    let Tensor { tensor_id: _, shape, data, meaning, meter, colormap: _, unit: _ } = tensor;
+    let Tensor { tensor_id: _, shape, data, meaning, meter, colormap: _, unit: _ , depth_min: _, depth_max: _} = tensor;
 
     re_ui
         .grid_left_hand_label(ui, "Data type")

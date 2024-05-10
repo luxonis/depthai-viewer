@@ -88,6 +88,8 @@ def _log_tensor(
     encoding: Optional[ImageEncoding] = None,
     colormap: Optional[Colormap] = None,
     unit: Optional[str] = None,
+    depth_min: Optional[float] = None,
+    depth_max: Optional[float] = None,
 ) -> None:
     """Log a general tensor, perhaps with named dimensions."""
 
@@ -130,7 +132,9 @@ def _log_tensor(
     instanced: Dict[str, Any] = {}
     splats: Dict[str, Any] = {}
 
-    instanced["rerun.tensor"] = TensorArray.from_numpy(tensor, encoding, colormap, names, meaning, meter, unit)
+    instanced["rerun.tensor"] = TensorArray.from_numpy(
+        tensor, encoding, colormap, names, meaning, meter, unit, depth_min, depth_max
+    )
 
     if ext:
         _add_extension_components(instanced, splats, ext, None)

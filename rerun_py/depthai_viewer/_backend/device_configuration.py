@@ -235,10 +235,10 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
     phase_unwrapping_level: int = 4
     phase_unwrap_error_threshold: int = 100
     enable_phase_unwrapping: Optional[bool] = True
-    enable_fppn_correction: Optional[bool] = None
-    enable_optical_correction: Optional[bool] = None
-    enable_temperature_correction: Optional[bool] = None
-    enable_wiggle_correction: Optional[bool] = None
+    enable_fppn_correction: Optional[bool] = True
+    enable_optical_correction: Optional[bool] = True
+    enable_temperature_correction: Optional[bool] = False
+    enable_wiggle_correction: Optional[bool] = True
 
     class Config:
         arbitrary_types_allowed = True

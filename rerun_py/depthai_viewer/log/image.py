@@ -89,6 +89,8 @@ def log_depth_image(
     entity_path: str,
     image: Tensor,
     *,
+    min: Optional[float] = None,
+    max: Optional[float] = None,
     meter: Optional[float] = None,
     ext: Optional[Dict[str, Any]] = None,
     timeless: bool = False,
@@ -108,6 +110,10 @@ def log_depth_image(
         Path to the image in the space hierarchy.
     image:
         A [Tensor][rerun.log.tensor.Tensor] representing the depth image to log.
+    min:
+        Optional minimum depth value.
+    max:
+        Optional maximum depth value.
     meter:
         How long is a meter in the given dtype?
         For instance: with uint16, perhaps meter=1000 which would mean
@@ -144,6 +150,8 @@ def log_depth_image(
             ext=ext,
             timeless=timeless,
             meaning=bindings.TensorDataMeaning.Depth,
+            depth_min=min,
+            depth_max=max,
         )
 
 

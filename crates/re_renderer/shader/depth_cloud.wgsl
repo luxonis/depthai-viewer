@@ -182,7 +182,7 @@ fn compute_point_data(quad_idx: u32) -> PointData {
                 }
               }
         } else {
-            color = Vec4(colormap_srgb(depth_cloud_info.colormap, world_space_depth), 1.0);
+            color = Vec4(colormap_srgb(depth_cloud_info.colormap, world_space_depth / depth_cloud_info.max_depth_in_world), 1.0);
         }
         // TODO(cmc): This assumes a pinhole camera; need to support other kinds at some point.
         let intrinsics = depth_cloud_info.depth_camera_intrinsics;
