@@ -27,6 +27,7 @@ from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
 from numpy.typing import NDArray
+from pydantic import BaseModel
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
