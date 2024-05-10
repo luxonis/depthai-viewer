@@ -1,5 +1,10 @@
 # Depthai Viewer changelog
 
+## 0.2.0
+
+- Fixed point cloud colormap normalization
+- Improved the UX for OAK-D-SR-POE
+
 ## 0.1.9
 
 - Added the new ToF decoding improvements.
