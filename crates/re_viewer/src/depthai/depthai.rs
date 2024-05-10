@@ -828,6 +828,7 @@ impl State {
     pub fn get_connected_cameras(&self) -> &Vec<CameraFeatures> {
         &self.selected_device.cameras
     }
+
     pub fn get_connected_cameras_mut(&mut self) -> &mut Vec<CameraFeatures> {
         &mut self.selected_device.cameras
     }
