@@ -239,6 +239,8 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
     enable_optical_correction: Optional[bool] = True
     enable_temperature_correction: Optional[bool] = False
     enable_wiggle_correction: Optional[bool] = True
+    enable_phase_shuffle_temporal_filter: Optional[bool] = True
+    enable_burst_mode: Optional[bool] = False
 
     class Config:
         arbitrary_types_allowed = True
@@ -259,6 +261,8 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
             "enable_temperature_correction": self.enable_temperature_correction,
             "enable_wiggle_correction": self.enable_wiggle_correction,
             "enable_phase_unwrapping": self.enable_phase_unwrapping,
+            "enable_phase_shuffle_temporal_filter": self.enable_phase_shuffle_temporal_filter,
+            "enable_burst_mode": self.enable_burst_mode,
         }
 
     def to_dai(self) -> dai.RawToFConfig:
@@ -271,6 +275,8 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
         cfg.enableTemperatureCorrection = self.enable_temperature_correction  # type: ignore[attr-defined]
         cfg.enableWiggleCorrection = self.enable_wiggle_correction  # type: ignore[attr-defined]
         cfg.enablePhaseUnwrapping = self.enable_phase_unwrapping  # type: ignore[attr-defined]
+        cfg.enablePhaseShuffleTemporalFilter = self.enable_phase_shuffle_temporal_filter  # type: ignore[attr-defined]
+        cfg.enableBurstMode = self.enable_burst_mode  # type: ignore[attr-defined]
         return cfg
 
 

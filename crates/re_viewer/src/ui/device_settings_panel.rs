@@ -355,6 +355,35 @@ impl DeviceSettingsPanel {
                                         enable_wiggle_correction,
                                     ));
                                 }
+                                let mut enable_phase_shuffle_temporal_filter = tof_config
+                                    .get_enable_phase_shuffle_temporal_filter()
+                                    .unwrap_or(false);
+                                if ctx
+                                    .re_ui
+                                    .labeled_toggle_switch(
+                                        ui,
+                                        "Enable phase shuffle temporal filter",
+                                        &mut enable_phase_shuffle_temporal_filter,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config.set_enable_phase_shuffle_temporal_filter(Some(
+                                        enable_phase_shuffle_temporal_filter,
+                                    ));
+                                }
+                                let mut enable_burst_mode = tof_config.get_enable_burst_mode().unwrap_or(false);
+                                if ctx
+                                    .re_ui
+                                    .labeled_toggle_switch(
+                                        ui,
+                                        "Enable burst mode",
+                                        &mut enable_burst_mode,
+                                    )
+                                    .changed()
+                                {
+                                    tof_config.set_enable_burst_mode(Some(enable_burst_mode));
+                                }
+
                             })
                         });
                     }
