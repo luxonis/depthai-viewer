@@ -19,14 +19,17 @@ from depthai_viewer._backend.messages import (
 )
 from depthai_viewer._backend.store import Store
 
-sentry_sdk.init(  # type: ignore[abstract]
-    dsn="https://37decdc44d584dca906e43ebd7fd1508@sentry.luxonis.com/16",
-    # Set traces_sample_rate to 1.0 to capture 100%
-    # of transactions for performance monitoring.
-    # We recommend adjusting this value in production.
-    traces_sample_rate=1.0,
-    release=f"depthai-viewer@{depthai_viewer_version()}",
-)
+try:
+    sentry_sdk.init(  # type: ignore[abstract]
+        dsn="https://37decdc44d584dca906e43ebd7fd1508@sentry.luxonis.com/16",
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for performance monitoring.
+        # We recommend adjusting this value in production.
+        traces_sample_rate=1.0,
+        release=f"depthai-viewer@{depthai_viewer_version()}",
+    )
+except:
+    print("Failed to initialize sentry")
 
 
 class DepthaiViewerBack:
