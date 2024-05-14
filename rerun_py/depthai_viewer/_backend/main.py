@@ -5,6 +5,7 @@ from queue import Empty as QueueEmptyException
 from typing import Optional
 
 import sentry_sdk
+
 from depthai_viewer import version as depthai_viewer_version
 from depthai_viewer._backend.config_api import Action, start_api
 from depthai_viewer._backend.device import Device
@@ -28,7 +29,7 @@ try:
         traces_sample_rate=1.0,
         release=f"depthai-viewer@{depthai_viewer_version()}",
     )
-except:
+except Exception:  # Be generic, a sentry failure should not crash the app
     print("Failed to initialize sentry")
 
 
