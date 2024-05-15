@@ -154,6 +154,7 @@ class CameraSensorResolution(Enum):
     THE_1080_P: str = "THE_1080_P"
     THE_1200_P: str = "THE_1200_P"
     THE_1280_P: str = "THE_1280_P"
+    THE_1280X3848: str = "THE_1280X3848"
     THE_4_K: str = "THE_4_K"
     THE_4000X3000: str = "THE_4000X3000"
     THE_12_MP: str = "THE_12_MP"
@@ -373,6 +374,7 @@ size_to_resolution = {
     (1280, 720): CameraSensorResolution.THE_720_P,
     (1280, 962): CameraSensorResolution.THE_1280_P,  # TOF
     (1280, 800): CameraSensorResolution.THE_800_P,  # OV9782
+    (1280, 3848): CameraSensorResolution.THE_1280X3848,  # TOF
     (2592, 1944): CameraSensorResolution.THE_5_MP,  # OV5645
     (1440, 1080): CameraSensorResolution.THE_1440X1080,
     (1920, 1080): CameraSensorResolution.THE_1080_P,
