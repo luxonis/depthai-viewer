@@ -492,6 +492,13 @@ class Device:
                     print("Skipped creating camera:", cam.board_socket, "because no valid sensor resolution was found.")
                     continue
 
+        if self._tof_component is not None:  # OAK-D-SR-PoE specific hack.. Align ToF to the left camera
+            for cam in map(lambda camxq: camxq[0], filter(lambda x: isinstance(x[0], CameraComponent), self._queues)):
+                cam: CameraComponent = cam
+                if cam.node.getBoardSocket() == dai.CameraBoardSocket.CAM_B:
+                    self._tof_component.set_align_to(cam)
+                    break
+
         if config.stereo:
             print("Creating depth")
             stereo_pair = config.stereo.stereo_pair
