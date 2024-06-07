@@ -163,12 +163,14 @@ pub enum TensorData {
     F64(Buffer<f64>),
     JPEG(BinaryBuffer),
     NV12(BinaryBuffer),
+    Yuv420p(BinaryBuffer),
 }
 
 impl Into<Option<TextureEncoding>> for &TensorData {
     fn into(self) -> Option<TextureEncoding> {
         match self {
             &TensorData::NV12(_) => Some(TextureEncoding::Nv12),
+            &TensorData::Yuv420p(_) => Some(TextureEncoding::Yuv420p),
             _ => None,
         }
     }
@@ -177,7 +179,7 @@ impl Into<Option<TextureEncoding>> for &TensorData {
 impl TensorData {
     pub fn dtype(&self) -> TensorDataType {
         match self {
-            Self::U8(_) | Self::JPEG(_) | Self::NV12(_) => TensorDataType::U8,
+            Self::U8(_) | Self::JPEG(_) | Self::NV12(_) | Self::Yuv420p(_) => TensorDataType::U8,
             Self::U16(_) => TensorDataType::U16,
             Self::U32(_) => TensorDataType::U32,
             Self::U64(_) => TensorDataType::U64,
@@ -192,7 +194,7 @@ impl TensorData {
 
     pub fn size_in_bytes(&self) -> usize {
         match self {
-            Self::U8(buf) | Self::JPEG(buf) | Self::NV12(buf) => buf.0.len(),
+            Self::U8(buf) | Self::JPEG(buf) | Self::NV12(buf) | Self::Yuv420p(buf) => buf.0.len(),
             Self::U16(buf) => buf.len(),
             Self::U32(buf) => buf.len(),
             Self::U64(buf) => buf.len(),
@@ -222,7 +224,7 @@ impl TensorData {
             | Self::F32(_)
             | Self::F64(_) => false,
 
-            Self::JPEG(_) | Self::NV12(_) => true,
+            Self::JPEG(_) | Self::NV12(_) | Self::Yuv420p(_) => true,
         }
     }
 }
@@ -242,6 +244,7 @@ impl std::fmt::Debug for TensorData {
             Self::F64(_) => write!(f, "F64({} bytes)", self.size_in_bytes()),
             Self::JPEG(_) => write!(f, "JPEG({} bytes)", self.size_in_bytes()),
             Self::NV12(_) => write!(f, "NV12({} bytes)", self.size_in_bytes()),
+            Self::Yuv420p(_) => write!(f, "Yuv420p({} bytes)", self.size_in_bytes()),
         }
     }
 }
@@ -441,7 +444,7 @@ impl Tensor {
     #[inline]
     pub fn real_shape(&self) -> Vec<TensorDimension> {
         match &self.data {
-            &TensorData::NV12(_) => {
+            &TensorData::NV12(_) | &TensorData::Yuv420p(_) => {
                 let shape = self.shape.as_slice();
                 match shape {
                     [y, x] => {
@@ -466,7 +469,7 @@ impl Tensor {
     /// Takes into account the encoding
     pub fn image_height_width_channels(&self) -> Option<[u64; 3]> {
         match &self.data {
-            &TensorData::NV12(_) => {
+            &TensorData::NV12(_) | &TensorData::Yuv420p(_) => {
                 let shape = self.real_shape();
                 if let [y, x] = shape.as_slice() {
                     Some([y.size, x.size, 1])
@@ -541,6 +544,7 @@ impl Tensor {
             // You would need to call get once for each channel.
             // That would meant that you have to manually supply the channel, so using get_nv12_pixel is easier.
             TensorData::NV12(_) => None,
+            TensorData::Yuv420p(_) => None,
             TensorData::JPEG(_) => None, // Too expensive to unpack here.
         }
     }
@@ -556,6 +560,36 @@ impl Tensor {
                         - 128.0)
                         / 224.0;
                     let v = ((buf[((uv_offset + (*row / 2) * w.size + *col) as usize) + 1] as f64)
+                        - 128.0)
+                        / 224.0;
+                    let r = y + 1.402 * v;
+                    let g = y - 0.344 * u + 0.714 * v;
+                    let b = y + 1.772 * u;
+
+                    Some([
+                        TensorElement::U8(f64::clamp(r * 255.0, 0.0, 255.0) as u8),
+                        TensorElement::U8(f64::clamp(g * 255.0, 0.0, 255.0) as u8),
+                        TensorElement::U8(f64::clamp(b * 255.0, 0.0, 255.0) as u8),
+                    ])
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    pub fn get_yuv420p_pixel(&self, index: &[u64; 2]) -> Option<[TensorElement; 3]> {
+        let [row, col] = index;
+        match self.real_shape().as_slice() {
+            [h, w] => match &self.data {
+                TensorData::Yuv420p(buf) => {
+                    let uv_offset = (w.size * h.size) as u64;
+                    let y = ((buf[(*row * w.size + *col) as usize] as f64) - 16.0) / 219.0;
+                    let u = ((buf[(uv_offset + (*row / 2) * w.size + *col / 2) as usize] as f64)
+                        - 128.0)
+                        / 224.0;
+                    let v = ((buf[((uv_offset + (*row / 2) * w.size + *col / 2) as usize) + 1]
+                        as f64)
                         - 128.0)
                         / 224.0;
                     let r = y + 1.402 * v;
@@ -1016,7 +1050,7 @@ impl TryFrom<Tensor> for DecodedTensor {
             | TensorData::I64(_)
             | TensorData::F32(_)
             | TensorData::F64(_)
-            | TensorData::NV12(_) => Ok(Self(tensor)),
+            | TensorData::NV12(_) | TensorData::Yuv420p(_) => Ok(Self(tensor)),
 
             TensorData::JPEG(_) => Err(tensor),
         }
@@ -1110,7 +1144,7 @@ impl DecodedTensor {
             | TensorData::I64(_)
             | TensorData::F32(_)
             | TensorData::F64(_)
-            | TensorData::NV12(_) => Ok(Self(maybe_encoded_tensor)),
+            | TensorData::NV12(_) | TensorData::Yuv420p(_) => Ok(Self(maybe_encoded_tensor)),
 
             TensorData::JPEG(buf) => {
                 use image::io::Reader as ImageReader;

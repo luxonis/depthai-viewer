@@ -64,6 +64,7 @@ mod gpu_data {
     //  Encoded textures
     // ------------------
     const SAMPLE_TYPE_NV12: u32 = 5;
+    const SAMPLE_TYPE_YUV420P: u32 = 6;
 
     /// Keep in sync with mirror in `depth_cloud.wgsl.`
     #[repr(C, align(256))]
@@ -136,6 +137,7 @@ mod gpu_data {
                         }
                         Some(wgpu::TextureSampleType::Uint) => match colormapped_texture.encoding {
                             Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12,
+                            Some(TextureEncoding::Yuv420p) => SAMPLE_TYPE_YUV420P,
                             _ => SAMPLE_TYPE_UINT_NOFILTER,
                         },
                         Some(wgpu::TextureSampleType::Sint) => SAMPLE_TYPE_SINT_NOFILTER,

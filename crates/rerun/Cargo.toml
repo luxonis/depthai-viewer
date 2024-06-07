@@ -22,7 +22,7 @@ name = "depthai-viewer"
 path = "src/main.rs"
 
 [features]
-default = ["analytics", "glam", "image", "native_viewer", "server", "sdk"]
+default = ["glam", "image", "native_viewer", "server", "sdk"]
 
 ## Enable telemetry using our analytics SDK.
 analytics = [

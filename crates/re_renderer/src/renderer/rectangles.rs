@@ -70,6 +70,7 @@ pub enum TextureEncoding {
     Rgb,
     Rgba,
     Nv12,
+    Yuv420p
 }
 
 /// Describes a texture and how to map it to a color.
@@ -129,7 +130,7 @@ impl ColormappedTexture {
     pub fn width_height(&self) -> [u32; 2] {
         let texture_dim = self.texture.width_height();
         match &self.encoding {
-            &Some(TextureEncoding::Nv12) => {
+            &Some(TextureEncoding::Nv12) | &Some(TextureEncoding::Yuv420p) => {
                 let real_dim =
                     glam::Vec2::new(texture_dim[0] as f32, texture_dim[1] as f32) *
                     glam::Vec2::new(1.0, 2.0 / 3.0);
@@ -224,6 +225,7 @@ mod gpu_data {
     //  Encoded textures
     // ------------------
     const SAMPLE_TYPE_NV12: u32 = 5;
+    const SAMPLE_TYPE_YUV420P: u32 = 6;
 
     // How do we do colormapping?
     const COLOR_MAPPER_OFF: u32 = 1;
@@ -303,7 +305,8 @@ mod gpu_data {
                 Some(wgpu::TextureSampleType::Uint) => {
                     match encoding {
                         Some(TextureEncoding::Nv12) => SAMPLE_TYPE_NV12,
-                        _ => SAMPLE_TYPE_UINT_NOFILTER,
+                        Some(TextureEncoding::Yuv420p) => SAMPLE_TYPE_YUV420P,
+                            _ => SAMPLE_TYPE_UINT_NOFILTER,
                     }
                 }
                 _ => {
@@ -325,7 +328,7 @@ mod gpu_data {
                             color_mapper_int = COLOR_MAPPER_TEXTURE;
                         }
                         None => {
-                            if encoding != &Some(TextureEncoding::Nv12) {
+                            if encoding != &Some(TextureEncoding::Nv12) && encoding != &Some(TextureEncoding::Yuv420p) {
                                 return Err(RectangleError::MissingColorMapper);
                             }
                             color_mapper_int = COLOR_MAPPER_OFF;

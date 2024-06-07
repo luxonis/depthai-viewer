@@ -22,7 +22,7 @@ use crate::{
     depthai::{dependency_installer::DependencyInstaller, depthai},
     misc::{AppOptions, Caches, RecordingConfig, ViewerContext},
     ui::{data_ui::ComponentUiRegistry, Blueprint},
-    viewer_analytics::ViewerAnalytics,
+    // viewer_analytics::ViewerAnalytics,
     AppEnvironment,
 };
 
@@ -113,7 +113,7 @@ pub struct App {
     pending_commands: Vec<Command>,
     cmd_palette: re_ui::CommandPalette,
 
-    analytics: ViewerAnalytics,
+    // analytics: ViewerAnalytics,
 
     icon_status: AppIconStatus,
 
@@ -210,8 +210,8 @@ impl App {
             AppState::default()
         };
 
-        let mut analytics = ViewerAnalytics::new();
-        analytics.on_viewer_started(&build_info, app_env);
+        // let mut analytics = ViewerAnalytics::new();
+        // analytics.on_viewer_started(&build_info, app_env);
 
         #[cfg(not(target_arch = "wasm32"))]
         let backend_environment = match app_env {
@@ -247,7 +247,7 @@ impl App {
             pending_commands: Default::default(),
             cmd_palette: Default::default(),
 
-            analytics,
+            // analytics,
 
             icon_status: AppIconStatus::NotSetTryAgain,
 
@@ -905,7 +905,7 @@ impl App {
                     // Do analytics after ingesting the new message,
                     // because thats when the `log_db.recording_info` is set,
                     // which we use in the analytics call.
-                    self.analytics.on_open_recording(log_db);
+                    // self.analytics.on_open_recording(log_db);
                 }
 
                 if start.elapsed() > instant::Duration::from_millis(10) {
@@ -1037,7 +1037,7 @@ impl App {
     }
 
     fn show_log_db(&mut self, log_db: LogDb) {
-        self.analytics.on_open_recording(&log_db);
+        // self.analytics.on_open_recording(&log_db);
         self.state.selected_rec_id = log_db.recording_id();
         self.log_dbs.insert(log_db.recording_id(), log_db);
     }

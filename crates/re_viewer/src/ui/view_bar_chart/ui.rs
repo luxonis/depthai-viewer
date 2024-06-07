@@ -100,7 +100,7 @@ pub(crate) fn view_bar_chart(
                     component_types::TensorData::F64(data) => {
                         create_bar_chart(ent_path, instance_key, data.iter().copied())
                     }
-                    component_types::TensorData::JPEG(_) | component_types::TensorData::NV12(_) => {
+                    component_types::TensorData::JPEG(_) | component_types::TensorData::NV12(_) | component_types::TensorData::Yuv420p(_) => {
                         warn_once!(
                             "trying to display {:?} data as a bar chart ({:?})",
                             tensor.data,

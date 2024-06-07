@@ -98,6 +98,9 @@ fn color_tensor_to_gpu(
                 }
                 (1, TensorData::NV12(buf)) => {
                     (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Uint)
+                },
+                (1, TensorData::Yuv420p(buf)) => {
+                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Uint)
                 }
                 (1, TensorData::I8(buf)) => (cast_slice_to_cow(buf), TextureFormat::R8Snorm),
 
@@ -140,7 +143,7 @@ fn color_tensor_to_gpu(
         [0.0, 1.0]
     } else if texture_format == TextureFormat::R8Snorm {
         [-1.0, 1.0]
-    } else if encoding == Some(TextureEncoding::Nv12) {
+    } else if encoding == Some(TextureEncoding::Nv12) || encoding == Some(TextureEncoding::Yuv420p) {
         [0.0, 1.0]
     } else {
         crate::gpu_bridge::range(tensor_stats)?
@@ -343,6 +346,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 }
                 TensorData::NV12(buf) => {
                     (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
+                },
+                TensorData::Yuv420p(buf) => {
+                    (cast_slice_to_cow(buf.as_slice()), TextureFormat::R8Unorm)
                 }
             }
         }
@@ -368,6 +374,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 }
                 TensorData::NV12(_) => {
                     panic!("NV12 cannot be a two channel tensor!");
+                }
+                TensorData::Yuv420p(_) => {
+                    panic!("Yuv420p cannot be a two channel tensor!");
                 }
             }
         }
@@ -409,6 +418,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 TensorData::NV12(_) => {
                     panic!("NV12 cannot be a three channel tensor!");
                 }
+                TensorData::Yuv420p(_) => {
+                    panic!("Yuv420p cannot be a three channel tensor!");
+                }
             }
         }
         4 => {
@@ -435,6 +447,9 @@ fn general_texture_creation_desc_from_tensor<'a>(
                 }
                 TensorData::NV12(_) => {
                     panic!("NV12 cannot be a four channel tensor!");
+                }
+                TensorData::Yuv420p(_) => {
+                    panic!("Yuv420p cannot be a four channel tensor!");
                 }
             }
         }

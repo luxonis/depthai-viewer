@@ -20,6 +20,7 @@ const SAMPLE_TYPE_UINT_NOFILTER  = 4u;
 //  Encoded textures
 // -------------------
 const SAMPLE_TYPE_NV12  = 5u;
+const SAMPLE_TYPE_YUV420P  = 6u;
 
 // ---
 
@@ -145,6 +146,8 @@ fn compute_point_data(quad_idx: u32) -> PointData {
         if depth_cloud_info.colormap == ALBEDO_TEXTURE {
             if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_NV12 {
                 color = decode_nv12(albedo_texture_uint, Vec2(f32(texcoords.x), f32(texcoords.y)) / Vec2(f32(wh.x), f32(wh.x)));
+            } else if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_YUV420P {
+                color = decode_yuv420p(albedo_texture_uint, Vec2(f32(texcoords.x), f32(texcoords.y)) / Vec2(f32(wh.x), f32(wh.x)));
             } else { // TODO(filip): Support all sample types like in rectangle_fs.wgsl
                 if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_FLOAT_FILTER {
                     color = textureSampleLevel(
@@ -153,7 +156,6 @@ fn compute_point_data(quad_idx: u32) -> PointData {
                         Vec2(texcoords) / Vec2(wh),
                         0.0
                     );
-                    color = Vec4(Vec3(color.r), 1.0);
                 } else if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_FLOAT_NOFILTER {
                     let coord = Vec2(texcoords) / Vec2(textureDimensions(depth_texture_float));
                     let v00 = textureLoad(albedo_texture_float_nofilter, IVec2(coord) + IVec2(0, 0), 0);
@@ -163,13 +165,13 @@ fn compute_point_data(quad_idx: u32) -> PointData {
                     let top = mix(v00, v10, fract(coord.x));
                     let bottom = mix(v01, v11, fract(coord.x));
                     color = mix(top, bottom, fract(coord.y));
+                    color = Vec4(linear_from_srgb(Vec3(1.0, 1.0, 0.0)), 1.0);
                 } else if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_UINT_NOFILTER {
                     color = Vec4(textureLoad(
                         albedo_texture_uint,
                         texcoords,
                         0
                     )) / 255.0;
-                    color = Vec4(linear_from_srgb(Vec3(color.r)), 1.0);
                 } else if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_SINT_NOFILTER {
                     color = Vec4(textureLoad(
                         albedo_texture_sint,

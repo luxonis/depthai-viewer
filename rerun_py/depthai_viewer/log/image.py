@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
-
 from depthai_viewer import bindings
 from depthai_viewer.components.tensor import Colormap, ImageEncoding
 from depthai_viewer.log.error_utils import _send_warning
@@ -254,7 +253,7 @@ def log_encoded_image(
     """
     image = np.array(image, copy=False)
     tensor_height = height
-    if encoding == ImageEncoding.NV12:
+    if encoding == ImageEncoding.NV12 or encoding == ImageEncoding.Yuv420p:
         # TODO(filip): This doesn't seem to be completely true as the image is still displayed correctly
         # tmp_height = int(height * 1.5)
         # if tmp_height % 2 != 0:

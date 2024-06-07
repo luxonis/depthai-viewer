@@ -277,7 +277,7 @@ pub fn tensor_summary_ui_grid_contents(
         | re_log_types::component_types::TensorData::I64(_)
         | re_log_types::component_types::TensorData::F32(_)
         | re_log_types::component_types::TensorData::F64(_)
-        | re_log_types::component_types::TensorData::NV12(_) => {}
+        | re_log_types::component_types::TensorData::NV12(_) | re_log_types::component_types::TensorData::Yuv420p(_) => {}
         re_log_types::component_types::TensorData::JPEG(jpeg_bytes) => {
             re_ui.grid_left_hand_label(ui, "Encoding");
             ui.label(format!("{} JPEG", re_format::format_bytes(jpeg_bytes.num_bytes() as _)));
@@ -563,6 +563,15 @@ fn tensor_pixel_value_ui(
                                 format!("R: {r}, G: {g}, B: {b}, #{r:02X}{g:02X}{b:02X}")
                             }
                             _ => unreachable!("NV12 should only contain u8"),
+                        }
+                    }),
+                    TensorData::Yuv420p(_) =>
+                    tensor.get_yuv420p_pixel(&[y, x]).map(|[r, g, b]| {
+                        match (r, g, b) {
+                            (TensorElement::U8(r), TensorElement::U8(g), TensorElement::U8(b)) => {
+                                format!("R: {r}, G: {g}, B: {b}, #{r:02X}{g:02X}{b:02X}")
+                            }
+                            _ => unreachable!("YUV420 should only contain u8"),
                         }
                     }),
                 _ => {

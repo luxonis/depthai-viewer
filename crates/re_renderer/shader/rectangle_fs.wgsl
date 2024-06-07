@@ -67,7 +67,10 @@ fn fs_main(in: VertexOut) -> @location(0) Vec4 {
         }
     } else if rect_info.sample_type == SAMPLE_TYPE_NV12 {
         sampled_value = decode_nv12(texture_uint, in.texcoord);
-    } else {
+    } else if rect_info.sample_type == SAMPLE_TYPE_YUV420P {
+        sampled_value = decode_yuv420p(texture_uint, in.texcoord);
+    }
+    else {
         return ERROR_RGBA; // unknown sample type
     }
 

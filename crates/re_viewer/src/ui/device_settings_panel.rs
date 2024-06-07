@@ -257,7 +257,7 @@ impl DeviceSettingsPanel {
                                         None,
                                         "Phase unwrap level",
                                         &mut phase_unwrapping_level,
-                                        0..=100,
+                                        0..=6,
                                     )
                                     .changed()
                                 {

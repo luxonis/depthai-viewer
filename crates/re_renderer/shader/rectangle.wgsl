@@ -14,7 +14,7 @@ const SAMPLE_TYPE_UINT_NOFILTER  = 4u;
 //  Encoded textures
 // ------------------
 const SAMPLE_TYPE_NV12  = 5u;
-
+const SAMPLE_TYPE_YUV420P = 6u;
 
 // How do we do colormapping?
 const COLOR_MAPPER_OFF      = 1u;
