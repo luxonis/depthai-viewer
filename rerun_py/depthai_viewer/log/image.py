@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import numpy.typing as npt
+
 from depthai_viewer import bindings
 from depthai_viewer.components.tensor import Colormap, ImageEncoding
 from depthai_viewer.log.error_utils import _send_warning

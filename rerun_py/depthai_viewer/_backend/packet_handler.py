@@ -2,7 +2,6 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
-import depthai_viewer as viewer
 import numpy as np
 from ahrs.filters import Mahony
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
@@ -23,11 +22,13 @@ from depthai_sdk.components import (
     StereoComponent,
 )
 from depthai_sdk.components.tof_component import ToFComponent
+from numpy.typing import NDArray
+from pydantic import BaseModel
+
+import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-from numpy.typing import NDArray
-from pydantic import BaseModel
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
@@ -235,7 +236,10 @@ class PacketHandler:
             self._log_img_frame(packet.aligned_frame, dai.CameraBoardSocket(packet.aligned_frame.getInstanceNum()))
         depth_frame = packet.frame
 
-        ent_path_root = f"{dai.CameraBoardSocket(packet.aligned_frame.getInstanceNum()).name if packet.aligned_frame else component.camera_socket.name}"
+        if packet.aligned_frame:
+            ent_path_root = dai.CameraBoardSocket(packet.aligned_frame.getInstanceNum()).name
+        else:
+            ent_path_root = component.camera_socket.name
         ent_path_depth = f"{ent_path_root}/transform"
         if not packet.aligned_frame:
             viewer.log_rigid3(f"{ent_path_root}/transform", child_from_parent=([0, 0, 0], [1, 0, 0, 0]), xyz="RDF")

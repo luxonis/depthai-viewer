@@ -6,13 +6,15 @@ from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
-import depthai_viewer as viewer
 import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
 from depthai_sdk.components.camera_helper import getClosestIspScale
 from depthai_sdk.components.tof_component import Component, ToFComponent
+from numpy.typing import NDArray
+
+import depthai_viewer as viewer
 from depthai_viewer._backend.device_configuration import (
     ALL_NEURAL_NETWORKS,
     CameraConfiguration,
@@ -49,7 +51,6 @@ from depthai_viewer._backend.packet_handler import (
 )
 from depthai_viewer._backend.store import Store
 from depthai_viewer.install_requirements import model_dir
-from numpy.typing import NDArray
 
 
 class XlinkStatistics:
