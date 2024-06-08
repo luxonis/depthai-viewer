@@ -7,6 +7,7 @@ from typing import Final, Iterable, Union, cast
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
+
 from depthai_viewer import bindings
 from depthai_viewer.components import (
     REGISTERED_COMPONENT_NAMES,
