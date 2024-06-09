@@ -56,7 +56,9 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
                 "align": (
                     "RECTIFIED_LEFT"
                     if self.align == dai.CameraBoardSocket.LEFT
-                    else "RECTIFIED_RIGHT" if self.align == dai.CameraBoardSocket.RIGHT else "CENTER"
+                    else "RECTIFIED_RIGHT"
+                    if self.align == dai.CameraBoardSocket.RIGHT
+                    else "CENTER"
                 ),
                 "lr_check": self.lr_check,
                 "lrc_check_threshold": self.lrc_threshold,
@@ -276,9 +278,9 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
         cfg.enableTemperatureCorrection = self.enable_temperature_correction  # type: ignore[attr-defined, assignment]
         cfg.enableWiggleCorrection = self.enable_wiggle_correction  # type: ignore[attr-defined, assignment]
         cfg.enablePhaseUnwrapping = self.enable_phase_unwrapping  # type: ignore[attr-defined, assignment]
-        cfg.enablePhaseShuffleTemporalFilter = (
+        cfg.enablePhaseShuffleTemporalFilter = (  # type: ignore[attr-defined, assignment]
             self.enable_phase_shuffle_temporal_filter
-        )  # type: ignore[attr-defined, assignment]
+        )
         cfg.enableBurstMode = self.enable_burst_mode  # type: ignore[attr-defined, assignment]
         return cfg
 
@@ -332,9 +334,9 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     id: str
     cameras: List[CameraFeatures] = []
     imu: Optional[ImuKind]
-    stereo_pairs: List[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = (
-        []
-    )  # Which cameras can be paired for stereo
+    stereo_pairs: List[
+        Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
+    ] = []  # Which cameras can be paired for stereo
     default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
     info: DeviceInfo = DeviceInfo()
 
