@@ -118,15 +118,8 @@ mod gpu_data {
                 albedo_texture,
             } = depth_cloud;
 
-            let mut albedo_color = 0;
             let albedo_sample_type = match albedo_texture {
                 Some(colormapped_texture) => {
-                    albedo_color = match texture_info::num_texture_components(
-                        colormapped_texture.texture.format(),
-                    ) {
-                        1 => ALBEDO_COLOR_MONO,
-                        _ => ALBEDO_COLOR_RGB,
-                    };
                     match colormapped_texture.texture.format().sample_type(None) {
                         Some(wgpu::TextureSampleType::Float { .. }) => {
                             if texture_info::is_float_filterable(
@@ -149,7 +142,21 @@ mod gpu_data {
                 }
                 _ => 0,
             };
-
+            let albedo_color = albedo_texture
+                .as_ref()
+                .and_then(|albedo_texture| {
+                    if albedo_texture.encoding.is_some() {
+                        return Some(ALBEDO_COLOR_RGB);
+                    }
+                    Some(
+                        match texture_info::num_texture_components(albedo_texture.texture.format())
+                        {
+                            1 => ALBEDO_COLOR_MONO,
+                            _ => ALBEDO_COLOR_RGB,
+                        },
+                    )
+                })
+                .unwrap_or(ALBEDO_COLOR_RGB);
             let depth_sample_type = match depth_texture.texture.format().sample_type(None) {
                 Some(wgpu::TextureSampleType::Float { .. }) => {
                     if texture_info::is_float_filterable(
