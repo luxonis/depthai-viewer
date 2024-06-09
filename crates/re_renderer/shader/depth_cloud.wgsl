@@ -22,6 +22,9 @@ const SAMPLE_TYPE_UINT_NOFILTER  = 4u;
 const SAMPLE_TYPE_NV12  = 5u;
 const SAMPLE_TYPE_YUV420P  = 6u;
 
+const ALBEDO_COLOR_RGB = 0u;
+const ALBEDO_COLOR_MONO = 1u;
+
 // ---
 
 /// Keep in sync with `DepthCloudInfoUBO` in `depth_cloud.rs`.
@@ -53,6 +56,9 @@ struct DepthCloudInfo {
 
     /// Configures color mapping mode, see `colormap.wgsl`.
     colormap: u32,
+    
+    /// Either ALBEDO_COLOR_RGB or ALBEDO_COLOR_MONO. Govourns how to interpret the albedo texture.
+    albedo_color: u32,
 
     /// Configures the sample type for the albedo texture.
     albedo_sample_type: u32,
@@ -63,9 +69,6 @@ struct DepthCloudInfo {
     /// Changes between the opaque and outline draw-phases.
     radius_boost_in_ui_points: f32,
 };
-
-const ALBEDO_COLOR_RGB: u32 = 0u;
-const ALBEDO_COLOR_MONO: u32 = 1u;
 
 @group(1) @binding(0)
 var<uniform> depth_cloud_info: DepthCloudInfo;
@@ -158,14 +161,7 @@ fn compute_point_data(quad_idx: u32) -> PointData {
                     );
                 } else if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_FLOAT_NOFILTER {
                     let coord = Vec2(texcoords) / Vec2(textureDimensions(depth_texture_float));
-                    let v00 = textureLoad(albedo_texture_float_nofilter, IVec2(coord) + IVec2(0, 0), 0);
-                    let v01 = textureLoad(albedo_texture_float_nofilter, IVec2(coord) + IVec2(0, 1), 0);
-                    let v10 = textureLoad(albedo_texture_float_nofilter, IVec2(coord) + IVec2(1, 0), 0);
-                    let v11 = textureLoad(albedo_texture_float_nofilter, IVec2(coord) + IVec2(1, 1), 0);
-                    let top = mix(v00, v10, fract(coord.x));
-                    let bottom = mix(v01, v11, fract(coord.x));
-                    color = mix(top, bottom, fract(coord.y));
-                    color = Vec4(linear_from_srgb(Vec3(1.0, 1.0, 0.0)), 1.0);
+                    color = Vec4(textureLoad(albedo_texture_float_nofilter, IVec2(coord + vec2(0.5)), 0));
                 } else if depth_cloud_info.albedo_sample_type == SAMPLE_TYPE_UINT_NOFILTER {
                     color = Vec4(textureLoad(
                         albedo_texture_uint,
@@ -183,6 +179,9 @@ fn compute_point_data(quad_idx: u32) -> PointData {
                     color = ERROR_RGBA;
                 }
               }
+            if depth_cloud_info.albedo_color == ALBEDO_COLOR_MONO {
+                color = Vec4(Vec3(color.r), 1.0);
+            }
         } else {
             color = Vec4(colormap_srgb(depth_cloud_info.colormap, world_space_depth / depth_cloud_info.max_depth_in_world), 1.0);
         }
