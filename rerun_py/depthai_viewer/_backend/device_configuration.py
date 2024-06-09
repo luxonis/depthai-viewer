@@ -278,8 +278,8 @@ class ToFConfig(BaseModel):  # type: ignore[misc]
         cfg.enableTemperatureCorrection = self.enable_temperature_correction  # type: ignore[attr-defined, assignment]
         cfg.enableWiggleCorrection = self.enable_wiggle_correction  # type: ignore[attr-defined, assignment]
         cfg.enablePhaseUnwrapping = self.enable_phase_unwrapping  # type: ignore[attr-defined, assignment]
-        cfg.enablePhaseShuffleTemporalFilter = (  # type: ignore[attr-defined, assignment]
-            self.enable_phase_shuffle_temporal_filter
+        cfg.enablePhaseShuffleTemporalFilter = (
+            self.enable_phase_shuffle_temporal_filter  # type: ignore[attr-defined, assignment]
         )
         cfg.enableBurstMode = self.enable_burst_mode  # type: ignore[attr-defined, assignment]
         return cfg
