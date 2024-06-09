@@ -180,11 +180,7 @@ class PacketHandler:
         entity_path = f"{board_socket.name}/transform/{cam}/Image"
 
         if frame.getType() == dai.RawImgFrame.Type.NV12:  # or frame.getType() == dai.RawImgFrame.Type.YUV420p
-            encoding = (
-                viewer.ImageEncoding.NV12
-                if frame.getType() == dai.RawImgFrame.Type.NV12
-                else viewer.ImageEncoding.Yuv420p
-            )
+            encoding = viewer.ImageEncoding.NV12
             viewer.log_encoded_image(
                 entity_path,
                 img_frame,
@@ -201,7 +197,9 @@ class PacketHandler:
             viewer.log_image(entity_path, img_frame)
 
     def _on_camera_frame(self, packet: FramePacket, board_socket: dai.CameraBoardSocket) -> None:
-        if board_socket in list(map(lambda cam: cam.tof_align, self.store.pipeline_config.cameras)):
+        if board_socket in list(
+            map(lambda cam: cam.tof_align, self.store.pipeline_config.cameras if self.store.pipeline_config else [])
+        ):
             # Skip tof aligned frames - they will be logged on_tof_packet
             return
         self._log_img_frame(packet.msg, board_socket)

@@ -507,7 +507,7 @@ class Device:
                 cam_cfg.tof_align = dai.CameraBoardSocket.CAM_B  # OAK-D-SR-PoE default.
                 tof_align = list(
                     filter(
-                        lambda comp_and_q: (
+                        lambda comp_and_q: (  # type: ignore[arg-type]
                             comp_and_q[0].node.getBoardSocket() == cam_cfg.tof_align
                             if isinstance(comp_and_q[0], CameraComponent)
                             else False
