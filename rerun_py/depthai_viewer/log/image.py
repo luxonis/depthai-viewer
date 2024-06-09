@@ -254,7 +254,7 @@ def log_encoded_image(
     """
     image = np.array(image, copy=False)
     tensor_height = height
-    if encoding == ImageEncoding.NV12 or encoding == ImageEncoding.Yuv420p:
+    if encoding == ImageEncoding.NV12:  #  or encoding == ImageEncoding.Yuv420p:
         # TODO(filip): This doesn't seem to be completely true as the image is still displayed correctly
         # tmp_height = int(height * 1.5)
         # if tmp_height % 2 != 0:
