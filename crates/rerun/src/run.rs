@@ -121,6 +121,11 @@ struct Args {
     #[cfg(feature = "web_viewer")]
     #[clap(long, default_value_t = Default::default())]
     ws_server_port: RerunServerPort,
+
+    /// Start the viewer in viewer mode. (No demo will try to run. This is close to being stock rerun.)
+    #[cfg(feature = "native_viewer")]
+    #[clap(long, default_value_t = Default::default())]
+    viewer_mode: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -297,6 +302,7 @@ async fn run_impl(
     #[cfg(feature = "native_viewer")]
     let startup_options = re_viewer::StartupOptions {
         persist_state: args.persist_state,
+        viewer_mode: args.viewer_mode,
         ..Default::default()
     };
 
