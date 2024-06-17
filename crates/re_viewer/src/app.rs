@@ -51,6 +51,7 @@ pub struct StartupOptions {
     pub memory_limit: re_memory::MemoryLimit,
     pub persist_state: bool,
     pub sdk_port: u32,
+    pub viewer_mode: bool,
 }
 
 #[derive(Clone, Default)]
@@ -571,37 +572,39 @@ impl eframe::App for App {
                 }
                 dependency_installer.update();
             }
-            match &mut self.backend_handle {
-                Some((handle, port)) => match handle.try_wait() {
-                    Ok(status) => {
-                        match status {
-                            Some(_) => {
-                                let _ = handle.kill(); // It will only Err in case the process is already dead (which is what we want anyway)
-                                self.state.depthai_state.reset();
-                                re_log::debug!("Backend process has exited, restarting!");
-                                self.backend_handle = self.spawn_backend(&self.backend_environment);
-                            }
-                            None => {
-                                if !self.state.depthai_state.backend_comms.ws.is_initialized() {
-                                    self.state.depthai_state.backend_comms.ws.connect(*port);
+            if !self.startup_options.viewer_mode {
+                match &mut self.backend_handle {
+                    Some((handle, port)) => match handle.try_wait() {
+                        Ok(status) => {
+                            match status {
+                                Some(_) => {
+                                    let _ = handle.kill(); // It will only Err in case the process is already dead (which is what we want anyway)
+                                    self.state.depthai_state.reset();
+                                    re_log::debug!("Backend process has exited, restarting!");
+                                    self.backend_handle = self.spawn_backend(&self.backend_environment);
+                                }
+                                None => {
+                                    if !self.state.depthai_state.backend_comms.ws.is_initialized() {
+                                        self.state.depthai_state.backend_comms.ws.connect(*port);
+                                    }
                                 }
                             }
                         }
+                        Err(_) => {
+                        }
+                    },
+                    None => {
+                        if self.backend_environment.are_requirements_installed() {
+                            self.backend_handle = self.spawn_backend(&self.backend_environment);
+                        } else {
+                            re_log::debug!(
+                                "Backend requirements not installed, starting dependency installer!"
+                            );
+                            self.install_dependencies();
+                        }
                     }
-                    Err(_) => {
-                    }
-                },
-                None => {
-                    if self.backend_environment.are_requirements_installed() {
-                        self.backend_handle = self.spawn_backend(&self.backend_environment);
-                    } else {
-                        re_log::debug!(
-                            "Backend requirements not installed, starting dependency installer!"
-                        );
-                        self.install_dependencies();
-                    }
-                }
-            };
+                };
+            }
         }
 
         if self.startup_options.memory_limit.limit.is_none() {
