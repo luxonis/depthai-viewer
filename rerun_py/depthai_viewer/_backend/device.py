@@ -35,6 +35,7 @@ from depthai_viewer._backend.device_configuration import (
 from depthai_viewer._backend.device_defaults import (
     oak_d_generic_default,
     oak_d_lr_default,
+    oak_d_sr_default,
     oak_d_sr_poe_default,
     oak_t_default,
 )
@@ -402,6 +403,8 @@ class Device:
                 config = oak_t_default.config
             elif self._oak.device.getDeviceName() == "OAK-D-SR-POE":
                 config = oak_d_sr_poe_default.config
+            elif self._oak.device.getDeviceName() == "OAK-D-SR":
+                config = oak_d_sr_default.config
             elif self._oak.device.getDeviceName() == "OAK-D-LR":
                 config = oak_d_lr_default.config
             elif "OAK-D" in self._oak.device.getDeviceName():
