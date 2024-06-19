@@ -1,6 +1,12 @@
 # Depthai Viewer changelog
 
+## 0.2.3
+
+- Fixed https://github.com/luxonis/depthai-viewer/issues/66 , OAK-D-SR not starting correctly.
+- Pinned numpy>=1.23,<2.0.0, because numpy 2.0.0 breaks depthai.
+
 ## 0.2.2
+
 - Added `--viewer-mode` flag. Mostly intended for internal use, when using the viewer as if it was stock rerun (doesn't install the dependencies and doesn't try to connect to a device.). main benefit over stock rerun are albedo textured depth clouds.
 
 ## 0.2.1
