@@ -190,7 +190,7 @@ class PacketHandler:
             )
         elif frame.getType() == dai.RawImgFrame.Type.YUV420p:
             viewer.log_image(entity_path, cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB))
-        elif frame.getType() == dai.RawImgFrame.Type.RAW16:
+        elif frame.getType() == dai.RawImgFrame.Type.GRAYF16:
             img = img_frame.view(np.float16).reshape(h, w)
             viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
         else:

@@ -1,5 +1,9 @@
 # Depthai Viewer changelog
 
+## 0.2.4
+
+- Fix OAK-T not streaming.
+
 ## 0.2.3
 
 - Fixed https://github.com/luxonis/depthai-viewer/issues/66 , OAK-D-SR not starting correctly.
