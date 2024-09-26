@@ -183,10 +183,10 @@ jobs:
       # So we only run the script on macos, and then on Windows we do the parts of the script manually.
       # On ubuntu, the correct packages are pre-installed in our docker container.
 
-      - name: Install prerequisites for building the web-viewer Wasm (non-Windows)
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: ./scripts/setup_web.sh
+      # - name: Install prerequisites for building the web-viewer Wasm (non-Windows)
+      #   if: matrix.platform == 'macos'
+      #   shell: bash
+      #   run: ./scripts/setup_web.sh
 
       # The first steps of setup_web.sh, for Windows:
       # - name: Install wasm32 and wasm-bindgen-cli for building the web-viewer Wasm on windows
