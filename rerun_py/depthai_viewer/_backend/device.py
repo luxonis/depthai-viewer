@@ -6,13 +6,11 @@ from queue import Queue
 from typing import Dict, List, Optional, Tuple
 
 import depthai as dai
-import numpy as np
 from depthai_sdk import OakCamera
 from depthai_sdk.classes.packet_handlers import ComponentOutput
 from depthai_sdk.components import CameraComponent, NNComponent, StereoComponent
 from depthai_sdk.components.camera_helper import getClosestIspScale
 from depthai_sdk.components.tof_component import Component, ToFComponent
-from numpy.typing import NDArray
 
 import depthai_viewer as viewer
 from depthai_viewer._backend.device_configuration import (
@@ -114,7 +112,6 @@ class Device:
 
     def is_closed(self) -> bool:
         return self._oak is not None and self._oak.device.isClosed()
-
 
     def _get_possible_stereo_pairs_for_cam(
         self, cam: dai.CameraFeatures, connected_camera_features: List[dai.CameraFeatures]

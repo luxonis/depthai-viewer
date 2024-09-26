@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import depthai as dai
@@ -29,7 +29,6 @@ import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-from typing import Dict
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
@@ -183,7 +182,9 @@ class PacketHandler:
     ) -> None:
         """
         Log an image frame to the viewer.
-        Optionally undistort and rectify the image using the provided intrinsic matrix and distortion coefficients.
+
+        Optionally undistort and rectify the image using the provided intrinsic matrix
+        and distortion coefficients.
         """
         viewer.log_rigid3(
             f"{board_socket.name}/transform", child_from_parent=([0, 0, 0], [1, 0, 0, 0]), xyz="RDF"
@@ -208,8 +209,10 @@ class PacketHandler:
 
         child_from_parent: NDArray[np.float32]
         try:
-            child_from_parent = self._calibration_handler.get_intrinsic_matrix(  # type: ignore[call-arg, misc, arg-type]
-                board_socket, w, h  # type: ignore[call-arg, misc, arg-type]
+            child_from_parent = (
+                self._calibration_handler.get_intrinsic_matrix(  # type: ignore[call-arg, misc, arg-type]
+                    board_socket, w, h  # type: ignore[call-arg, misc, arg-type]
+                )
             )
         except Exception:
             f_len = (w * h) ** 0.5
