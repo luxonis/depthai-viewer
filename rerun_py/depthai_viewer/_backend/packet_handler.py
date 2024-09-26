@@ -67,12 +67,12 @@ class CachedCalibrationHandler:
 
     def get_distortion_coefficients(self, board_socket: dai.CameraBoardSocket) -> NDArray[np.float32]:
         if self.distortion_coefficients.get(board_socket) is not None:
-            return self.distortion_coefficients.get(board_socket)
+            return self.distortion_coefficients.get(board_socket)  # # type: ignore[return-value]
         try:
             D = self.calibration_handler.getDistortionCoefficients(board_socket)  # type: ignore[union-attr]
         except RuntimeError:
             print("No distortion coefficients found for camera: ", board_socket, " assuming default.")
-            D = np.array([0, 0, 0, 0, 0])
+            D = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
         self.distortion_coefficients[board_socket] = np.array(D)
         return self.distortion_coefficients[board_socket]
 
