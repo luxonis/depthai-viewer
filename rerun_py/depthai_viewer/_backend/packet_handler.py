@@ -67,7 +67,7 @@ class CachedCalibrationHandler:
 
     def get_distortion_coefficients(self, board_socket: dai.CameraBoardSocket) -> NDArray[np.float32]:
         if self.distortion_coefficients.get(board_socket) is not None:
-            return self.distortion_coefficients.get(board_socket)  # # type: ignore[return-value]
+            return self.distortion_coefficients.get(board_socket)  # type: ignore[return-value]
         try:
             D = self.calibration_handler.getDistortionCoefficients(board_socket)  # type: ignore[union-attr]
         except RuntimeError:

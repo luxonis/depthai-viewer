@@ -99,7 +99,7 @@ class Device:
         self.id = device_id
         self.set_oak(OakCamera(device_id, args={"irFloodBrightness": 0, "irDotBrightness": 0}))
         self.store = store
-        self._packet_handler = PacketHandler(self.store, self._oak.device.readCalibration())
+        self._packet_handler = PacketHandler(self.store, self._oak.device.readCalibration())  # type: ignore[union-attr]
         print("Oak cam: ", self._oak)
         # self.start = time.time()
         # self._profiler.enable()
@@ -633,7 +633,6 @@ class Device:
             except RuntimeError:
                 return ErrorMessage("Runtime error when polling the device. Check the terminal for more info.")
             self.calibration_handler = self._oak.device.readCalibration()
-            self.intrinsic_matrix = {}
         return InfoMessage("Pipeline started") if running else ErrorMessage("Couldn't start pipeline")
 
     def update(self) -> None:
