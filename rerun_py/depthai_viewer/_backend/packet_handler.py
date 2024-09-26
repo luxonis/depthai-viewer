@@ -29,6 +29,7 @@ import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
+from typing import Dict
 
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
@@ -43,31 +44,57 @@ class DetectionContext(PacketHandlerContext):
     board_socket: dai.CameraBoardSocket
 
 
+class CachedCalibrationHandler:
+    calibration_handler: dai.CalibrationHandler
+    intrinsic_matrix: Dict[Tuple[dai.CameraBoardSocket, int, int], NDArray[np.float32]] = {}
+    distortion_coefficients: Dict[dai.CameraBoardSocket, NDArray[np.float32]] = {}
+
+    def __init__(self, calibration_handler: dai.CalibrationHandler):
+        self.calibration_handler = calibration_handler
+
+    def get_intrinsic_matrix(self, board_socket: dai.CameraBoardSocket, width: int, height: int) -> NDArray[np.float32]:
+        if self.intrinsic_matrix.get((board_socket, width, height)) is not None:
+            return self.intrinsic_matrix.get((board_socket, width, height))  # type: ignore[return-value]
+        try:
+            M = self.calibration_handler.getCameraIntrinsics(  # type: ignore[union-attr]
+                board_socket, dai.Size2f(width, height)
+            )
+        except RuntimeError:
+            print("No intrinsics found for camera: ", board_socket, " assuming default.")
+            f_len = (height * width) ** 0.5
+            M = [[f_len, 0, width / 2], [0, f_len, height / 2], [0, 0, 1]]
+        self.intrinsic_matrix[(board_socket, width, height)] = np.array(M).reshape(3, 3)
+        return self.intrinsic_matrix[(board_socket, width, height)]
+
+    def get_distortion_coefficients(self, board_socket: dai.CameraBoardSocket) -> NDArray[np.float32]:
+        if self.distortion_coefficients.get(board_socket) is not None:
+            return self.distortion_coefficients.get(board_socket)
+        try:
+            D = self.calibration_handler.getDistortionCoefficients(board_socket)  # type: ignore[union-attr]
+        except RuntimeError:
+            print("No distortion coefficients found for camera: ", board_socket, " assuming default.")
+            D = np.array([0, 0, 0, 0, 0])
+        self.distortion_coefficients[board_socket] = np.array(D)
+        return self.distortion_coefficients[board_socket]
+
+
 class PacketHandler:
     store: Store
     _ahrs: Mahony
-    _get_camera_intrinsics: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
+    _calibration_handler: CachedCalibrationHandler
 
-    def __init__(
-        self, store: Store, intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
-    ):
+    def __init__(self, store: Store, calibration_handler: dai.CalibrationHandler):
         viewer.init(f"Depthai Viewer {store.viewer_address}")
         print("Connecting to viewer at", store.viewer_address)
         viewer.connect(store.viewer_address)
         self.store = store
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
-        self.set_camera_intrinsics_getter(intrinsics_getter)
+        self._calibration_handler = CachedCalibrationHandler(calibration_handler)
 
     def reset(self) -> None:
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
-
-    def set_camera_intrinsics_getter(
-        self, camera_intrinsics_getter: Callable[[dai.CameraBoardSocket, int, int], NDArray[np.float32]]
-    ) -> None:
-        # type: ignore[assignment, misc]
-        self._get_camera_intrinsics = camera_intrinsics_getter
 
     def log_dai_packet(self, node: dai.Node, packet: dai.Buffer, context: Optional[PacketHandlerContext]) -> None:
         if isinstance(packet, dai.ImgFrame):
@@ -147,7 +174,17 @@ class PacketHandler:
         else:
             print("Unknown packet type:", type(packet))
 
-    def _log_img_frame(self, frame: dai.ImgFrame, board_socket: dai.CameraBoardSocket) -> None:
+    def _log_img_frame(
+        self,
+        frame: dai.ImgFrame,
+        board_socket: dai.CameraBoardSocket,
+        intrinsics_matrix: Optional[NDArray[np.float32]] = None,
+        distortion_coefficients: Optional[NDArray[np.float32]] = None,
+    ) -> None:
+        """
+        Log an image frame to the viewer.
+        Optionally undistort and rectify the image using the provided intrinsic matrix and distortion coefficients.
+        """
         viewer.log_rigid3(
             f"{board_socket.name}/transform", child_from_parent=([0, 0, 0], [1, 0, 0, 0]), xyz="RDF"
         )  # TODO(filip): Enable the user to lock the camera rotation in the UI
@@ -158,13 +195,20 @@ class PacketHandler:
             else frame.getData()
         )
         h, w = frame.getHeight(), frame.getWidth()
+        # If the image is a cv frame try to undistort and rectify it
+        if intrinsics_matrix is not None and distortion_coefficients is not None:
+            map_x, map_y = cv2.initUndistortRectifyMap(
+                intrinsics_matrix, distortion_coefficients, None, intrinsics_matrix, (w, h), cv2.CV_32FC1
+            )
+            img_frame = cv2.remap(img_frame, map_x, map_y, cv2.INTER_LINEAR)
+
         if frame.getType() == dai.ImgFrame.Type.BITSTREAM:
             img_frame = cv2.cvtColor(cv2.imdecode(img_frame, cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB)
             h, w = img_frame.shape[:2]
 
         child_from_parent: NDArray[np.float32]
         try:
-            child_from_parent = self._get_camera_intrinsics(  # type: ignore[call-arg, misc, arg-type]
+            child_from_parent = self._calibration_handler.get_intrinsic_matrix(  # type: ignore[call-arg, misc, arg-type]
                 board_socket, w, h  # type: ignore[call-arg, misc, arg-type]
             )
         except Exception:
@@ -231,7 +275,16 @@ class PacketHandler:
         component: ToFComponent,
     ) -> None:
         if packet.aligned_frame:
-            self._log_img_frame(packet.aligned_frame, dai.CameraBoardSocket(packet.aligned_frame.getInstanceNum()))
+            rgb_size = (packet.aligned_frame.getWidth(), packet.aligned_frame.getHeight())
+            M = self._calibration_handler.get_intrinsic_matrix(
+                dai.CameraBoardSocket(packet.aligned_frame.getInstanceNum()), *rgb_size
+            )
+            D = self._calibration_handler.get_distortion_coefficients(
+                dai.CameraBoardSocket(packet.aligned_frame.getInstanceNum())
+            )
+            self._log_img_frame(
+                packet.aligned_frame, dai.CameraBoardSocket(packet.aligned_frame.getInstanceNum()), M, D
+            )
         depth_frame = packet.frame
 
         if packet.aligned_frame:
@@ -242,7 +295,7 @@ class PacketHandler:
         if not packet.aligned_frame:
             viewer.log_rigid3(f"{ent_path_root}/transform", child_from_parent=([0, 0, 0], [1, 0, 0, 0]), xyz="RDF")
             try:
-                intrinsics = self._get_camera_intrinsics(component.camera_socket, 640, 480)
+                intrinsics = self._calibration_handler.get_intrinsic_matrix(component.camera_socket, 640, 480)
             except Exception:
                 intrinsics = np.array([[471.451, 0.0, 317.897], [0.0, 471.539, 245.027], [0.0, 0.0, 1.0]])
             viewer.log_pinhole(

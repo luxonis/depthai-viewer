@@ -80,8 +80,7 @@ class XlinkStatistics:
 
 class Device:
     id: str
-    intrinsic_matrix: Dict[Tuple[dai.CameraBoardSocket, int, int], NDArray[np.float32]] = {}
-    calibration_data: Optional[dai.CalibrationHandler] = None
+    calibration_handler: Optional[dai.CalibrationHandler] = None
     use_encoding: bool = False
     store: Store
 
@@ -102,7 +101,7 @@ class Device:
         self.id = device_id
         self.set_oak(OakCamera(device_id, args={"irFloodBrightness": 0, "irDotBrightness": 0}))
         self.store = store
-        self._packet_handler = PacketHandler(self.store, self.get_intrinsic_matrix)
+        self._packet_handler = PacketHandler(self.store, self._oak.device.readCalibration())
         print("Oak cam: ", self._oak)
         # self.start = time.time()
         # self._profiler.enable()
@@ -116,21 +115,6 @@ class Device:
     def is_closed(self) -> bool:
         return self._oak is not None and self._oak.device.isClosed()
 
-    def get_intrinsic_matrix(self, board_socket: dai.CameraBoardSocket, width: int, height: int) -> NDArray[np.float32]:
-        if self.intrinsic_matrix.get((board_socket, width, height)) is not None:
-            return self.intrinsic_matrix.get((board_socket, width, height))  # type: ignore[return-value]
-        if self.calibration_data is None:
-            raise Exception("Missing calibration data!")
-        try:
-            M_right = self.calibration_data.getCameraIntrinsics(  # type: ignore[union-attr]
-                board_socket, dai.Size2f(width, height)
-            )
-        except RuntimeError:
-            print("No intrinsics found for camera: ", board_socket, " assuming default.")
-            f_len = (height * width) ** 0.5
-            M_right = [[f_len, 0, width / 2], [0, f_len, height / 2], [0, 0, 1]]
-        self.intrinsic_matrix[(board_socket, width, height)] = np.array(M_right).reshape(3, 3)
-        return self.intrinsic_matrix[(board_socket, width, height)]
 
     def _get_possible_stereo_pairs_for_cam(
         self, cam: dai.CameraFeatures, connected_camera_features: List[dai.CameraFeatures]
@@ -651,7 +635,7 @@ class Device:
                 self._oak.poll()
             except RuntimeError:
                 return ErrorMessage("Runtime error when polling the device. Check the terminal for more info.")
-            self.calibration_data = self._oak.device.readCalibration()
+            self.calibration_handler = self._oak.device.readCalibration()
             self.intrinsic_matrix = {}
         return InfoMessage("Pipeline started") if running else ErrorMessage("Couldn't start pipeline")
 
