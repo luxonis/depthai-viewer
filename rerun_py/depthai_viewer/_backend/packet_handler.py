@@ -196,12 +196,16 @@ class PacketHandler:
             else frame.getData()
         )
         h, w = frame.getHeight(), frame.getWidth()
+        was_undistorted_and_rectified = False
         # If the image is a cv frame try to undistort and rectify it
         if intrinsics_matrix is not None and distortion_coefficients is not None:
+            if frame.getType() == dai.RawImgFrame.Type.NV12:
+                img_frame = frame.getCvFrame()
             map_x, map_y = cv2.initUndistortRectifyMap(
                 intrinsics_matrix, distortion_coefficients, None, intrinsics_matrix, (w, h), cv2.CV_32FC1
             )
             img_frame = cv2.remap(img_frame, map_x, map_y, cv2.INTER_LINEAR)
+            was_undistorted_and_rectified = True
 
         if frame.getType() == dai.ImgFrame.Type.BITSTREAM:
             img_frame = cv2.cvtColor(cv2.imdecode(img_frame, cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB)
@@ -226,7 +230,9 @@ class PacketHandler:
         )
         entity_path = f"{board_socket.name}/transform/{cam}/Image"
 
-        if frame.getType() == dai.RawImgFrame.Type.NV12:  # or frame.getType() == dai.RawImgFrame.Type.YUV420p
+        if (
+            not was_undistorted_and_rectified and frame.getType() == dai.RawImgFrame.Type.NV12
+        ):  # or frame.getType() == dai.RawImgFrame.Type.YUV420p
             encoding = viewer.ImageEncoding.NV12
             viewer.log_encoded_image(
                 entity_path,
@@ -249,7 +255,15 @@ class PacketHandler:
         ):
             # Skip tof aligned frames - they will be logged on_tof_packet
             return
-        self._log_img_frame(packet.msg, board_socket)
+        intrinsics = None
+        distortion_coefficients = None
+        if this_cam := list(filter(lambda cam: cam.board_socket == board_socket, self.store.pipeline_config.cameras)):
+            if this_cam[0].is_used_as_stereo_align:
+                intrinsics = self._calibration_handler.get_intrinsic_matrix(
+                    board_socket, packet.msg.getWidth(), packet.msg.getHeight()
+                )
+                distortion_coefficients = self._calibration_handler.get_distortion_coefficients(board_socket)
+        self._log_img_frame(packet.msg, board_socket, intrinsics, distortion_coefficients)
 
     def on_imu(self, packet: IMUPacket) -> None:
         gyro: dai.IMUReportGyroscope = packet.gyroscope

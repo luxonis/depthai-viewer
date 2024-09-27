@@ -182,6 +182,7 @@ class CameraConfiguration(BaseModel):  # type: ignore[misc]
     name: str = ""
 
     tof_align: Optional[dai.CameraBoardSocket] = None
+    is_used_as_stereo_align: bool = False
 
     class Config:
         arbitrary_types_allowed = True

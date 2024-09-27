@@ -537,6 +537,7 @@ class Device:
             aligned_camera = self._get_camera_config_by_socket(config, config.stereo.align)
             if not aligned_camera:
                 return ErrorMessage(f"{config.stereo.align} is not configured. Couldn't create stereo pair.")
+            aligned_camera.is_used_as_stereo_align = True
             self._queues.append((self._stereo, self._oak.queue(self._stereo.out.main)))
 
         if self._oak.device.getConnectedIMU() != "NONE" and self._oak.device.getConnectedIMU() != "":
