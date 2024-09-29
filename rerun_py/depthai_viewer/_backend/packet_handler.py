@@ -200,7 +200,7 @@ class PacketHandler:
         # If the image is a cv frame try to undistort and rectify it
         if intrinsics_matrix is not None and distortion_coefficients is not None:
             if frame.getType() == dai.RawImgFrame.Type.NV12:
-                img_frame = frame.getCvFrame()
+                img_frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_BGR2RGB)
             map_x, map_y = cv2.initUndistortRectifyMap(
                 intrinsics_matrix, distortion_coefficients, None, intrinsics_matrix, (w, h), cv2.CV_32FC1
             )
