@@ -506,9 +506,14 @@ class Device:
             else:  # Should never happen
                 print("Couldn't find camera config for ToF, can't create ToF.")
 
+        # Make sure that it's possible to create stereo depth
+        try:
+            stereo_pair = config.stereo.stereo_pair
+            self._oak.device.readCalibration2().getCameraExtrinsics(stereo_pair[0], stereo_pair[1])
+        except RuntimeError:
+            config.stereo = None
         if config.stereo:
             print("Creating depth")
-            stereo_pair = config.stereo.stereo_pair
             left_cam = self._get_component_by_socket(stereo_pair[0])
             right_cam = self._get_component_by_socket(stereo_pair[1])
             if not left_cam or not right_cam:
