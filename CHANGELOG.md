@@ -1,5 +1,8 @@
 # Depthai Viewer changelog
 
+## 0.2.5
+- Fixed depth aligned camera streams not being rectified and undistorted. Resulting in misaligned visualisation.
+
 ## 0.2.4
 
 - Fix OAK-T not streaming.
