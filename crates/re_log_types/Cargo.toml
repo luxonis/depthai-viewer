@@ -64,7 +64,7 @@ arrow2 = { workspace = true, features = [
 arrow2_convert.workspace = true
 bytemuck = "1.11"
 document-features = "0.2"
-fixed = { version = "1.17", default-features = false, features = ["serde"] }
+fixed = { version = "<1.28", default-features = false, features = ["serde"] }
 half = { workspace = true, features = ["bytemuck"] }
 itertools = { workspace = true }
 lazy_static.workspace = true
