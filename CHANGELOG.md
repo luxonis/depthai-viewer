@@ -1,5 +1,8 @@
 # Depthai Viewer changelog
 
+## 0.2.6
+- Fix regression: Without an active stereo config the viewer would crash
+
 ## 0.2.5
 - Fixed depth aligned camera streams not being rectified and undistorted. Resulting in misaligned visualisation.
 
