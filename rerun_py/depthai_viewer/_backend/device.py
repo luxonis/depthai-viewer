@@ -508,8 +508,9 @@ class Device:
 
         # Make sure that it's possible to create stereo depth
         try:
-            stereo_pair = config.stereo.stereo_pair
-            self._oak.device.readCalibration2().getCameraExtrinsics(stereo_pair[0], stereo_pair[1])
+            if config.stereo:
+                stereo_pair = config.stereo.stereo_pair
+                self._oak.device.readCalibration2().getCameraExtrinsics(stereo_pair[0], stereo_pair[1])
         except RuntimeError:
             config.stereo = None
         if config.stereo:
