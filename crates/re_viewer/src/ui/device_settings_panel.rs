@@ -371,7 +371,8 @@ impl DeviceSettingsPanel {
                                         enable_phase_shuffle_temporal_filter,
                                     ));
                                 }
-                                let mut enable_burst_mode = tof_config.get_enable_burst_mode().unwrap_or(false);
+                                let mut enable_burst_mode =
+                                    tof_config.get_enable_burst_mode().unwrap_or(false);
                                 if ctx
                                     .re_ui
                                     .labeled_toggle_switch(
@@ -383,7 +384,6 @@ impl DeviceSettingsPanel {
                                 {
                                     tof_config.set_enable_burst_mode(Some(enable_burst_mode));
                                 }
-
                             })
                         });
                     }
@@ -486,7 +486,7 @@ impl DeviceSettingsPanel {
                                 ctx.depthai_state.selected_device.has_stereo_pairs(),
                                 |ui| {
                                     egui::CollapsingHeader::new(
-                                        egui::RichText::new("Depth Settings").color(text_color),
+                                        egui::RichText::new("Stereo depth settings").color(text_color),
                                     )
                                     .open(
                                         if !ctx.depthai_state.selected_device.has_stereo_pairs() {
@@ -498,6 +498,11 @@ impl DeviceSettingsPanel {
                                     .show(ui, |ui| {
                                         ui.vertical(|ui| {
                                             ui.set_width(CONFIG_UI_WIDTH);
+                                            ctx.re_ui.labeled_combo_box(ui, "Preset", format!("{}", stereo.depth_preset), false, true, |ui| {
+                                                for preset in depthai::DepthProfilePreset::iter() {
+                                                    ui.selectable_value(&mut stereo.depth_preset, preset, format!("{preset}"));
+                                                }
+                                            });
                                             let (cam1, cam2) = stereo.stereo_pair;
                                             ctx.re_ui.labeled_combo_box(
                                                 ui,
@@ -554,78 +559,81 @@ impl DeviceSettingsPanel {
                                                 // Dragging isn't ongoing, but the value changed
                                                 ctx.depthai_state.set_flood_brightness(device_config.flood_brightness);
                                             }
-                                            ctx.re_ui.labeled_toggle_switch(
-                                                ui,
-                                                "LR Check",
-                                                &mut stereo.lr_check,
-                                            );
-                                            ctx.re_ui.labeled_combo_box(
-                                                ui,
-                                                "Align to",
-                                                stereo.align.display_name(ctx.depthai_state.get_connected_cameras()),
-                                                false,
-                                                true,
-                                                |ui| {
-                                                    for align in ctx.depthai_state.get_connected_cameras() {
-                                                        ui.selectable_value(
-                                                            &mut stereo.align,
-                                                            align.board_socket,
-                                                            align.board_socket.display_name(ctx.depthai_state.get_connected_cameras()),
-                                                        );
-                                                    }
-                                                },
-                                            );
-                                            ctx.re_ui.labeled_combo_box(
-                                                ui,
-                                                "Median Filter",
-                                                format!("{:?}", stereo.median),
-                                                false,
-                                                true,
-                                                |ui| {
-                                                    for filter in depthai::MedianFilter::iter()
-                                                    {
-                                                        ui.selectable_value(
-                                                            &mut stereo.median,
-                                                            filter,
-                                                            format!("{filter:?}"),
-                                                        );
-                                                    }
-                                                },
-                                            );
-                                            ctx.re_ui.labeled_dragvalue(
-                                                ui,
-                                                egui::Id::from("LR Threshold"),
-                                                Some(100.0),
-                                                "LR Threshold",
-                                                &mut stereo.lrc_threshold,
-                                                0..=10,
-                                            );
-                                            ctx.re_ui.labeled_toggle_switch(
-                                                ui,
-                                                "Extended Disparity",
-                                                &mut stereo.extended_disparity,
-                                            );
-                                            ctx.re_ui.labeled_toggle_switch(
-                                                ui,
-                                                "Subpixel Disparity",
-                                                &mut stereo.subpixel_disparity,
-                                            );
-                                            ctx.re_ui.labeled_dragvalue(
-                                                ui,
-                                                egui::Id::from("Sigma"),
-                                                Some(100.0),
-                                                "Sigma",
-                                                &mut stereo.sigma,
-                                                0..=65535,
-                                            );
-                                            ctx.re_ui.labeled_dragvalue(
-                                                ui,
-                                                egui::Id::from("Confidence"),
-                                                Some(100.0),
-                                                "Confidence",
-                                                &mut stereo.confidence,
-                                                0..=255,
-                                            );
+
+                                            if stereo.depth_preset == depthai::DepthProfilePreset::NONE { // advanced settings. Leave it out unless no preset is enabled.
+                                                ctx.re_ui.labeled_toggle_switch(
+                                                    ui,
+                                                    "LR Check",
+                                                    &mut stereo.lr_check,
+                                                );
+                                                ctx.re_ui.labeled_combo_box(
+                                                    ui,
+                                                    "Align to",
+                                                    stereo.align.display_name(ctx.depthai_state.get_connected_cameras()),
+                                                    false,
+                                                    true,
+                                                    |ui| {
+                                                        for align in ctx.depthai_state.get_connected_cameras() {
+                                                            ui.selectable_value(
+                                                                &mut stereo.align,
+                                                                align.board_socket,
+                                                                align.board_socket.display_name(ctx.depthai_state.get_connected_cameras()),
+                                                            );
+                                                        }
+                                                    },
+                                                );
+                                                ctx.re_ui.labeled_combo_box(
+                                                    ui,
+                                                    "Median Filter",
+                                                    format!("{:?}", stereo.median),
+                                                    false,
+                                                    true,
+                                                    |ui| {
+                                                        for filter in depthai::MedianFilter::iter()
+                                                        {
+                                                            ui.selectable_value(
+                                                                &mut stereo.median,
+                                                                filter,
+                                                                format!("{filter:?}"),
+                                                            );
+                                                        }
+                                                    },
+                                                );
+                                                ctx.re_ui.labeled_dragvalue(
+                                                    ui,
+                                                    egui::Id::from("LR Threshold"),
+                                                    Some(100.0),
+                                                    "LR Threshold",
+                                                    &mut stereo.lrc_threshold,
+                                                    0..=10,
+                                                );
+                                                ctx.re_ui.labeled_toggle_switch(
+                                                    ui,
+                                                    "Extended Disparity",
+                                                    &mut stereo.extended_disparity,
+                                                );
+                                                ctx.re_ui.labeled_toggle_switch(
+                                                    ui,
+                                                    "Subpixel Disparity",
+                                                    &mut stereo.subpixel_disparity,
+                                                );
+                                                ctx.re_ui.labeled_dragvalue(
+                                                    ui,
+                                                    egui::Id::from("Sigma"),
+                                                    Some(100.0),
+                                                    "Sigma",
+                                                    &mut stereo.sigma,
+                                                    0..=65535,
+                                                );
+                                                ctx.re_ui.labeled_dragvalue(
+                                                    ui,
+                                                    egui::Id::from("Confidence"),
+                                                    Some(100.0),
+                                                    "Confidence",
+                                                    &mut stereo.confidence,
+                                                    0..=255,
+                                                );
+                                            }
                                             ctx.re_ui.labeled_toggle_switch(
                                                 ui,
                                                 "Depth enabled",

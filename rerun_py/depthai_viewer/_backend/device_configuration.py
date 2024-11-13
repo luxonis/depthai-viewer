@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 
 class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
+    depth_preset: Optional[dai.node.StereoDepth.PresetMode] = None
     median: Optional[dai.MedianFilter] = dai.MedianFilter.KERNEL_7x7
     lr_check: Optional[bool] = True
     lrc_threshold: int = 5  # 0..10
@@ -25,7 +26,7 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
     class Config:
         arbitrary_types_allowed = True
 
-    def __init__(self, **v) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, **v):  # type: ignore[no-untyped-def]
         if v.get("median", None) and isinstance(v["median"], str):
             v["median"] = getattr(dai.MedianFilter, v["median"])
         if v.get("align", None) and isinstance(v["align"], str):
@@ -35,10 +36,16 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
                 getattr(dai.CameraBoardSocket, v["stereo_pair"][0]),
                 getattr(dai.CameraBoardSocket, v["stereo_pair"][1]),
             )
-        return super().__init__(**v)  # type: ignore[no-any-return]
+        if v.get("depth_preset", None) and isinstance(v["depth_preset"], str):
+            if v["depth_preset"] == "NONE":
+                v["depth_preset"] = None
+            else:
+                v["depth_preset"] = getattr(dai.node.StereoDepth.PresetMode, v["depth_preset"])
+        super().__init__(**v)
 
     def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
         return {
+            "depth_preset": self.depth_preset.name if self.depth_preset else "NONE",
             "median": self.median.name if self.median else None,
             "lr_check": self.lr_check,
             "lrc_threshold": self.lrc_threshold,
@@ -56,9 +63,7 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
                 "align": (
                     "RECTIFIED_LEFT"
                     if self.align == dai.CameraBoardSocket.LEFT
-                    else "RECTIFIED_RIGHT"
-                    if self.align == dai.CameraBoardSocket.RIGHT
-                    else "CENTER"
+                    else "RECTIFIED_RIGHT" if self.align == dai.CameraBoardSocket.RIGHT else "CENTER"
                 ),
                 "lr_check": self.lr_check,
                 "lrc_check_threshold": self.lrc_threshold,
@@ -335,9 +340,9 @@ class DeviceProperties(BaseModel):  # type: ignore[misc]
     id: str
     cameras: List[CameraFeatures] = []
     imu: Optional[ImuKind]
-    stereo_pairs: List[
-        Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]
-    ] = []  # Which cameras can be paired for stereo
+    stereo_pairs: List[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = (
+        []
+    )  # Which cameras can be paired for stereo
     default_stereo_pair: Optional[Tuple[dai.CameraBoardSocket, dai.CameraBoardSocket]] = None
     info: DeviceInfo = DeviceInfo()
 

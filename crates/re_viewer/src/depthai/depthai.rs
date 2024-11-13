@@ -51,7 +51,7 @@ impl CameraConfig {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, EnumIter, Debug)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, EnumIter, Debug)]
 #[allow(non_camel_case_types)]
 pub enum CameraBoardSocket {
     AUTO,
@@ -212,29 +212,41 @@ impl DeviceProperties {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
 #[allow(non_camel_case_types)]
 pub enum DepthProfilePreset {
+    NONE,
+    FACE,
+    ROBOTICS,
+    HIGH_FPS,
+    HIGH_DETAIL,
     HIGH_DENSITY,
     HIGH_ACCURACY,
+    HIGH_ACCURACY2,
 }
 
 impl Default for DepthProfilePreset {
     fn default() -> Self {
-        Self::HIGH_DENSITY
+        Self::FACE
     }
 }
 
 impl fmt::Display for DepthProfilePreset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NONE => write!(f, "None"),
+            Self::FACE => write!(f, "Face"),
+            Self::ROBOTICS => write!(f, "Robotics"),
+            Self::HIGH_FPS => write!(f, "High FPS"),
+            Self::HIGH_DETAIL => write!(f, "High Detail"),
             Self::HIGH_DENSITY => write!(f, "High Density"),
             Self::HIGH_ACCURACY => write!(f, "High Accuracy"),
+            Self::HIGH_ACCURACY2 => write!(f, "High Accuracy 2"),
         }
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Debug, EnumIter)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
 #[allow(non_camel_case_types)]
 pub enum MedianFilter {
     MEDIAN_OFF,
@@ -249,8 +261,9 @@ impl Default for MedianFilter {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Debug)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct StereoDepthConfig {
+    pub depth_preset: DepthProfilePreset,
     pub median: MedianFilter,
     pub lr_check: bool,
     pub lrc_threshold: u64,
@@ -265,6 +278,7 @@ pub struct StereoDepthConfig {
 impl Default for StereoDepthConfig {
     fn default() -> Self {
         Self {
+            depth_preset: DepthProfilePreset::default(),
             median: MedianFilter::default(),
             lr_check: true,
             lrc_threshold: 5,
@@ -288,6 +302,8 @@ impl StereoDepthConfig {
             && self.align == other.align
             && self.extended_disparity == other.extended_disparity
             && self.subpixel_disparity == other.subpixel_disparity
+            && self.stereo_pair == other.stereo_pair
+            && self.depth_preset == other.depth_preset
             && self != other
     }
 }

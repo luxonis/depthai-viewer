@@ -531,18 +531,22 @@ class Device:
                 print("Right cam width > 1280, setting isp scale to get 800")
                 right_cam.config_color_camera(isp_scale=calculate_isp_scale(right_cam.node.getResolutionWidth()))
             self._stereo = self._oak.create_stereo(left=left_cam, right=right_cam, name="depth")
-
+            if config.stereo.depth_preset:
+                self._stereo.node.setDefaultProfilePreset(config.stereo.depth_preset)
             align_component = self._get_component_by_socket(config.stereo.align)
             if not align_component:
                 return ErrorMessage(f"{config.stereo.align} is not configured. Couldn't create stereo pair.")
-            self._stereo.config_stereo(
-                lr_check=config.stereo.lr_check,
-                subpixel=config.stereo.subpixel_disparity,
-                confidence=config.stereo.confidence,
-                align=align_component,
-                lr_check_threshold=config.stereo.lrc_threshold,
-                median=config.stereo.median,
-            )
+            if config.stereo.depth_preset is None:
+                self._stereo.config_stereo(
+                    lr_check=config.stereo.lr_check,
+                    subpixel=config.stereo.subpixel_disparity,
+                    confidence=config.stereo.confidence,
+                    align=align_component,
+                    lr_check_threshold=config.stereo.lrc_threshold,
+                    median=config.stereo.median,
+                )
+            else:
+                self._stereo.config_stereo(align=align_component)
 
             aligned_camera = self._get_camera_config_by_socket(config, config.stereo.align)
             if not aligned_camera:

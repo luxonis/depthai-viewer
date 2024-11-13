@@ -33,7 +33,9 @@ config = PipelineConfiguration(
         ),
     ],
     stereo=StereoDepthConfiguration(
-        align=dai.CameraBoardSocket.CAM_A, stereo_pair=(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C)
+        align=dai.CameraBoardSocket.CAM_A,
+        stereo_pair=(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C),
+        depth_preset=dai.node.StereoDepth.PresetMode.ROBOTICS,
     ),
     ai_model=None,
 )
