@@ -668,8 +668,13 @@ class Device:
             if not hasattr(self, "_queue"):
                 return
             packets: Dict[str, Any] = self._queue.get_nowait()
-            for name, packet in packets.items():
-                self._packet_handler.log_packet(self._component_outputs[name]["component"], packet)
+            if not isinstance(packets, dict):  # Edge case when the sdk q was built with only one component output.
+                self._packet_handler.log_packet(
+                    self._component_outputs[list(self._component_outputs.keys())[0]]["component"], packets
+                )
+            else:
+                for name, packet in packets.items():
+                    self._packet_handler.log_packet(self._component_outputs[name]["component"], packet)
         except QueueEmpty:
             pass
 
