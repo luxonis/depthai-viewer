@@ -532,6 +532,22 @@ impl DeviceSettingsPanel {
                                                     }
                                                 },
                                             );
+                                            ctx.re_ui.labeled_combo_box(
+                                                ui,
+                                                "Align to",
+                                                stereo.align.display_name(ctx.depthai_state.get_connected_cameras()),
+                                                false,
+                                                true,
+                                                |ui| {
+                                                    for align in ctx.depthai_state.get_connected_cameras() {
+                                                        ui.selectable_value(
+                                                            &mut stereo.align,
+                                                            align.board_socket,
+                                                            align.board_socket.display_name(ctx.depthai_state.get_connected_cameras()),
+                                                        );
+                                                    }
+                                                },
+                                            );
                                             let dot_drag = ctx.re_ui.labeled_dragvalue(
                                                 ui,
                                                 egui::Id::from("Dot brightness [mA]"),
@@ -560,27 +576,11 @@ impl DeviceSettingsPanel {
                                                 ctx.depthai_state.set_flood_brightness(device_config.flood_brightness);
                                             }
 
-                                            if stereo.depth_preset == depthai::DepthProfilePreset::NONE { // advanced settings. Leave it out unless no preset is enabled.
+                                            if stereo.depth_preset == depthai::DepthProfilePreset::CUSTOM { // advanced settings. Leave it out unless no preset is enabled.
                                                 ctx.re_ui.labeled_toggle_switch(
                                                     ui,
                                                     "LR Check",
                                                     &mut stereo.lr_check,
-                                                );
-                                                ctx.re_ui.labeled_combo_box(
-                                                    ui,
-                                                    "Align to",
-                                                    stereo.align.display_name(ctx.depthai_state.get_connected_cameras()),
-                                                    false,
-                                                    true,
-                                                    |ui| {
-                                                        for align in ctx.depthai_state.get_connected_cameras() {
-                                                            ui.selectable_value(
-                                                                &mut stereo.align,
-                                                                align.board_socket,
-                                                                align.board_socket.display_name(ctx.depthai_state.get_connected_cameras()),
-                                                            );
-                                                        }
-                                                    },
                                                 );
                                                 ctx.re_ui.labeled_combo_box(
                                                     ui,

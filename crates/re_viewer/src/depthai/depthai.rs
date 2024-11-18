@@ -215,7 +215,8 @@ impl DeviceProperties {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Debug, EnumIter)]
 #[allow(non_camel_case_types)]
 pub enum DepthProfilePreset {
-    NONE,
+    CUSTOM,
+    DEFAULT,
     FACE,
     ROBOTICS,
     HIGH_FPS,
@@ -234,7 +235,8 @@ impl Default for DepthProfilePreset {
 impl fmt::Display for DepthProfilePreset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NONE => write!(f, "None"),
+            Self::DEFAULT => write!(f, "Default"),
+            Self::CUSTOM => write!(f, "Custom"),
             Self::FACE => write!(f, "Face"),
             Self::ROBOTICS => write!(f, "Robotics"),
             Self::HIGH_FPS => write!(f, "High FPS"),

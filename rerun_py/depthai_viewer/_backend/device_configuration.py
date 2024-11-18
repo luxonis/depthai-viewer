@@ -37,7 +37,7 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
                 getattr(dai.CameraBoardSocket, v["stereo_pair"][1]),
             )
         if v.get("depth_preset", None) and isinstance(v["depth_preset"], str):
-            if v["depth_preset"] == "NONE":
+            if v["depth_preset"] == "CUSTOM":
                 v["depth_preset"] = None
             else:
                 v["depth_preset"] = getattr(dai.node.StereoDepth.PresetMode, v["depth_preset"])
@@ -45,7 +45,7 @@ class StereoDepthConfiguration(BaseModel):  # type: ignore[misc]
 
     def dict(self, *args, **kwargs) -> Dict[str, Any]:  # type: ignore[no-untyped-def]
         return {
-            "depth_preset": self.depth_preset.name if self.depth_preset else "NONE",
+            "depth_preset": self.depth_preset.name if self.depth_preset else "CUSTOM",
             "median": self.median.name if self.median else None,
             "lr_check": self.lr_check,
             "lrc_threshold": self.lrc_threshold,
