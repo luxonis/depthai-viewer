@@ -1,5 +1,10 @@
 # Depthai Viewer changelog
 
+## 0.2.7
+- Added stereo depth presets!
+- Fixed syncing
+- Support latest OAK-T
+
 ## 0.2.6
 - Fix regression: Without an active stereo config the viewer would crash
 
