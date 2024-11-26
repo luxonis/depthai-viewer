@@ -418,9 +418,11 @@ class Device:
         create_tof_on = None
         for cam in config.cameras:
             print("Creating camera: ", cam)
-
-            camera_features = next(filter(lambda feat: feat.socket == cam.board_socket, connected_camera_features))
-
+            try:
+                camera_features = next(filter(lambda feat: feat.socket == cam.board_socket, connected_camera_features))
+            except StopIteration:
+                self.store.send_message_to_frontend(WarningMessage(f"Failed to find cam {cam.board_socket}"))
+                continue
             # When the resolution is too small, the ISP needs to scale it down
             res_x, res_y = get_size_from_resolution(cam.resolution)
 
@@ -503,7 +505,7 @@ class Device:
                         self._component_outputs.items(),
                     )
                 )
-                tof_align = tof_align[0][0] if tof_align else None
+                tof_align = tof_align[0][1]["component"] if tof_align else None
                 sdk_cam = self._oak.create_tof(create_tof_on, tof_align)
                 self._tof_component = sdk_cam
                 self._component_outputs["tof"] = {"component": sdk_cam, "out": sdk_cam.out.main.set_name("tof")}

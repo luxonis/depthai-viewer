@@ -219,11 +219,9 @@ pub enum DepthProfilePreset {
     DEFAULT,
     FACE,
     ROBOTICS,
-    HIGH_FPS,
     HIGH_DETAIL,
     HIGH_DENSITY,
     HIGH_ACCURACY,
-    HIGH_ACCURACY2,
 }
 
 impl Default for DepthProfilePreset {
@@ -239,11 +237,9 @@ impl fmt::Display for DepthProfilePreset {
             Self::CUSTOM => write!(f, "Custom"),
             Self::FACE => write!(f, "Face"),
             Self::ROBOTICS => write!(f, "Robotics"),
-            Self::HIGH_FPS => write!(f, "High FPS"),
             Self::HIGH_DETAIL => write!(f, "High Detail"),
             Self::HIGH_DENSITY => write!(f, "High Density"),
             Self::HIGH_ACCURACY => write!(f, "High Accuracy"),
-            Self::HIGH_ACCURACY2 => write!(f, "High Accuracy 2"),
         }
     }
 }
