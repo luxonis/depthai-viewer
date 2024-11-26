@@ -18,7 +18,7 @@ config = PipelineConfiguration(
         ),
         CameraConfiguration(
             fps=15,
-            resolution=CameraSensorResolution.THE_480_P,
+            resolution=CameraSensorResolution.THE_400_P,
             kind=dai.CameraSensorType.COLOR,
             board_socket=dai.CameraBoardSocket.CAM_B,
             stream_enabled=True,
@@ -26,7 +26,7 @@ config = PipelineConfiguration(
         ),
         CameraConfiguration(
             fps=15,
-            resolution=CameraSensorResolution.THE_480_P,
+            resolution=CameraSensorResolution.THE_400_P,
             kind=dai.CameraSensorType.COLOR,
             board_socket=dai.CameraBoardSocket.CAM_C,
             stream_enabled=True,
@@ -34,7 +34,9 @@ config = PipelineConfiguration(
         ),
     ],
     stereo=StereoDepthConfiguration(
-        align=dai.CameraBoardSocket.CAM_A, stereo_pair=(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C)
+        align=dai.CameraBoardSocket.CAM_A,
+        stereo_pair=(dai.CameraBoardSocket.CAM_B, dai.CameraBoardSocket.CAM_C),
+        depth_preset=dai.node.StereoDepth.PresetMode.ROBOTICS,
     ),
     ai_model=AiModelConfiguration(camera=dai.CameraBoardSocket.CAM_A),
 )

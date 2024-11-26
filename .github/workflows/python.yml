@@ -28,36 +28,36 @@ jobs:
     name: Python lints (black, mypy, flake8)
     runs-on: ubuntu-latest
     steps:
-     - name: Skip lints
-       run: |
+      - name: Skip lints
+        run: |
           echo "Skipping lints"
-      # - uses: actions/checkout@v3
+        # - uses: actions/checkout@v3
 
-      # - uses: extractions/setup-just@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     just-version: 1.5
+        # - uses: extractions/setup-just@v1
+        #   env:
+        #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        #   with:
+        #     just-version: 1.5
 
-      # - name: Set up Python
-      #   uses: actions/setup-python@v4
-      #   with:
-      #     python-version: ${{ env.PYTHON_VERSION }}
-      #     cache: "pip"
-      #     cache-dependency-path: "rerun_py/requirements-lint.txt"
+        # - name: Set up Python
+        #   uses: actions/setup-python@v4
+        #   with:
+        #     python-version: ${{ env.PYTHON_VERSION }}
+        #     cache: "pip"
+        #     cache-dependency-path: "rerun_py/requirements-lint.txt"
 
-      # - name: Install Python dependencies
-      #   run: |
-      #     pip install --upgrade pip
-      #     pip install -r rerun_py/requirements-lint.txt
+        # - name: Install Python dependencies
+        #   run: |
+        #     pip install --upgrade pip
+        #     pip install -r rerun_py/requirements-lint.txt
 
-      # - name: Lint Python
-      #   run: |
-      #     just py-lint
+        # - name: Lint Python
+        #   run: |
+        #     just py-lint
 
-      # - name: Check requirements
-      #   run: |
-      #     just py-requirements
+        # - name: Check requirements
+        #   run: |
+        #     just py-requirements
 
   # ---------------------------------------------------------------------------
 

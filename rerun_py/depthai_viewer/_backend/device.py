@@ -418,9 +418,11 @@ class Device:
         create_tof_on = None
         for cam in config.cameras:
             print("Creating camera: ", cam)
-
-            camera_features = next(filter(lambda feat: feat.socket == cam.board_socket, connected_camera_features))
-
+            try:
+                camera_features = next(filter(lambda feat: feat.socket == cam.board_socket, connected_camera_features))
+            except StopIteration:
+                self.store.send_message_to_frontend(WarningMessage(f"Failed to find cam {cam.board_socket}"))
+                continue
             # When the resolution is too small, the ISP needs to scale it down
             res_x, res_y = get_size_from_resolution(cam.resolution)
 
@@ -503,7 +505,7 @@ class Device:
                         self._component_outputs.items(),
                     )
                 )
-                tof_align = tof_align[0][0] if tof_align else None
+                tof_align = tof_align[0][1]["component"] if tof_align else None
                 sdk_cam = self._oak.create_tof(create_tof_on, tof_align)
                 self._tof_component = sdk_cam
                 self._component_outputs["tof"] = {"component": sdk_cam, "out": sdk_cam.out.main.set_name("tof")}
@@ -531,18 +533,22 @@ class Device:
                 print("Right cam width > 1280, setting isp scale to get 800")
                 right_cam.config_color_camera(isp_scale=calculate_isp_scale(right_cam.node.getResolutionWidth()))
             self._stereo = self._oak.create_stereo(left=left_cam, right=right_cam, name="depth")
-
+            if config.stereo.depth_preset:
+                self._stereo.node.setDefaultProfilePreset(config.stereo.depth_preset)
             align_component = self._get_component_by_socket(config.stereo.align)
             if not align_component:
                 return ErrorMessage(f"{config.stereo.align} is not configured. Couldn't create stereo pair.")
-            self._stereo.config_stereo(
-                lr_check=config.stereo.lr_check,
-                subpixel=config.stereo.subpixel_disparity,
-                confidence=config.stereo.confidence,
-                align=align_component,
-                lr_check_threshold=config.stereo.lrc_threshold,
-                median=config.stereo.median,
-            )
+            if config.stereo.depth_preset is None:
+                self._stereo.config_stereo(
+                    lr_check=config.stereo.lr_check,
+                    subpixel=config.stereo.subpixel_disparity,
+                    confidence=config.stereo.confidence,
+                    align=align_component,
+                    lr_check_threshold=config.stereo.lrc_threshold,
+                    median=config.stereo.median,
+                )
+            else:
+                self._stereo.config_stereo(align=align_component)
 
             aligned_camera = self._get_camera_config_by_socket(config, config.stereo.align)
             if not aligned_camera:
@@ -664,8 +670,13 @@ class Device:
             if not hasattr(self, "_queue"):
                 return
             packets: Dict[str, Any] = self._queue.get_nowait()
-            for name, packet in packets.items():
-                self._packet_handler.log_packet(self._component_outputs[name]["component"], packet)
+            if not isinstance(packets, dict):  # Edge case when the sdk q was built with only one component output.
+                self._packet_handler.log_packet(
+                    self._component_outputs[list(self._component_outputs.keys())[0]]["component"], packets
+                )
+            else:
+                for name, packet in packets.items():
+                    self._packet_handler.log_packet(self._component_outputs[name]["component"], packet)
         except QueueEmpty:
             pass
 
