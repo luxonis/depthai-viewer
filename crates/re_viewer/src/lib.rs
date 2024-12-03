@@ -2,7 +2,7 @@
 //!
 //! This crate contains all the GUI code for the Depthai Viewer,
 //! including all 2D and 3D visualization code.
-
+#![recursion_limit = "1024"]
 mod app;
 pub mod depthai;
 pub mod env_vars;
