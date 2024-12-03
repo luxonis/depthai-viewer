@@ -2,7 +2,6 @@
 //!
 //! This crate contains all the GUI code for the Depthai Viewer,
 //! including all 2D and 3D visualization code.
-
 mod app;
 pub mod depthai;
 pub mod env_vars;
@@ -12,7 +11,7 @@ mod misc;
 mod remote_viewer_app;
 mod ui;
 mod viewer_analytics;
-
+#![recursion_limit = "1024"]
 pub(crate) use misc::{mesh_loader, Item, TimeControl, TimeView, ViewerContext};
 use re_log_types::PythonVersion;
 pub(crate) use ui::{bottom_panel, memory_panel, selection_panel, time_panel, UiVerbosity};

@@ -88,7 +88,8 @@
 //!
 
 #![warn(missing_docs)] // Let's keep the this crate well-documented!
-
+    
+#![recursion_limit = "256"]
 mod crash_handler;
 mod run;
 

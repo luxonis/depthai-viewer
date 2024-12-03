@@ -9,3 +9,4 @@ websockets
 pydantic==1.9
 deprecated
 sentry-sdk
+scipy==1.14.1
