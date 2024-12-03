@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional, Tuple, Union
-
+import time
 import cv2
 import depthai as dai
 import numpy as np
@@ -29,7 +29,8 @@ import depthai_viewer as viewer
 from depthai_viewer._backend.store import Store
 from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
-
+from depthai_viewer._backend.obscured_utilities.utilities.calibration_handler import Recalibration
+from depthai_viewer._backend.obscured_utilities.utilities.display_handler import Display
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
     class Config:
@@ -81,8 +82,10 @@ class PacketHandler:
     store: Store
     _ahrs: Mahony
     _calibration_handler: CachedCalibrationHandler
+    _dynamic_recalibration: Recalibration = None
+    _display: Display = None
 
-    def __init__(self, store: Store, calibration_handler: dai.CalibrationHandler):
+    def __init__(self, store: Store, calibration_handler: dai.CalibrationHandler, factoryCalibration_handler: dai.CalibrationHandler, stereo: False):
         viewer.init(f"Depthai Viewer {store.viewer_address}")
         print("Connecting to viewer at", store.viewer_address)
         viewer.connect(store.viewer_address)
@@ -90,6 +93,17 @@ class PacketHandler:
         self._ahrs = Mahony(frequency=100)
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
         self._calibration_handler = CachedCalibrationHandler(calibration_handler)
+        self.stereo = stereo
+        if self.stereo:
+            self._dynamic_recalibration = Recalibration(calibration_handler, factoryCalibration_handler)
+            self._display = Display()
+            self.new_calib = None
+            self.flashCalibration = False
+            self.resetFactoryCalibration = False
+            self._display_flashing = ""
+            self._calib_time = None
+            self.display_bar = False
+            self.display_text = None
 
     def reset(self) -> None:
         self._ahrs = Mahony(frequency=100)
@@ -198,6 +212,7 @@ class PacketHandler:
         h, w = frame.getHeight(), frame.getWidth()
         was_undistorted_and_rectified = False
         # If the image is a cv frame try to undistort and rectify it
+        # Currently this is blocking the code and so it introcudes delay in stream, need to make it better (Matic)
         if intrinsics_matrix is not None and distortion_coefficients is not None:
             if frame.getType() == dai.RawImgFrame.Type.NV12:
                 img_frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_BGR2RGB)
@@ -229,26 +244,115 @@ class PacketHandler:
             height=h,
         )
         entity_path = f"{board_socket.name}/transform/{cam}/Image"
+        if self.stereo:
+            is_left_socket = board_socket.name == str(self._dynamic_recalibration.left_socket.name)
+            is_right_socket = board_socket.name == str(self._dynamic_recalibration.right_socket.name)
 
-        if (
-            not was_undistorted_and_rectified and frame.getType() == dai.RawImgFrame.Type.NV12
-        ):  # or frame.getType() == dai.RawImgFrame.Type.YUV420p
-            encoding = viewer.ImageEncoding.NV12
-            viewer.log_encoded_image(
-                entity_path,
-                img_frame,
-                width=w,
-                height=h,
-                encoding=encoding,
-            )
-        elif frame.getType() == dai.RawImgFrame.Type.YUV420p:
-            viewer.log_image(entity_path, cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB))
-        elif frame.getType() == dai.RawImgFrame.Type.GRAYF16:
-            img = img_frame.view(np.float16).reshape(h, w)
-            viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
+            # Handle frames when feature collection is disabled
+            if not self._dynamic_recalibration.collect_features and not self._dynamic_recalibration.recalibrating:
+                if frame.getType() == dai.RawImgFrame.Type.NV12 and not was_undistorted_and_rectified:
+                    encoding = viewer.ImageEncoding.NV12
+                    if (is_left_socket or is_right_socket) and self.display_bar:
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
+                    viewer.log_encoded_image(entity_path, img_frame, width=w, height=h, encoding=encoding)
+                elif frame.getType() == dai.RawImgFrame.Type.YUV420p:
+                    if (is_left_socket or is_right_socket) and self.display_bar:
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
+                    viewer.log_image(entity_path, cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB))
+                elif frame.getType() == dai.RawImgFrame.Type.GRAYF16:
+                    img = img_frame.view(np.float16).reshape(h, w)
+                    if (is_left_socket or is_right_socket) and self.display_bar:
+                        self._display.draw_health_bar(img_frame, self.error_left,display_text=self.display_text)
+                        img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
+                    viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
+                else:
+                    if (is_left_socket or is_right_socket) and self.display_bar:
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
+                        self._dynamic_recalibration.resolution = img_frame.shape[1::-1]
+                    elif (is_left_socket or is_right_socket) and self._display_flashing != "":
+                        self._display.draw_center_center_box(img_frame,f"Flashing {self._display_flashing} calibration ...")
+                    viewer.log_image(entity_path, img_frame)
+                if is_left_socket:
+                    self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
+                    self._dynamic_recalibration.frame_left = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
+                if is_right_socket:
+                    self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
+                    self._dynamic_recalibration.frame_right = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
+
+            if self._calib_time is not None and np.abs(time.time() - self._calib_time) > 5:
+                if self._display_flashing != "":
+                    self._display_flashing = ""
+                else:
+                    self.display_bar = False
+                    self._dynamic_recalibration.reset_aggregation()
+                self._calib_time = None
+
+            # Handle frames when feature collection is enabled
+            elif self._dynamic_recalibration.collect_features or self._dynamic_recalibration.recalibrating:
+                if not is_left_socket and not is_right_socket:
+                    # Process frames for sockets that are not left or right
+                    if frame.getType() == dai.RawImgFrame.Type.NV12 and not was_undistorted_and_rectified:
+                        encoding = viewer.ImageEncoding.NV12
+                        viewer.log_encoded_image(entity_path, img_frame, width=w, height=h, encoding=encoding)
+                    elif frame.getType() == dai.RawImgFrame.Type.YUV420p:
+                        viewer.log_image(entity_path, cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB))
+                    elif frame.getType() == dai.RawImgFrame.Type.GRAYF16:
+                        img = img_frame.view(np.float16).reshape(h, w)
+                        viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
+                    else:
+                        viewer.log_image(entity_path, img_frame)
+                else:
+                    # Handle left socket
+                    if is_left_socket:
+                        frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
+                        self._display.create_window((frame.shape[1], frame.shape[0]))
+                        self._dynamic_recalibration.frame_left = frame
+                        if self._dynamic_recalibration.collect_features:
+                            self._display_and_log_frame(self._dynamic_recalibration.left_socket.name, frame, self._dynamic_recalibration.new_pts_left)
+                        elif self._dynamic_recalibration.recalibrating:
+                            self._display.draw_center_center_box(self._dynamic_recalibration.frame_left,"Recalibration in progress ...")
+                            entity_path = f"{self._dynamic_recalibration.left_socket.name}/transform/mono_cam/Image"
+                            viewer.log_image(entity_path, cv2.cvtColor(self._dynamic_recalibration.frame_left, cv2.COLOR_BGR2RGB))
+                    # Handle right socket
+                    elif is_right_socket:
+                        frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
+                        self._display.create_window((frame.shape[1], frame.shape[0]))
+                        self._dynamic_recalibration.frame_right = frame
+                        if self._dynamic_recalibration.collect_features:
+                            self._display_and_log_frame(self._dynamic_recalibration.right_socket.name, frame)
+                        elif self._dynamic_recalibration.recalibrating:
+                            self._display.draw_center_center_box(self._dynamic_recalibration.frame_right,"Recalibration in progress ...")
+                            entity_path = f"{self._dynamic_recalibration.right_socket.name}/transform/mono_cam/Image"
+                            viewer.log_image(entity_path, cv2.cvtColor(self._dynamic_recalibration.frame_right, cv2.COLOR_BGR2RGB))
+
+
+            if not self._dynamic_recalibration.result_queue.empty():
+                self.new_calib, out_before, out_after, fillrate_before, fillrate_after = self._dynamic_recalibration.result_queue.get()
+                self._dynamic_recalibration.stop_optimization()
+                self._display.reset()
+                _, _, self.error_left, _ = self._dynamic_recalibration.get_features(self._dynamic_recalibration.frame_left , self._dynamic_recalibration.frame_right)
+                self.calibration_error = [self.error_left, _]
+                self._calib_time = time.time()
+                self.display_bar = True
+                self.display_text = "Recalibration done, new depth will be displayed."
+                print(f"Previous reprojection error: {np.median(out_before[4])}px")
+                print(f"New reprojection error: {np.median(out_after[4])}px")
+                print(f"Previous fillrate: {fillrate_before}%")
+                print(f"New fillrate: {fillrate_after}%")
         else:
-            viewer.log_image(entity_path, img_frame)
-
+            if frame.getType() == dai.RawImgFrame.Type.NV12 and not was_undistorted_and_rectified:
+                encoding = viewer.ImageEncoding.NV12
+                viewer.log_encoded_image(entity_path, img_frame, width=w, height=h, encoding=encoding)
+            elif frame.getType() == dai.RawImgFrame.Type.YUV420p:
+                viewer.log_image(entity_path, cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB))
+            elif frame.getType() == dai.RawImgFrame.Type.GRAYF16:
+                img = img_frame.view(np.float16).reshape(h, w)
+                viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
+            else:
+                viewer.log_image(entity_path, img_frame)
     def _on_camera_frame(self, packet: FramePacket, board_socket: dai.CameraBoardSocket) -> None:
         if board_socket in list(
             map(lambda cam: cam.tof_align, self.store.pipeline_config.cameras if self.store.pipeline_config else [])
@@ -408,6 +512,42 @@ class PacketHandler:
             int(min(max(detection.xmax, 0.0), 1.0) * max_width),
             int(min(max(detection.ymax, 0.0), 1.0) * max_height),
         ]
+
+
+    def _display_and_log_frame(self, side: str, frame: np.ndarray, features: Optional[np.ndarray] = None) -> None:
+        """
+        Display and log a frame with optional features overlay.
+        """
+        if features is not None:
+            self._display.drawFeatures(frame, features)
+            alpha = 0.25
+            overlay_frame = cv2.addWeighted(self._display.overlay, alpha, frame, 1 - alpha, 0)
+        else:
+            overlay_frame = frame
+        overlay_frame = self._display.draw_progress_bar_with_percentage(overlay_frame, len(self._dynamic_recalibration.aggregated_pts_left)/self._dynamic_recalibration.min_pts_for_calib, self._dynamic_recalibration.coverage_condition)
+
+        entity_path = f"{side}/transform/mono_cam/Image"
+        viewer.log_image(entity_path, cv2.cvtColor(overlay_frame, cv2.COLOR_BGR2RGB))
+
+    def _start_calibration(self) -> None:
+        """
+        Start calibration when 'c' key is pressed.
+        """
+        _, _, self.error_left, _ = self._dynamic_recalibration.get_features(
+            self._dynamic_recalibration.frame_left, self._dynamic_recalibration.frame_right
+        )
+        self._calib_time = time.time()
+        self.display_bar = True
+        self.display_text = "Calibration status."
+
+    def _start_optimization(self) -> None:
+        """
+        Start optimization when 'r' key is pressed.
+        """
+        print("Starting feature collection and optimization...")
+        self._dynamic_recalibration.start_optimization(30)
+
+
 
 
 def cam_kind_from_frame_type(dtype: dai.RawImgFrame.Type) -> str:

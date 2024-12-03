@@ -46,6 +46,10 @@ class Action(Enum):
     RESET = auto()  # When anything bad happens, a reset occurs (like closing ws connection)
     GET_AVAILABLE_DEVICES = auto()
     SET_TOF_CONFIG = auto()
+    RECALIBRATE = auto()
+    CALIB_CHECK = auto()
+    FLASH_CALIB = auto()
+    FLASH_FACTORY_CALIB = auto()
 
 
 def dispatch_action(action: Action, **kwargs) -> Message:  # type: ignore[no-untyped-def]
@@ -159,6 +163,15 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
                     print(f"Failed to deserialize tof_config: {tof_config}: {e}")
                     continue
                 await send_message(websocket, dispatch_action(Action.SET_TOF_CONFIG, tof_config=tof_config))
+
+            elif message_type == MessageType.RECALIBRATION:
+                message = dispatch_action(Action.RECALIBRATE)
+            elif message_type == MessageType.CALIB_CHECK:
+                message = dispatch_action(Action.CALIB_CHECK)
+            elif message_type == MessageType.FLASH_CALIB:
+                message = dispatch_action(Action.FLASH_CALIB)
+            elif message_type == MessageType.FLASH_FACTORY_CALIB:
+                message = dispatch_action(Action.FLASH_FACTORY_CALIB)
             else:
                 print("Unknown message type: ", message_type)
                 continue

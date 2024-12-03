@@ -76,6 +76,57 @@ impl BackendCommChannel {
         );
     }
 
+    pub fn start_recalibration(&mut self, number: u32) {
+        self.ws.send(
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Recalibrate,
+                    data: WsMessageData::Recalibrate(number),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
+        );
+    }
+
+    pub fn calibration_check(&mut self, number: u32) {
+        self.ws.send(
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Calib_check,
+                    data: WsMessageData::Calib_check(number),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
+        );
+    }
+
+    pub fn flash_calibration(&mut self, number: u32) {
+        self.ws.send(
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Flash_calib,
+                    data: WsMessageData::Flash_calib(number),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
+        );
+    }
+
+    pub fn flash_factorycalibration(&mut self, number: u32) {
+        self.ws.send(
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Reset_factory,
+                    data: WsMessageData::Reset_factory(number),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
+        );
+    }
     pub fn receive(&mut self) -> Option<WsMessage> {
         self.ws.receive()
     }

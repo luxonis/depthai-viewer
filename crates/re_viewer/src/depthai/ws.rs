@@ -90,6 +90,10 @@ pub enum WsMessageData {
     Info(depthai::Info),
     Warning(depthai::Warning),
     SetToFConfig((depthai::CameraBoardSocket, depthai::ToFConfig)),
+    Recalibrate(u32),
+    Calib_check(u32),
+    Flash_calib(u32),
+    Reset_factory(u32)
 }
 
 #[derive(Deserialize, Serialize, fmt::Debug)]
@@ -104,6 +108,10 @@ pub enum WsMessageType {
     Info,
     Warning,
     SetToFConfig,
+    Recalibrate,
+    Calib_check,
+    Flash_calib,
+    Reset_factory
 }
 
 impl Default for WsMessageType {
@@ -164,6 +172,18 @@ impl<'de> Deserialize<'de> for BackWsMessage {
             }
             WsMessageType::SetToFConfig => {
                 WsMessageData::SetToFConfig(serde_json::from_value(message.data).unwrap())
+            },
+            WsMessageType::Recalibrate => {
+                WsMessageData::Recalibrate(serde_json::from_value(message.data).unwrap())
+            }
+            WsMessageType::Calib_check => {
+                WsMessageData::Calib_check(serde_json::from_value(message.data).unwrap())
+            }
+            WsMessageType::Flash_calib => {
+                WsMessageData::Flash_calib(serde_json::from_value(message.data).unwrap())
+            }
+            WsMessageType::Reset_factory => {
+                WsMessageData::Reset_factory(serde_json::from_value(message.data).unwrap())
             }
         };
 

@@ -18,6 +18,10 @@ class MessageType:
     ERROR = "Error"  # Error message
     INFO = "Info"  # Info message
     WARNING = "Warning"  # Warning message
+    RECALIBRATION = "Recalibrate"
+    CALIB_CHECK = "Calib_check"
+    FLASH_CALIB = "Flash_calib"
+    FLASH_FACTORY_CALIB = "Reset_factory"
 
 
 class ErrorAction(Enum):

@@ -1006,6 +1006,18 @@ impl State {
                 WsMessageData::SetToFConfig((_board_socket, _config)) => {
                     re_log::debug!("SetToFConfig received from backend.")
                 }
+                WsMessageData::Recalibrate(number)=> {
+                    re_log::debug!("Recalibrate recieved from backend.")
+                }
+                WsMessageData::Calib_check(number)=> {
+                    re_log::debug!("Calibration check recieved from backend.")
+                }
+                WsMessageData::Flash_calib(number)=> {
+                    re_log::debug!("Flashing calibration recieved from backend.")
+                }
+                WsMessageData::Reset_factory(number)=> {
+                    re_log::debug!("Reset to factory calibration recieved from backend.")
+                }
             }
         }
 
@@ -1102,6 +1114,26 @@ impl State {
     pub fn set_flood_brightness(&mut self, brightness: u32) {
         println!("Setting flood brightness to {}", brightness);
         self.backend_comms.set_flood_brightness(brightness);
+    }
+
+    pub fn start_recalibration(&mut self, recalib: u32) {
+        println!("Starting calibration");
+        self.backend_comms.start_recalibration(recalib);
+    }
+
+    pub fn calibration_check(&mut self, recalib: u32) {
+        println!("Starting calibration check");
+        self.backend_comms.calibration_check(recalib);
+    }
+
+    pub fn flash_calibration(&mut self, recalib: u32) {
+        println!("Flashing calibration");
+        self.backend_comms.flash_calibration(recalib);
+    }
+
+    pub fn flash_factorycalibration(&mut self, recalib: u32) {
+        println!("Flashing factory calibration");
+        self.backend_comms.flash_factorycalibration(recalib);
     }
 
     pub fn reset(&mut self) {

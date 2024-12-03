@@ -161,6 +161,22 @@ class DepthaiViewerBack:
                     return ErrorMessage("ToF config not provided")
                 return ErrorMessage("Failed to update ToF config. ToF node wasn't found.")
             return ErrorMessage("No device selected")
+        elif action == Action.RECALIBRATE:
+            #self._device._packet_handler._start_calibration()
+            if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
+                self._device._packet_handler._start_optimization()
+
+        elif action == Action.CALIB_CHECK:
+            if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
+                self._device._packet_handler._start_calibration()
+
+        elif action == Action.FLASH_CALIB:
+            if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
+                self._device._packet_handler.flashCalibration = True
+
+        elif action == Action.FLASH_FACTORY_CALIB:
+            if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
+                self._device._packet_handler.resetFactoryCalibration = True
         return ErrorMessage(f"Action: {action} not implemented")
 
     def run(self) -> None:

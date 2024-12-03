@@ -99,7 +99,11 @@ class Device:
         self.id = device_id
         self.set_oak(OakCamera(device_id, args={"irFloodBrightness": 0, "irDotBrightness": 0}))
         self.store = store
-        self._packet_handler = PacketHandler(self.store, self._oak.device.readCalibration())  # type: ignore[union-attr]
+        if len(self._oak.device.getConnectedCameraFeatures()) <= 1:
+            stereo = False
+        else:
+            stereo = True
+        self._packet_handler = PacketHandler(self.store, self._oak.device.readCalibration(),  self._oak.device.readFactoryCalibration(), stereo)  # type: ignore[union-attr]
         print("Oak cam: ", self._oak)
         # self.start = time.time()
         # self._profiler.enable()
@@ -677,6 +681,21 @@ class Device:
             else:
                 for name, packet in packets.items():
                     self._packet_handler.log_packet(self._component_outputs[name]["component"], packet)
+                    if self._packet_handler.stereo and self._packet_handler.new_calib is not None:
+                        self._oak.device.setCalibration(self._packet_handler.new_calib)
+                        self._packet_handler.new_calib = None
+
+                    if self._packet_handler.stereo and self._packet_handler.flashCalibration:
+                        self._packet_handler._calib_time = time.time()
+                        self._oak.device.flashCalibration(self._packet_handler._dynamic_recalibration.calib_edit.newCalib)
+                        self._packet_handler.flashCalibration = False
+                        self._packet_handler._display_flashing = "New"
+
+                    if self._packet_handler.stereo and self._packet_handler.resetFactoryCalibration:
+                        self._packet_handler._calib_time = time.time()
+                        self._oak.device.flashCalibration(self._packet_handler._dynamic_recalibration.calib_edit.factoryCalib)
+                        self._packet_handler.resetFactoryCalibration = False
+                        self._packet_handler._display_flashing = "Factory"
         except QueueEmpty:
             pass
 

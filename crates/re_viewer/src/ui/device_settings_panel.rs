@@ -402,7 +402,6 @@ impl DeviceSettingsPanel {
 
         let text_color = ui.style().visuals.strong_text_color();
         // let text_color = ctx.re_ui.design_tokens.primary_700;
-
         ctx.re_ui.styled_scrollbar(
             ui,
             re_ui::ScrollAreaDirection::Vertical,
@@ -415,7 +414,61 @@ impl DeviceSettingsPanel {
                     ..Default::default()
                 })
                 .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        ui.scope(|ui| {
+                            let mut style = ui.style_mut().clone();
+                            let color = style.visuals.selection.bg_fill;
+                            style.visuals.widgets.hovered.bg_fill = color;
+                            style.visuals.widgets.inactive.bg_fill = color;
+                            style.visuals.widgets.inactive.fg_stroke.color =
+                                egui::Color32::WHITE;
+                            style.visuals.widgets.hovered.fg_stroke.color =
+                                egui::Color32::WHITE;
+                            style.spacing.button_padding =
+                                egui::Vec2::new(24.0, 4.0);
+                            ui.set_style(style);
 
+                            if ui
+                                .add_sized(
+                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                    egui::Button::new("Recalibration"),
+                                )
+                                .clicked()
+                            {
+                                ctx.depthai_state.start_recalibration(1);
+                            }
+
+                            if ui
+                                .add_sized(
+                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                    egui::Button::new("Calibration check"),
+                                )
+                                .clicked()
+                            {
+                                ctx.depthai_state.calibration_check(1);
+                            }
+
+                            if ui
+                                .add_sized(
+                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                    egui::Button::new("Flash Calibration"),
+                                )
+                                .clicked()
+                            {
+                                ctx.depthai_state.flash_calibration(1);
+                            }
+
+                            if ui
+                                .add_sized(
+                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                    egui::Button::new("Flash factory Calibration"),
+                                )
+                                .clicked()
+                            {
+                                ctx.depthai_state.flash_factorycalibration(1);
+                            }
+                        });
+                    });
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
                             Self::camera_config_ui(ctx, ui, &mut device_config);
