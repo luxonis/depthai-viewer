@@ -89,3 +89,6 @@ ban-relative-imports = "all"
 [tool.maturin]
 locked = true
 python-packages = ["depthai_viewer"]
+
+[tool.maturin.scripts]
+pre-build = "python select_package.py"
