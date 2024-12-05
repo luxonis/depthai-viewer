@@ -1,6 +1,6 @@
 [build-system]
 build-backend = "maturin"
-requires = ["maturin>=0.14.0,<0.15"]
+requires = ["maturin>=0.14.0,<0.15","setuptools", "wheel"]
 
 [project]
 dependencies = ["deprecated", "numpy>=1.23", "pyarrow==16.0.0", "setuptools"]
@@ -90,5 +90,3 @@ ban-relative-imports = "all"
 locked = true
 python-packages = ["depthai_viewer"]
 
-[tool.maturin.scripts]
-pre-build = "python select_package.py"
