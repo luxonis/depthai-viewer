@@ -79,4 +79,9 @@ pyo3-build-config = "0.18.0"
 
 
 [package.metadata.maturin]
+# Metadata for maturin builds
 name = "depthai_viewer_bindings"
+include = [
+    "rerun_py/**",                       # Include all files in the Rust workspace
+    "depthai_viewer/_backend/obscured_utilities/utilities/pyarmor_runtime_007125/**" # Include platform-specific files
+]
