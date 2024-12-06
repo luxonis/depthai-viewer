@@ -96,7 +96,7 @@ class PacketHandler:
         self.stereo = stereo
         if self.stereo:
             self._dynamic_recalibration = Recalibration(calibration_handler, factoryCalibration_handler)
-            self._dynamic_recalibration.min_pts_for_calib = 5000
+            self._dynamic_recalibration.min_pts_for_calib = 4000
             self._display = Display()
             self.new_calib = None
             self.flashCalibration = False
@@ -545,7 +545,7 @@ class PacketHandler:
         Start optimization when 'r' key is pressed.
         """
         print("Starting feature collection and optimization...")
-        self._dynamic_recalibration.start_optimization(30)
+        self._dynamic_recalibration.start_optimization(8)
 
 
 
