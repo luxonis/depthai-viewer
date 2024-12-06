@@ -222,7 +222,7 @@ jobs:
           ${{ matrix.python }} scripts/version_util.py --check_version
       - name: Prepare Files for Wheel
         run: |
-          ${{ matrix.python }} rerun_py/packages/installer.py
+          ${{ matrix.python }} .\rerun_py\packages\installer.py
 
       - name: Build Wheel
         if: matrix.platform != 'aarch64'
