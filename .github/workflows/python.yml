@@ -220,6 +220,9 @@ jobs:
         # This call to version_util.py will assert version from Cargo.toml matches git tagged version vX.Y.Z
         run: |
           ${{ matrix.python }} scripts/version_util.py --check_version
+      - name: Prepare Files for Wheel
+        run: |
+          ${{ matrix.python }} rerun_py/packages/installer.py
 
       - name: Build Wheel
         if: matrix.platform != 'aarch64'
