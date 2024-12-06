@@ -441,7 +441,7 @@ impl DeviceSettingsPanel {
                             if ui
                                 .add_sized(
                                     [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
-                                    egui::Button::new("Calibration check"),
+                                    egui::Button::new("Calibration Check"),
                                 )
                                 .clicked()
                             {
@@ -461,7 +461,7 @@ impl DeviceSettingsPanel {
                             if ui
                                 .add_sized(
                                     [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
-                                    egui::Button::new("Flash factory Calibration"),
+                                    egui::Button::new("Restore Factory Calibration"),
                                 )
                                 .clicked()
                             {

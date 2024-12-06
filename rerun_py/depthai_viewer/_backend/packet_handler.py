@@ -96,6 +96,7 @@ class PacketHandler:
         self.stereo = stereo
         if self.stereo:
             self._dynamic_recalibration = Recalibration(calibration_handler, factoryCalibration_handler)
+            self._dynamic_recalibration.min_pts_for_calib = 5000
             self._display = Display()
             self.new_calib = None
             self.flashCalibration = False
@@ -282,14 +283,6 @@ class PacketHandler:
                     self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
                     self._dynamic_recalibration.frame_right = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
 
-            if self._calib_time is not None and np.abs(time.time() - self._calib_time) > 5:
-                if self._display_flashing != "":
-                    self._display_flashing = ""
-                else:
-                    self.display_bar = False
-                    self._dynamic_recalibration.reset_aggregation()
-                self._calib_time = None
-
             # Handle frames when feature collection is enabled
             elif self._dynamic_recalibration.collect_features or self._dynamic_recalibration.recalibrating:
                 if not is_left_socket and not is_right_socket:
@@ -328,6 +321,13 @@ class PacketHandler:
                             entity_path = f"{self._dynamic_recalibration.right_socket.name}/transform/mono_cam/Image"
                             viewer.log_image(entity_path, cv2.cvtColor(self._dynamic_recalibration.frame_right, cv2.COLOR_BGR2RGB))
 
+            if self._calib_time is not None and np.abs(time.time() - self._calib_time) > 5:
+                if self._display_flashing != "":
+                    self._display_flashing = ""
+                elif self.display_bar:
+                    self.display_bar = False
+                    self._dynamic_recalibration.reset_aggregation()
+                self._calib_time = None
 
             if not self._dynamic_recalibration.result_queue.empty():
                 self.new_calib, out_before, out_after, fillrate_before, fillrate_after = self._dynamic_recalibration.result_queue.get()
