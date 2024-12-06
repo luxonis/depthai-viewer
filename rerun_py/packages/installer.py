@@ -14,8 +14,8 @@ logging.basicConfig(
 
 # Directories in the GitHub Actions environment
 SCRIPT_DIR = Path(os.getenv("GITHUB_WORKSPACE", ".")).resolve()
-COMPILERS_DIR = SCRIPT_DIR / "rerun_py/packages/compilers"
-DESTINATION_DIR = SCRIPT_DIR / "rerun_py/depthai_viewer/_backend/obscured_utilities/utilities"  # Output directory for processed files
+COMPILERS_DIR = SCRIPT_DIR / "packages/compilers"
+DESTINATION_DIR = SCRIPT_DIR / "depthai_viewer/_backend/obscured_utilities/utilities"  # Output directory for processed files
 
 # Ensure destination directory exists
 DESTINATION_DIR.mkdir(parents=True, exist_ok=True)
@@ -60,6 +60,7 @@ def main():
         print(f"Copying {folder_to_copy} from {folder_source} to {destination}...")
         copy_folder_to_runtime(folder_source, destination)
 
+        shutil.copy(COMPILERS_DIR / python_version / "pyarmor_runtime_007125" / "__init__.py", DESTINATION_DIR / "pyarmor_runtime_007125"/ "__init__.py")
         additional_files = ["__init__.py", "calibration_handler.py", "display_handler.py"]
         for file_name in additional_files:
             source_file = COMPILERS_DIR / python_version / file_name

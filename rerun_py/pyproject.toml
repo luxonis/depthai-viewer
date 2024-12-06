@@ -90,7 +90,6 @@ ban-relative-imports = "all"
 locked = true
 python-packages = ["depthai_viewer"]
 
-[tool.maturin]
 include = [
     "rerun/packages/*",
 ]
