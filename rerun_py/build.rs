@@ -5,7 +5,7 @@ fn main() {
     pyo3_build_config::add_extension_module_link_args();
 
     re_build_build_info::export_env_vars();
-    let script_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("packages/installer.py");
+    let script_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("rerun_py/packages/installer.py");
     if !script_path.exists() {
         panic!("Pre-build script not found: {:?}", script_path);
     }
