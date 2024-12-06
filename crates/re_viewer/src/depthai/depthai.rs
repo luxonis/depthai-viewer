@@ -259,6 +259,43 @@ impl Default for MedianFilter {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug)]
+pub enum CalibrationMode {
+    Factory,
+    User,
+    New,
+}
+
+impl Default for CalibrationMode {
+    fn default() -> Self {
+        Self::Factory
+    }
+}
+
+impl CalibrationMode {
+    pub fn from_str(mode: &str) -> Option<Self> {
+        match mode {
+            "Factory" => Some(Self::Factory),
+            "User" => Some(Self::User),
+            "New" => Some(Self::New),
+            _ => None,
+        }
+    }
+
+    pub fn all_modes() -> Vec<Self> {
+        vec![Self::Factory, Self::User, Self::New]
+    }
+}
+
+impl fmt::Display for CalibrationMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Factory => write!(f, "Factory"),
+            Self::User => write!(f, "User"),
+            Self::New => write!(f, "New"),
+        }
+    }
+}
 #[derive(serde::Deserialize, serde::Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct StereoDepthConfig {
     pub depth_preset: DepthProfilePreset,
@@ -345,6 +382,7 @@ pub struct DeviceConfig {
     pub dot_brightness: u32,
     #[serde(skip)]
     pub flood_brightness: u32,
+    pub calibration_mode: Option<CalibrationMode>,
 }
 
 impl Default for DeviceConfig {
@@ -357,6 +395,7 @@ impl Default for DeviceConfig {
             ai_model: None,
             dot_brightness: 0,
             flood_brightness: 0,
+            calibration_mode: Some(CalibrationMode::Factory),
         }
     }
 }
@@ -1018,6 +1057,13 @@ impl State {
                 WsMessageData::Reset_factory(number)=> {
                     re_log::debug!("Reset to factory calibration recieved from backend.")
                 }
+                WsMessageData::SetCalibration(mode) => {
+                    if let Some(calib_mode) = CalibrationMode::from_str(&mode) {
+                        self.set_calibration_mode(calib_mode);
+                    } else {
+                        println!("Received invalid calibration mode: {}", mode);
+                    }
+                }
             }
         }
 
@@ -1134,6 +1180,12 @@ impl State {
     pub fn flash_factorycalibration(&mut self, recalib: u32) {
         println!("Flashing factory calibration");
         self.backend_comms.flash_factorycalibration(recalib);
+    }
+
+    pub fn set_calibration_mode(&mut self, mode: CalibrationMode) {
+        println!("Setting calibration mode to: {}", mode); // Use mode first
+        self.backend_comms.set_calibration_mode(mode.to_string()); // Use mode second
+        self.modified_device_config.calibration_mode = Some(mode);
     }
 
     pub fn reset(&mut self) {

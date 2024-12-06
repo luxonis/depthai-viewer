@@ -177,6 +177,9 @@ class DepthaiViewerBack:
         elif action == Action.FLASH_FACTORY_CALIB:
             if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
                 self._device._packet_handler.resetFactoryCalibration = True
+
+        elif action == Action.SET_CALIBRATION:
+            print("Selected")
         return ErrorMessage(f"Action: {action} not implemented")
 
     def run(self) -> None:

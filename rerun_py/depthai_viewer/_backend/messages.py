@@ -22,6 +22,7 @@ class MessageType:
     CALIB_CHECK = "Calib_check"
     FLASH_CALIB = "Flash_calib"
     FLASH_FACTORY_CALIB = "Reset_factory"
+    SET_CALIBRATION = "SetCalibration"
 
 
 class ErrorAction(Enum):

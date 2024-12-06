@@ -17,6 +17,7 @@ class Store:
     _send_message_queue: Queue  # type: ignore[type-arg]
     _dot_brightness: int = 0
     _flood_brightness: int = 0
+    _calibration: Optional[str] = None
     _tof_config: Optional[dai.RawToFConfig] = None
 
     def __init__(self) -> None:
@@ -36,6 +37,9 @@ class Store:
 
     def set_tof_config(self, tof_config: dai.RawToFConfig) -> None:
         self._tof_config = tof_config
+
+    def set_calibration(self, calibration: str) -> None:
+        self._calibration = calibration
 
     def reset(self) -> None:
         self._pipeline_config = None

@@ -4,6 +4,8 @@ import cv2
 import depthai as dai
 import numpy as np
 from ahrs.filters import Mahony
+import scipy
+print(scipy.__version__)
 from depthai_sdk.classes.packets import (  # PointcloudPacket,
     BasePacket,
     BoundingBox,

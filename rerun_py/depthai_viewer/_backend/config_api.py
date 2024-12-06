@@ -50,6 +50,7 @@ class Action(Enum):
     CALIB_CHECK = auto()
     FLASH_CALIB = auto()
     FLASH_FACTORY_CALIB = auto()
+    SET_CALIBRATION = auto()
 
 
 def dispatch_action(action: Action, **kwargs) -> Message:  # type: ignore[no-untyped-def]
@@ -95,7 +96,9 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
             except json.JSONDecodeError:
                 print("Failed to parse message: ", message)
                 continue
+            print("Message", message)
             message_type = message.get("type", None)
+            print("Message", message_type)
             if not message_type:
                 print("Missing message type")
                 continue
@@ -172,6 +175,11 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
                 message = dispatch_action(Action.FLASH_CALIB)
             elif message_type == MessageType.FLASH_FACTORY_CALIB:
                 message = dispatch_action(Action.FLASH_FACTORY_CALIB)
+            elif message_type == MessageType.SET_CALIBRATION:
+                data = message.get("data", {})
+                setCalibration = data.get(message_type, None)
+                dispatch_action(Action.SET_CALIBRATION, setCalibration=setCalibration)
+
             else:
                 print("Unknown message type: ", message_type)
                 continue

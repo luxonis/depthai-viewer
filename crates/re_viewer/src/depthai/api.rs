@@ -127,6 +127,20 @@ impl BackendCommChannel {
             .unwrap(),
         );
     }
+
+    pub fn set_calibration_mode(&mut self, number: String) {
+        self.ws.send(
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::SetCalibration,
+                    data: WsMessageData::SetCalibration(number),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
+        );
+    }
+
     pub fn receive(&mut self) -> Option<WsMessage> {
         self.ws.receive()
     }

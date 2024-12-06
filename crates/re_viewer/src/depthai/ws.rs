@@ -93,7 +93,8 @@ pub enum WsMessageData {
     Recalibrate(u32),
     Calib_check(u32),
     Flash_calib(u32),
-    Reset_factory(u32)
+    Reset_factory(u32),
+    SetCalibration(String)
 }
 
 #[derive(Deserialize, Serialize, fmt::Debug)]
@@ -111,7 +112,8 @@ pub enum WsMessageType {
     Recalibrate,
     Calib_check,
     Flash_calib,
-    Reset_factory
+    Reset_factory,
+    SetCalibration
 }
 
 impl Default for WsMessageType {
@@ -184,6 +186,9 @@ impl<'de> Deserialize<'de> for BackWsMessage {
             }
             WsMessageType::Reset_factory => {
                 WsMessageData::Reset_factory(serde_json::from_value(message.data).unwrap())
+            }
+            WsMessageType::SetCalibration => {
+                WsMessageData::SetCalibration(serde_json::from_value(message.data).unwrap())
             }
         };
 
