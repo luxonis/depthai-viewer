@@ -31,6 +31,7 @@ from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
 from depthai_viewer._backend.obscured_utilities.utilities.calibration_handler import Recalibration
 from depthai_viewer._backend.obscured_utilities.utilities.display_handler import Display
+import os
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
     class Config:
@@ -94,6 +95,8 @@ class PacketHandler:
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
         self._calibration_handler = CachedCalibrationHandler(calibration_handler)
         self.stereo = stereo
+        self.save_diagnostics = ""
+        self.diagnostics_display = False
         if self.stereo:
             self._dynamic_recalibration = Recalibration(calibration_handler, factoryCalibration_handler)
             self._dynamic_recalibration.min_pts_for_calib = 4000
@@ -275,6 +278,10 @@ class PacketHandler:
                         self._dynamic_recalibration.resolution = img_frame.shape[1::-1]
                     elif (is_left_socket or is_right_socket) and self._display_flashing != "":
                         self._display.draw_center_center_box(img_frame,f"Flashing {self._display_flashing} calibration ...")
+
+                    elif (is_left_socket or is_right_socket) and self.diagnostics_display:
+                        self._display.draw_center_center_box(img_frame,f"Saving to:")
+                        self.draw_center_center_box(img_frame, self.file_path)
                     viewer.log_image(entity_path, img_frame)
                 if is_left_socket:
                     self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
@@ -328,6 +335,8 @@ class PacketHandler:
                     self.display_bar = False
                     self._dynamic_recalibration.reset_aggregation()
                 self._calib_time = None
+                self.diagnostics_display = False
+
 
             if not self._dynamic_recalibration.result_queue.empty():
                 self.new_calib, out_before, out_after, fillrate_before, fillrate_after = self._dynamic_recalibration.result_queue.get()
@@ -547,8 +556,44 @@ class PacketHandler:
         print("Starting feature collection and optimization...")
         self._dynamic_recalibration.start_optimization(8)
 
+    def draw_center_center_box(self, image, text, box_color=(0, 0, 0, 128), font_scale=0.3, font_color=(255, 255, 255)):
+        img_height, img_width = image.shape[:2]
 
+        # Calculate text size
+        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)[0]
+        text_width, text_height = text_size
 
+        # Define box dimensions
+        box_padding = 10
+        box_width = text_width + box_padding * 2
+        box_height = text_height + box_padding * 2
+        box_x = (img_width - box_width) // 2
+        box_y = (img_height - box_height) // 2 +50
+
+        # Draw semi-transparent background box
+        overlay = image.copy()
+        box_start = (box_x, box_y)
+        box_end = (box_x + box_width, box_y + box_height)
+        alpha = box_color[3] / 255.0
+        cv2.rectangle(overlay, box_start, box_end, box_color[:3], -1)
+        cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+        # Draw text at the center of the box
+        text_x = box_x + (box_width - text_width) // 2
+        text_y = box_y + (box_height + text_height) // 2
+        cv2.putText(image, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_color, 1)
+
+        return image
+
+    def _save_packet(self, name, frame):
+        base_path = self.save_diagnostics
+        self.file_path = os.path.join(base_path, f"{name}.png")
+
+        counter = 1
+        while os.path.exists(self.file_path):
+            self.file_path = os.path.join(base_path, f"{name}_{counter}.png")
+            counter += 1
+        cv2.imwrite(self.file_path, frame)
 
 def cam_kind_from_frame_type(dtype: dai.RawImgFrame.Type) -> str:
     """Returns camera kind string for given dai.RawImgFrame.Type."""

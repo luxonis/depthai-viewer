@@ -1018,6 +1018,9 @@ impl State {
                 WsMessageData::Reset_factory(number)=> {
                     re_log::debug!("Reset to factory calibration recieved from backend.")
                 }
+                WsMessageData::Camera_Diagnostics(number)=> {
+                    re_log::debug!("Running device diagnostics.")
+                }
             }
         }
 
@@ -1134,6 +1137,11 @@ impl State {
     pub fn flash_factorycalibration(&mut self, recalib: u32) {
         println!("Flashing factory calibration");
         self.backend_comms.flash_factorycalibration(recalib);
+    }
+
+    pub fn Camera_Diagnostics(&mut self, recalib: u32) {
+        println!("Running device diagnostics");
+        self.backend_comms.Camera_Diagnostics(recalib);
     }
 
     pub fn reset(&mut self) {

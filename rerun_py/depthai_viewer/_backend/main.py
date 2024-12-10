@@ -177,6 +177,21 @@ class DepthaiViewerBack:
         elif action == Action.FLASH_FACTORY_CALIB:
             if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
                 self._device._packet_handler.resetFactoryCalibration = True
+
+        elif action == Action.CAMERA_DIAGNOSTICS:
+            self._device._packet_handler.diagnostics_display = True
+            import tempfile
+            import os
+            import time
+            base_tmp_dir = tempfile.gettempdir()
+            new_dirname = os.path.join(base_tmp_dir, self._device._oak.device.getMxId())
+            if not os.path.exists(new_dirname):
+                os.makedirs(new_dirname)  # Create the directory if it doesn't exist
+            self._device._packet_handler.save_diagnostics = str(new_dirname)
+            self._device._oak.device.readCalibration().eepromToJsonFile(os.path.join(str(new_dirname), "calib_user.json"))
+            self._device._oak.device.readFactoryCalibration().eepromToJsonFile(os.path.join(str(new_dirname), "calib_factory.json"))
+            self._device._packet_handler._calib_time = time.time()
+            print(f"Saving to {new_dirname}")
         return ErrorMessage(f"Action: {action} not implemented")
 
     def run(self) -> None:

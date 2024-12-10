@@ -414,63 +414,75 @@ impl DeviceSettingsPanel {
                     ..Default::default()
                 })
                 .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        ui.scope(|ui| {
-                            let mut style = ui.style_mut().clone();
-                            let color = style.visuals.selection.bg_fill;
-                            style.visuals.widgets.hovered.bg_fill = color;
-                            style.visuals.widgets.inactive.bg_fill = color;
-                            style.visuals.widgets.inactive.fg_stroke.color =
-                                egui::Color32::WHITE;
-                            style.visuals.widgets.hovered.fg_stroke.color =
-                                egui::Color32::WHITE;
-                            style.spacing.button_padding =
-                                egui::Vec2::new(24.0, 4.0);
-                            ui.set_style(style);
-
-                            if ui
-                                .add_sized(
-                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
-                                    egui::Button::new("Recalibration"),
-                                )
-                                .clicked()
-                            {
-                                ctx.depthai_state.start_recalibration(1);
-                            }
-
-                            if ui
-                                .add_sized(
-                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
-                                    egui::Button::new("Calibration Check"),
-                                )
-                                .clicked()
-                            {
-                                ctx.depthai_state.calibration_check(1);
-                            }
-
-                            if ui
-                                .add_sized(
-                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
-                                    egui::Button::new("Flash Calibration"),
-                                )
-                                .clicked()
-                            {
-                                ctx.depthai_state.flash_calibration(1);
-                            }
-
-                            if ui
-                                .add_sized(
-                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
-                                    egui::Button::new("Restore Factory Calibration"),
-                                )
-                                .clicked()
-                            {
-                                ctx.depthai_state.flash_factorycalibration(1);
-                            }
-                        });
-                    });
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
+                            ui.collapsing(
+                                egui::RichText::new("Recalibrate_device").color(text_color),
+                                |ui| {
+                                    ui.vertical(|ui| {
+                                        ui.scope(|ui| {
+                                            let mut style = ui.style_mut().clone();
+                                            let color = style.visuals.selection.bg_fill;
+                                            style.visuals.widgets.hovered.bg_fill = color;
+                                            style.visuals.widgets.inactive.bg_fill = color;
+                                            style.visuals.widgets.inactive.fg_stroke.color = egui::Color32::WHITE;
+                                            style.visuals.widgets.hovered.fg_stroke.color = egui::Color32::WHITE;
+                                            style.spacing.button_padding = egui::Vec2::new(24.0, 4.0);
+                                            ui.set_style(style);
+
+                                            if ui
+                                                .add_sized(
+                                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                                    egui::Button::new("Recalibration"),
+                                                )
+                                                .clicked()
+                                            {
+                                                ctx.depthai_state.start_recalibration(1);
+                                            }
+
+                                            if ui
+                                                .add_sized(
+                                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                                    egui::Button::new("Calibration Check"),
+                                                )
+                                                .clicked()
+                                            {
+                                                ctx.depthai_state.calibration_check(1);
+                                            }
+
+                                            if ui
+                                                .add_sized(
+                                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                                    egui::Button::new("Flash Calibration"),
+                                                )
+                                                .clicked()
+                                            {
+                                                ctx.depthai_state.flash_calibration(1);
+                                            }
+
+                                            if ui
+                                                .add_sized(
+                                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                                    egui::Button::new("Restore Factory Calibration"),
+                                                )
+                                                .clicked()
+                                            {
+                                                ctx.depthai_state.flash_factorycalibration(1);
+                                            }
+
+                                            if ui
+                                                .add_sized(
+                                                    [CONFIG_UI_WIDTH, re_ui::ReUi::box_height()],
+                                                    egui::Button::new("Save Device Diagnostics"),
+                                                )
+                                                .clicked()
+                                            {
+                                                ctx.depthai_state.Camera_Diagnostics(1);
+                                            }
+                                        });
+                                    });
+                                },
+                            );
                             Self::camera_config_ui(ctx, ui, &mut device_config);
                             ui.collapsing(
                                 egui::RichText::new("AI settings").color(text_color),

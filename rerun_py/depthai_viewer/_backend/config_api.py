@@ -50,6 +50,7 @@ class Action(Enum):
     CALIB_CHECK = auto()
     FLASH_CALIB = auto()
     FLASH_FACTORY_CALIB = auto()
+    CAMERA_DIAGNOSTICS = auto()
 
 
 def dispatch_action(action: Action, **kwargs) -> Message:  # type: ignore[no-untyped-def]
@@ -172,6 +173,8 @@ async def ws_api(websocket: WebSocketServerProtocol) -> None:
                 message = dispatch_action(Action.FLASH_CALIB)
             elif message_type == MessageType.FLASH_FACTORY_CALIB:
                 message = dispatch_action(Action.FLASH_FACTORY_CALIB)
+            elif message_type == MessageType.CAMERA_DIAGNOSTICS:
+                message = dispatch_action(Action.CAMERA_DIAGNOSTICS)
             else:
                 print("Unknown message type: ", message_type)
                 continue
