@@ -284,11 +284,12 @@ class PacketHandler:
                         self.draw_center_center_box(img_frame, self.file_path)
                     viewer.log_image(entity_path, img_frame)
                 if is_left_socket:
-                    self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
-                    self._dynamic_recalibration.frame_left = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
+                    self._display.create_window((cv2.resize(frame.getCvFrame(), (640,400)).shape[1], cv2.resize(frame.getCvFrame(), (640,400)).shape[0]))
+                    self._dynamic_recalibration.frame_left = cv2.cvtColor(cv2.resize(frame.getCvFrame(), (640,400)), cv2.COLOR_GRAY2BGR)
                 if is_right_socket:
-                    self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
-                    self._dynamic_recalibration.frame_right = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
+                    self._display.create_window((cv2.resize(frame.getCvFrame(), (640,400)).shape[1], cv2.resize(frame.getCvFrame(), (640,400)).shape[0]))
+                    self._dynamic_recalibration.frame_right = cv2.cvtColor(cv2.resize(frame.getCvFrame(), (640,400)), cv2.COLOR_GRAY2BGR)
+                    self._dynamic_recalibration.resolution = self._dynamic_recalibration.frame_right.shape[1::-1]
 
             # Handle frames when feature collection is enabled
             elif self._dynamic_recalibration.collect_features or self._dynamic_recalibration.recalibrating:
@@ -308,10 +309,10 @@ class PacketHandler:
                     # Handle left socket
                     if is_left_socket:
                         frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
-                        self._display.create_window((frame.shape[1], frame.shape[0]))
-                        self._dynamic_recalibration.frame_left = frame
+                        self._display.create_window((cv2.resize(frame, (640,400)).shape[1], cv2.resize(frame, (640,400)).shape[0]))
+                        self._dynamic_recalibration.frame_left = cv2.resize(frame, (640,400))
                         if self._dynamic_recalibration.collect_features:
-                            self._display_and_log_frame(self._dynamic_recalibration.left_socket.name, frame, self._dynamic_recalibration.new_pts_left)
+                            self._display_and_log_frame(self._dynamic_recalibration.left_socket.name, cv2.resize(frame, (640,400)), self._dynamic_recalibration.new_pts_left)
                         elif self._dynamic_recalibration.recalibrating:
                             self._display.draw_center_center_box(self._dynamic_recalibration.frame_left,"Recalibration in progress ...")
                             entity_path = f"{self._dynamic_recalibration.left_socket.name}/transform/mono_cam/Image"
@@ -319,10 +320,10 @@ class PacketHandler:
                     # Handle right socket
                     elif is_right_socket:
                         frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
-                        self._display.create_window((frame.shape[1], frame.shape[0]))
-                        self._dynamic_recalibration.frame_right = frame
+                        self._display.create_window((cv2.resize(frame, (640,400)).shape[1], cv2.resize(frame, (640,400)).shape[0]))
+                        self._dynamic_recalibration.frame_right = cv2.resize(frame, (640,400))
                         if self._dynamic_recalibration.collect_features:
-                            self._display_and_log_frame(self._dynamic_recalibration.right_socket.name, frame)
+                            self._display_and_log_frame(self._dynamic_recalibration.right_socket.name, cv2.resize(frame, (640,400)))
                         elif self._dynamic_recalibration.recalibrating:
                             self._display.draw_center_center_box(self._dynamic_recalibration.frame_right,"Recalibration in progress ...")
                             entity_path = f"{self._dynamic_recalibration.right_socket.name}/transform/mono_cam/Image"

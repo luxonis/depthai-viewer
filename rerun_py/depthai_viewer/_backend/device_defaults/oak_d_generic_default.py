@@ -18,7 +18,7 @@ config = PipelineConfiguration(
         ),
         CameraConfiguration(
             fps=15,
-            resolution=CameraSensorResolution.THE_400_P,
+            resolution=CameraSensorResolution.THE_800_P,
             kind=dai.CameraSensorType.COLOR,
             board_socket=dai.CameraBoardSocket.CAM_B,
             stream_enabled=True,
@@ -26,7 +26,7 @@ config = PipelineConfiguration(
         ),
         CameraConfiguration(
             fps=15,
-            resolution=CameraSensorResolution.THE_400_P,
+            resolution=CameraSensorResolution.THE_800_P,
             kind=dai.CameraSensorType.COLOR,
             board_socket=dai.CameraBoardSocket.CAM_C,
             stream_enabled=True,
