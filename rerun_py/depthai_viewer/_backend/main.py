@@ -180,13 +180,14 @@ class DepthaiViewerBack:
 
         elif action == Action.CAMERA_DIAGNOSTICS:
             self._device._packet_handler.diagnostics_display = True
-            import tempfile
             import os
             import time
-            base_tmp_dir = tempfile.gettempdir()
-            new_dirname = os.path.join(base_tmp_dir, self._device._oak.device.getMxId())
+            current_dir = os.getcwd()
+
+            mxid = self._device._oak.device.getMxId()
+            new_dirname = os.path.join(current_dir, mxid)
             if not os.path.exists(new_dirname):
-                os.makedirs(new_dirname)  # Create the directory if it doesn't exist
+                os.makedirs(new_dirname)
             self._device._packet_handler.save_diagnostics = str(new_dirname)
             self._device._oak.device.readCalibration().eepromToJsonFile(os.path.join(str(new_dirname), "calib_user.json"))
             self._device._oak.device.readFactoryCalibration().eepromToJsonFile(os.path.join(str(new_dirname), "calib_factory.json"))

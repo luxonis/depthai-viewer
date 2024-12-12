@@ -99,7 +99,7 @@ class PacketHandler:
         self.diagnostics_display = False
         if self.stereo:
             self._dynamic_recalibration = Recalibration(calibration_handler, factoryCalibration_handler)
-            self._dynamic_recalibration.min_pts_for_calib = 4000
+            self._dynamic_recalibration.min_pts_for_calib = 3500
             self._display = Display()
             self.new_calib = None
             self.flashCalibration = False
