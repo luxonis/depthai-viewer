@@ -703,12 +703,14 @@ class Device:
                     if self._packet_handler.stereo and self._packet_handler.flashCalibration:
                         self._packet_handler._calib_time = time.time()
                         self._oak.device.flashCalibration(self._packet_handler._dynamic_recalibration.calib_edit.newCalib)
+                        self._oak.device.setCalibration(self._packet_handler._dynamic_recalibration.calib_edit.newCalib)
                         self._packet_handler.flashCalibration = False
                         self._packet_handler._display_flashing = "New"
 
                     if self._packet_handler.stereo and self._packet_handler.resetFactoryCalibration:
                         self._packet_handler._calib_time = time.time()
                         self._oak.device.flashCalibration(self._packet_handler._dynamic_recalibration.calib_edit.factoryCalib)
+                        self._oak.device.setCalibration(self._packet_handler._dynamic_recalibration.calib_edit.factoryCalib)
                         self._packet_handler.resetFactoryCalibration = False
                         self._packet_handler._display_flashing = "Factory"
 

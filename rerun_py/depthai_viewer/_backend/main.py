@@ -163,6 +163,9 @@ class DepthaiViewerBack:
             return ErrorMessage("No device selected")
         elif action == Action.RECALIBRATE:
             #self._device._packet_handler._start_calibration()
+            if self._device._packet_handler._dynamic_recalibration.collect_features:
+                self._device._packet_handler._dynamic_recalibration.n_frames_aggregated = 200
+
             if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
                 self._device._packet_handler._start_optimization()
 

@@ -257,23 +257,23 @@ class PacketHandler:
                 if frame.getType() == dai.RawImgFrame.Type.NV12 and not was_undistorted_and_rectified:
                     encoding = viewer.ImageEncoding.NV12
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left * 1.2, display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                     viewer.log_encoded_image(entity_path, img_frame, width=w, height=h, encoding=encoding)
                 elif frame.getType() == dai.RawImgFrame.Type.YUV420p:
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left * 1.2, display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                     viewer.log_image(entity_path, cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB))
                 elif frame.getType() == dai.RawImgFrame.Type.GRAYF16:
                     img = img_frame.view(np.float16).reshape(h, w)
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        self._display.draw_health_bar(img_frame, self.error_left,display_text=self.display_text)
+                        self._display.draw_health_bar(img_frame, self.error_left*1.2,display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                     viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
                 else:
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left * 1.2, display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                         self._dynamic_recalibration.resolution = img_frame.shape[1::-1]
                     elif (is_left_socket or is_right_socket) and self._display_flashing != "":
