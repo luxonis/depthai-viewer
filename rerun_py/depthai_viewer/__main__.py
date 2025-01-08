@@ -8,7 +8,7 @@ from depthai_viewer import (
     unregister_shutdown,
 )
 from depthai_viewer import version as depthai_viewer_version  # type: ignore[attr-defined]
-from depthai_viewer.install_requirements import get_site_packages
+from depthai_viewer.install_requirements import get_site_packages, get_correct_package
 
 script_path = os.path.dirname(os.path.abspath(__file__))
 venv_dir = os.path.join(script_path, "venv-" + depthai_viewer_version())
@@ -24,6 +24,11 @@ def main() -> None:
         site_packages_directory = get_site_packages()
     except Exception:
         pass
+    try:
+        get_correct_package()
+    except:
+        pass
+
     sys.exit(bindings.main(sys.argv, python_exe, site_packages_directory))
 
 

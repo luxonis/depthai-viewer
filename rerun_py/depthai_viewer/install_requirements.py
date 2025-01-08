@@ -6,7 +6,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
-
+import platform
 # type: ignore[attr-defined]
 from depthai_viewer import version as depthai_viewer_version
 
@@ -41,6 +41,64 @@ def get_site_packages() -> str:
         text=True,
         check=True,
     ).stdout.strip()
+
+def get_correct_package() -> None:
+    def find_installed_location():
+        try:
+            installed_location = None
+            for path in sys.path:
+                potential_path = Path(path).joinpath("depthai_viewer/_backend/obscured_utilities/utilities")
+                if potential_path.exists():
+                    installed_location = potential_path
+                    break
+            if not installed_location:
+                raise FileNotFoundError("pyarmor_runtime_007125 not found in installed packages.")
+            print(f"Installed location found: {installed_location}")
+            return installed_location
+        except Exception as e:
+            print(f"Error finding installed location: {e}")
+            raise
+
+    def copy_folder_to_runtime(folder_path, destination_path):
+        try:
+            if destination_path.exists():
+                shutil.rmtree(destination_path)
+            shutil.copytree(folder_path, destination_path)
+            print(f"Copied folder from {folder_path} to {destination_path}")
+        except Exception as e:
+            print(f"Error copying folder to runtime: {e}")
+            raise
+    def get_python_version():
+        return f"{sys.version_info.major}.{sys.version_info.minor}"
+    runtime_path = find_installed_location()
+    python_version = get_python_version()
+    print(f"Python version: {python_version}")
+    system = platform.system().lower()
+    folder_mapping = {
+        "darwin": "darwin_x86_64",
+        "linux": "linux_x86_64",
+        "windows": "windows_x86_64",
+    }
+    folder_to_copy = folder_mapping.get(system)
+    print(f"System version: {folder_to_copy}")
+    if not folder_to_copy:
+        raise ValueError(f"Unsupported OS: {system}")
+
+    folder_source = Path(f"{Path(__file__).parent.resolve()}/_backend/compilers/compilers/{python_version}/pyarmor_runtime_007125/{folder_to_copy}")
+    if not folder_source.exists():
+        raise FileNotFoundError(f"Folder {folder_source} not found in compilers directory.")
+
+    destination = runtime_path / "pyarmor_runtime_007125" / folder_to_copy
+    print(f"Copying {folder_to_copy} from {folder_source} to {destination}...")
+    copy_folder_to_runtime(folder_source, destination)
+
+    additional_files = ["__init__.py", "calibration_handler.py", "display_handler.py"]
+    for file_name in additional_files:
+        init_file = Path(f"{Path(__file__).parent.resolve()}/_backend/compilers/compilers/{python_version}/{file_name}")
+        if not init_file.exists():
+            raise FileNotFoundError(f"{file_name} not found in {init_file}.")
+        shutil.copy(init_file, runtime_path)
+        print(f"Copied {file_name} to {runtime_path}")
 
 
 def download_blobs() -> None:
