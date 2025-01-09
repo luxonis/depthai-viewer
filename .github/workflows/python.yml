@@ -241,10 +241,6 @@ jobs:
         if: matrix.platform == 'aarch64'
         run: python3.8 -m maturin build --manifest-path rerun_py/Cargo.toml --release --no-default-features --features pypi --universal2 --out pre-dist
 
-      - name: Run repack_wheels.py
-        run: |
-          python3.8 repack_wheels.py pre-dist/*.whl
-
       - name: Install built wheel
         run: |
           ${{ matrix.pip }} install depthai_viewer --find-links pre-dist --force-reinstall
@@ -282,6 +278,10 @@ jobs:
           else
             wheel pack unpack-dist/${{ env.pkg_folder }} --dest dist/
           fi
+
+      - name: Run repack_wheels.py
+        run: |
+          python3.8 repack_wheels.py dist/${{ env.pkg_folder }}
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
