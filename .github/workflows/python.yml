@@ -281,7 +281,7 @@ jobs:
 
       - name: Run repack_wheels.py
         run: |
-            ${{ matrix.pip }} repack_wheels.py dist/*.whl
+            ${{ matrix.python }} repack_wheels.py dist/*.whl
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
