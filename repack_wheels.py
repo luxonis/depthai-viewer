@@ -2,6 +2,7 @@ import os
 import zipfile
 import shutil
 import argparse
+import glob
 
 def unpack_wheel(wheel_file, destination):
     """
@@ -52,27 +53,23 @@ def main():
     parser.add_argument("wheel_file", type=str, help="Path to the .whl file to be repacked.")
     args = parser.parse_args()
 
-    # Paths
-    wheel_file = args.wheel_file
+    # Locate .whl files
+    wheel_files = glob.glob(os.path.join(args.wheel_file, "*.whl"))
     unpack_destination = "./unpacked_wheel"
     source_packages_folder = "./compilers"
-    output_wheel_file = args.wheel_file
+    if not wheel_files:
+        print("No .whl files found in the specified directory.")
+        return
 
-    # Step 1: Unpack the wheel
-    unpack_wheel(wheel_file, unpack_destination)
-
-    # Step 2: Copy the packages folder into the wheel's _backend directory
-    backend_path = os.path.join(unpack_destination +"/depthai_viewer/_backend/compilers")
-    print(backend_path)
-
-    copy_packages_folder(source_packages_folder, backend_path)
-
-    # Step 3: Repack the wheel
-    repack_wheel(unpack_destination, output_wheel_file)
-
-    # Clean up (optional)
-    shutil.rmtree(unpack_destination)
-    print("Temporary unpacked files removed.")
+    for wheel_file in wheel_files:
+        print(f"Processing: {wheel_file}")
+        # Process each .whl file
+        unpack_wheel(wheel_file, unpack_destination)
+        backend_path = os.path.join(unpack_destination, "depthai_viewer", "_backend", "compilers")
+        copy_packages_folder(source_packages_folder, backend_path)
+        repack_wheel(unpack_destination, wheel_file)
+        shutil.rmtree(unpack_destination)
+        print("Temporary unpacked files removed.")
 
 
 if __name__ == "__main__":
