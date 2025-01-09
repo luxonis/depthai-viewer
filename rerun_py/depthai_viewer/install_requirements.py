@@ -43,22 +43,6 @@ def get_site_packages() -> str:
     ).stdout.strip()
 
 def get_correct_package() -> None:
-    def find_installed_location():
-        try:
-            installed_location = None
-            for path in sys.path:
-                potential_path = Path(path).joinpath("depthai_viewer/_backend/obscured_utilities/utilities")
-                if potential_path.exists():
-                    installed_location = potential_path
-                    break
-            if not installed_location:
-                raise FileNotFoundError("pyarmor_runtime_007125 not found in installed packages.")
-            print(f"Installed location found: {installed_location}")
-            return installed_location
-        except Exception as e:
-            print(f"Error finding installed location: {e}")
-            raise
-
     def copy_folder_to_runtime(folder_path, destination_path):
         try:
             if destination_path.exists():
@@ -70,7 +54,10 @@ def get_correct_package() -> None:
             raise
     def get_python_version():
         return f"{sys.version_info.major}.{sys.version_info.minor}"
-    runtime_path = find_installed_location()
+    potential_path = Path(f"{Path(__file__).parent.resolve()}/_backend/obscured_utilities/utilities")
+    print(f"Creating utilities path {potential_path}")
+    os.makedirs(potential_path)
+    runtime_path = potential_path
     python_version = get_python_version()
     print(f"Python version: {python_version}")
     system = platform.system().lower()
