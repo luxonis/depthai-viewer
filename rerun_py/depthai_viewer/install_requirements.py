@@ -88,10 +88,11 @@ def get_correct_package() -> None:
     if not folder_source.exists():
         raise FileNotFoundError(f"Folder {folder_source} not found in compilers directory.")
 
-    destination = runtime_path / "pyarmor_runtime_007125" / folder_to_copy
+    destination = runtime_path / f"pyarmor_runtime_007125"
     print(f"Copying {folder_to_copy} from {folder_source} to {destination}...")
-    copy_folder_to_runtime(folder_source, destination)
-
+    copy_folder_to_runtime(folder_source, destination / folder_to_copy)
+    init_file = Path(f"{Path(__file__).parent.resolve()}/_backend/compilers/compilers/{python_version}/pyarmor_runtime_007125/__init__.py")
+    shutil.copy(init_file, Path(destination, "__init__.py"))
     additional_files = ["__init__.py", "calibration_handler.py", "display_handler.py"]
     for file_name in additional_files:
         init_file = Path(f"{Path(__file__).parent.resolve()}/_backend/compilers/compilers/{python_version}/{file_name}")
