@@ -101,4 +101,6 @@ pub const DEPTHAI_ICON: Icon = Icon::new(
     include_bytes!("../data/icons/depthai_icon.png"),
 );
 
+pub const OAK4_D: Icon = Icon::new("oak4_d", include_bytes!("../data/icons/oak4_d.png"));
+
 pub const COPY: Icon = Icon::new("copy", include_bytes!("../data/icons/copy.png"));
