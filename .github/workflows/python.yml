@@ -282,7 +282,7 @@ jobs:
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels
+          name: wheels-${{ matrix.runs_on }}
           path: dist
 
   # ---------------------------------------------------------------------------
@@ -297,7 +297,8 @@ jobs:
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: wheels
+          pattern: wheels-*
+          merge-multiple: true
           path: dist
 
       # First delete the old prerelease. If we don't do this, we don't get things like
@@ -342,9 +343,10 @@ jobs:
     needs: [wheels]
     steps:
       - name: Download Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: wheels
+          pattern: wheels-*
+          merge-multiple: true
           path: dist
 
       - name: GitHub Release
