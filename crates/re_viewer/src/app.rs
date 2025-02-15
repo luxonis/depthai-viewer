@@ -12,10 +12,10 @@ use re_data_store::log_db::LogDb;
 use re_format::format_number;
 use re_log_types::{ApplicationId, LogMsg, RecordingId};
 use re_renderer::WgpuResourcePoolStatistics;
+use re_sdk_comms::DEFAULT_SERVER_PORT;
 use re_smart_channel::Receiver;
 use re_ui::{toasts, Command};
 use sentry;
-use re_sdk_comms::DEFAULT_SERVER_PORT;
 
 use crate::{
     app_icon::setup_app_icon,
@@ -115,7 +115,6 @@ pub struct App {
     cmd_palette: re_ui::CommandPalette,
 
     // analytics: ViewerAnalytics,
-
     icon_status: AppIconStatus,
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -130,7 +129,10 @@ pub struct App {
 
 impl App {
     #[cfg(not(target_arch = "wasm32"))]
-    fn spawn_backend(&self, environment: &BackendEnvironment) -> Option<(std::process::Child, u32)> {
+    fn spawn_backend(
+        &self,
+        environment: &BackendEnvironment,
+    ) -> Option<(std::process::Child, u32)> {
         // It is necessary to install the requirements before starting the backend
 
         use re_smart_channel::Source;
@@ -138,7 +140,7 @@ impl App {
             return None;
         };
         const DEFAULT_BACKEND_PORT: u32 = 9001;
-        let mut port: u32=DEFAULT_BACKEND_PORT; // The default depthai_viewer._backend port
+        let mut port: u32 = DEFAULT_BACKEND_PORT; // The default depthai_viewer._backend port
         let max_retries = 100;
         let mut port_found = false;
         for _ in 0..max_retries {
@@ -146,22 +148,32 @@ impl App {
                 port_found = true;
                 break;
             } else {
-                port+=1;
+                port += 1;
             }
         }
         if !port_found {
-            re_log::warn!("Port probing was unsuccessful, using default port: {DEFAULT_BACKEND_PORT}");
+            re_log::warn!(
+                "Port probing was unsuccessful, using default port: {DEFAULT_BACKEND_PORT}"
+            );
         }
 
         let backend_handle = match std::process::Command::new(environment.python_path.clone())
-            .args(["-m", "depthai_viewer._backend.main", "--port", &port.to_string(), "--sdk-port", &match &self.rx.source() {
-                Source::TcpServer { port } => *port,
-                Source::File { .. } => DEFAULT_SERVER_PORT,
-                Source::RrdHttpStream { .. } => DEFAULT_SERVER_PORT,
-                Source::RrdWebEventListener => DEFAULT_SERVER_PORT,
-                Source::Sdk => DEFAULT_SERVER_PORT,
-                Source::WsClient { .. } => DEFAULT_SERVER_PORT
-            }.to_string()])
+            .args([
+                "-m",
+                "depthai_viewer._backend.main",
+                "--port",
+                &port.to_string(),
+                "--sdk-port",
+                &match &self.rx.source() {
+                    Source::TcpServer { port } => *port,
+                    Source::File { .. } => DEFAULT_SERVER_PORT,
+                    Source::RrdHttpStream { .. } => DEFAULT_SERVER_PORT,
+                    Source::RrdWebEventListener => DEFAULT_SERVER_PORT,
+                    Source::Sdk => DEFAULT_SERVER_PORT,
+                    Source::WsClient { .. } => DEFAULT_SERVER_PORT,
+                }
+                .to_string(),
+            ])
             .env("PYTHONPATH", site_packages_directory)
             .spawn()
         {
@@ -249,7 +261,6 @@ impl App {
             cmd_palette: Default::default(),
 
             // analytics,
-
             icon_status: AppIconStatus::NotSetTryAgain,
 
             #[cfg(not(target_arch = "wasm32"))]
@@ -441,10 +452,14 @@ impl App {
 
     fn run_time_control_command(&mut self, command: TimeControlCommand) {
         let rec_id = self.state.selected_rec_id;
-        let Some(rec_cfg) = self.state.recording_configs.get_mut(&rec_id) else {return;};
+        let Some(rec_cfg) = self.state.recording_configs.get_mut(&rec_id) else {
+            return;
+        };
         let time_ctrl = &mut rec_cfg.time_ctrl;
 
-        let Some(log_db) = self.log_dbs.get(&rec_id) else { return };
+        let Some(log_db) = self.log_dbs.get(&rec_id) else {
+            return;
+        };
         let times_per_timeline = log_db.times_per_timeline();
 
         match command {
@@ -460,6 +475,64 @@ impl App {
             TimeControlCommand::Restart => {
                 time_ctrl.restart(times_per_timeline);
             }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn dependency_installer_update(&mut self) {
+        if let Some(_) = self
+            .dependency_installer
+            .as_ref()
+            .and_then(|dependency_installer| {
+                if let Some(installed_env) = dependency_installer.try_get_installed_environment() {
+                    self.backend_environment = installed_env;
+                    Some(())
+                } else {
+                    None
+                }
+            })
+        {
+            self.dependency_installer = None;
+        }
+        if let Some(dependency_installer) = &mut self.dependency_installer {
+            if let Some(installed_environment) =
+                dependency_installer.try_get_installed_environment()
+            {
+                self.backend_environment = installed_environment;
+            }
+            dependency_installer.update();
+        }
+        if !self.startup_options.viewer_mode {
+            match &mut self.backend_handle {
+                Some((handle, port)) => match handle.try_wait() {
+                    Ok(status) => {
+                        match status {
+                            Some(_) => {
+                                let _ = handle.kill(); // It will only Err in case the process is already dead (which is what we want anyway)
+                                self.state.depthai_state.reset();
+                                re_log::debug!("Backend process has exited, restarting!");
+                                self.backend_handle = self.spawn_backend(&self.backend_environment);
+                            }
+                            None => {
+                                if !self.state.depthai_state.backend_comms.ws.is_initialized() {
+                                    self.state.depthai_state.backend_comms.ws.connect(*port);
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {}
+                },
+                None => {
+                    if self.backend_environment.are_requirements_installed() {
+                        self.backend_handle = self.spawn_backend(&self.backend_environment);
+                    } else {
+                        re_log::debug!(
+                            "Backend requirements not installed, starting dependency installer!"
+                        );
+                        self.install_dependencies();
+                    }
+                }
+            };
         }
     }
 
@@ -517,8 +590,10 @@ impl App {
             re_log::debug!("Tried to start a dependency installer wile another dependency installer is already running!");
             return;
         }
-        self.dependency_installer =
-            Some(DependencyInstaller::new(self.backend_environment.clone()));
+        if self.state.rvc4_not_supported_shown {
+            self.dependency_installer =
+                Some(DependencyInstaller::new(self.backend_environment.clone()));
+        }
     }
 }
 
@@ -548,62 +623,8 @@ impl eframe::App for App {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if let Some(_) = self
-                .dependency_installer
-                .as_ref()
-                .and_then(|dependency_installer| {
-                    if let Some(installed_env) =
-                        dependency_installer.try_get_installed_environment()
-                    {
-                        self.backend_environment = installed_env;
-                        Some(())
-                    } else {
-                        None
-                    }
-                })
-            {
-                self.dependency_installer = None;
-            }
-            if let Some(dependency_installer) = &mut self.dependency_installer {
-                if let Some(installed_environment) =
-                    dependency_installer.try_get_installed_environment()
-                {
-                    self.backend_environment = installed_environment;
-                }
-                dependency_installer.update();
-            }
-            if !self.startup_options.viewer_mode {
-                match &mut self.backend_handle {
-                    Some((handle, port)) => match handle.try_wait() {
-                        Ok(status) => {
-                            match status {
-                                Some(_) => {
-                                    let _ = handle.kill(); // It will only Err in case the process is already dead (which is what we want anyway)
-                                    self.state.depthai_state.reset();
-                                    re_log::debug!("Backend process has exited, restarting!");
-                                    self.backend_handle = self.spawn_backend(&self.backend_environment);
-                                }
-                                None => {
-                                    if !self.state.depthai_state.backend_comms.ws.is_initialized() {
-                                        self.state.depthai_state.backend_comms.ws.connect(*port);
-                                    }
-                                }
-                            }
-                        }
-                        Err(_) => {
-                        }
-                    },
-                    None => {
-                        if self.backend_environment.are_requirements_installed() {
-                            self.backend_handle = self.spawn_backend(&self.backend_environment);
-                        } else {
-                            re_log::debug!(
-                                "Backend requirements not installed, starting dependency installer!"
-                            );
-                            self.install_dependencies();
-                        }
-                    }
-                };
+            if self.state.rvc4_not_supported_shown {
+                self.dependency_installer_update();
             }
         }
 
@@ -689,11 +710,59 @@ impl eframe::App for App {
             .frame(main_panel_frame)
             .show(egui_ctx, |ui| {
                 ui.set_enabled(true);
+                if !self.state.rvc4_not_supported_shown {
+                    let panel_color = ui.style().visuals.panel_fill;
+                    let frame = egui::Frame::default()
+                        .fill(panel_color)
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
+                        .inner_margin(egui::Margin::symmetric(16.0, 0.0))
+                        .rounding(8.0);
+                    egui::Window::new("Warning")
+                        .title_bar(false)
+                        .frame(frame)
+                        .collapsible(false)
+                        .resizable(true)
+                        .default_height(600.0)
+                        .default_width(600.0)
+                        .show(ui.ctx(), |ui| {
+                            let frame = egui::Frame::default().fill(panel_color).inner_margin(
+                                egui::Margin {
+                                    top: 24.0,
+                                    bottom: 4.0,
+                                    ..0.0.into()
+                                },
+                            );
+                            egui::TopBottomPanel::top("header")
+                                .frame(frame)
+                                .show_separator_line(false)
+                                .show_inside(ui, |ui| {
+                                    ui.vertical_centered(|ui| {
+                                        let icon_image =
+                                            self.re_ui.icon_image(&re_ui::icons::OAK4_D);
+                                        ui.add(egui::Image::new(
+                                            icon_image.texture_id(ui.ctx()),
+                                            [239.1378, 128.0],
+                                        ));
+                                        ui.label(
+                                            egui::RichText::new("RVC4 is not yet supported.")
+                                                .color(self.re_ui.design_tokens.warning_bg_color),
+                                        );
+                                        ui.label("Visit https://rvc4.docs.luxonis.com/ to get started with RVC4.");
+                                        self.state.rvc4_not_supported_shown =
+                                            ui.button("OK!").clicked();
+                                    });
+                                });
+                        });
+                    ui.set_enabled(false);
+                }
+
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    if let Some(dependency_installer) = &mut self.dependency_installer {
-                        dependency_installer.show(&self.re_ui, ui);
-                        ui.set_enabled(false);
+                    if self.state.rvc4_not_supported_shown {
+                        if let Some(dependency_installer) = &mut self.dependency_installer {
+                            dependency_installer.show(&self.re_ui, ui);
+                            ui.set_enabled(false);
+                        }
                     }
                 }
                 paint_background_fill(ui);
@@ -1148,6 +1217,8 @@ struct AppState {
     #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
     profiler: crate::Profiler,
+
+    rvc4_not_supported_shown: bool,
 }
 
 impl AppState {
@@ -1176,6 +1247,7 @@ impl AppState {
             depthai_state,
             #[cfg(not(target_arch = "wasm32"))]
                 profiler: _,
+            rvc4_not_supported_shown: _,
         } = self;
 
         let rec_cfg =
