@@ -163,6 +163,9 @@ class DepthaiViewerBack:
             return ErrorMessage("No device selected")
         elif action == Action.RECALIBRATE:
             #self._device._packet_handler._start_calibration()
+            if self._device._packet_handler._dynamic_recalibration.collect_features:
+                self._device._packet_handler._dynamic_recalibration.n_frames_aggregated = 200
+
             if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
                 self._device._packet_handler._start_optimization()
 
@@ -177,6 +180,22 @@ class DepthaiViewerBack:
         elif action == Action.FLASH_FACTORY_CALIB:
             if self._device._packet_handler.stereo and not self._device._packet_handler.display_bar:
                 self._device._packet_handler.resetFactoryCalibration = True
+
+        elif action == Action.CAMERA_DIAGNOSTICS:
+            self._device._packet_handler.diagnostics_display = True
+            import os
+            import time
+            current_dir = os.getcwd()
+
+            mxid = self._device._oak.device.getMxId()
+            new_dirname = os.path.join(current_dir, mxid)
+            if not os.path.exists(new_dirname):
+                os.makedirs(new_dirname)
+            self._device._packet_handler.save_diagnostics = str(new_dirname)
+            self._device._oak.device.readCalibration().eepromToJsonFile(os.path.join(str(new_dirname), "calib_user.json"))
+            self._device._oak.device.readFactoryCalibration().eepromToJsonFile(os.path.join(str(new_dirname), "calib_factory.json"))
+            self._device._packet_handler._calib_time = time.time()
+            print(f"Saving to {new_dirname}")
         return ErrorMessage(f"Action: {action} not implemented")
 
     def run(self) -> None:

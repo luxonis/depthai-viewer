@@ -679,7 +679,22 @@ class Device:
                     self._component_outputs[list(self._component_outputs.keys())[0]]["component"], packets
                 )
             else:
+                camera_board_sockets = [name for name, packet in packets.items() if "CameraBoardSocket" in name]
                 for name, packet in packets.items():
+                    if "CameraBoardSocket" in name and self._packet_handler.save_diagnostics != "":
+                        camera_board_sockets.remove(name)
+                        self._packet_handler._save_packet(name, packet.msg.getCvFrame())
+                    if camera_board_sockets == []:
+                        import shutil
+                        shutil.make_archive(self._packet_handler.save_diagnostics, 'zip', self._packet_handler.save_diagnostics)
+                        print("\n")
+                        print("----------------------------------------")
+                        print(f"Diagnostics saved to {self._packet_handler.save_diagnostics}.zip.")
+                        print(f"Please send them to Luxonis via mail.")
+                        print("----------------------------------------")
+                        print("\n")
+                        self._packet_handler.save_diagnostics = ""
+                        camera_board_sockets = [name for name, packet in packets.items() if "CameraBoardSocket" in name]
                     self._packet_handler.log_packet(self._component_outputs[name]["component"], packet)
                     if self._packet_handler.stereo and self._packet_handler.new_calib is not None:
                         self._oak.device.setCalibration(self._packet_handler.new_calib)
@@ -688,14 +703,17 @@ class Device:
                     if self._packet_handler.stereo and self._packet_handler.flashCalibration:
                         self._packet_handler._calib_time = time.time()
                         self._oak.device.flashCalibration(self._packet_handler._dynamic_recalibration.calib_edit.newCalib)
+                        self._oak.device.setCalibration(self._packet_handler._dynamic_recalibration.calib_edit.newCalib)
                         self._packet_handler.flashCalibration = False
                         self._packet_handler._display_flashing = "New"
 
                     if self._packet_handler.stereo and self._packet_handler.resetFactoryCalibration:
                         self._packet_handler._calib_time = time.time()
                         self._oak.device.flashCalibration(self._packet_handler._dynamic_recalibration.calib_edit.factoryCalib)
+                        self._oak.device.setCalibration(self._packet_handler._dynamic_recalibration.calib_edit.factoryCalib)
                         self._packet_handler.resetFactoryCalibration = False
                         self._packet_handler._display_flashing = "Factory"
+
         except QueueEmpty:
             pass
 

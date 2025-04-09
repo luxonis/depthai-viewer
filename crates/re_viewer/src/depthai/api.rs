@@ -127,6 +127,20 @@ impl BackendCommChannel {
             .unwrap(),
         );
     }
+
+    pub fn Camera_Diagnostics(&mut self, number: u32) {
+        self.ws.send(
+            serde_json::to_string(
+                &(WsMessage {
+                    kind: WsMessageType::Camera_Diagnostics,
+                    data: WsMessageData::Camera_Diagnostics(number),
+                    ..Default::default()
+                }),
+            )
+            .unwrap(),
+        );
+    }
+
     pub fn receive(&mut self) -> Option<WsMessage> {
         self.ws.receive()
     }

@@ -31,6 +31,7 @@ from depthai_viewer._backend.topic import Topic
 from depthai_viewer.components.rect2d import RectFormat
 from depthai_viewer._backend.obscured_utilities.utilities.calibration_handler import Recalibration
 from depthai_viewer._backend.obscured_utilities.utilities.display_handler import Display
+import os
 
 class PacketHandlerContext(BaseModel):  # type: ignore[misc]
     class Config:
@@ -94,8 +95,11 @@ class PacketHandler:
         self._ahrs.Q = np.array([1, 0, 0, 0], dtype=np.float64)
         self._calibration_handler = CachedCalibrationHandler(calibration_handler)
         self.stereo = stereo
+        self.save_diagnostics = ""
+        self.diagnostics_display = False
         if self.stereo:
             self._dynamic_recalibration = Recalibration(calibration_handler, factoryCalibration_handler)
+            self._dynamic_recalibration.min_pts_for_calib = 3500
             self._display = Display()
             self.new_calib = None
             self.flashCalibration = False
@@ -253,42 +257,39 @@ class PacketHandler:
                 if frame.getType() == dai.RawImgFrame.Type.NV12 and not was_undistorted_and_rectified:
                     encoding = viewer.ImageEncoding.NV12
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left * 1.2, display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                     viewer.log_encoded_image(entity_path, img_frame, width=w, height=h, encoding=encoding)
                 elif frame.getType() == dai.RawImgFrame.Type.YUV420p:
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left * 1.2, display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                     viewer.log_image(entity_path, cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB))
                 elif frame.getType() == dai.RawImgFrame.Type.GRAYF16:
                     img = img_frame.view(np.float16).reshape(h, w)
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        self._display.draw_health_bar(img_frame, self.error_left,display_text=self.display_text)
+                        self._display.draw_health_bar(img_frame, self.error_left*1.2,display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                     viewer.log_image(entity_path, img, colormap=viewer.Colormap.Magma, unit="°C")
                 else:
                     if (is_left_socket or is_right_socket) and self.display_bar:
-                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left, display_text=self.display_text)
+                        img_frame = self._display.draw_health_bar(cv2.cvtColor(img_frame, cv2.COLOR_GRAY2BGR),self.error_left * 1.2, display_text=self.display_text)
                         img_frame = cv2.cvtColor(img_frame, cv2.COLOR_BGR2RGB)
                         self._dynamic_recalibration.resolution = img_frame.shape[1::-1]
                     elif (is_left_socket or is_right_socket) and self._display_flashing != "":
                         self._display.draw_center_center_box(img_frame,f"Flashing {self._display_flashing} calibration ...")
+
+                    elif (is_left_socket or is_right_socket) and self.diagnostics_display:
+                        self._display.draw_center_center_box(img_frame,f"Saving to:")
+                        self.draw_center_center_box(img_frame, self.file_path)
                     viewer.log_image(entity_path, img_frame)
                 if is_left_socket:
-                    self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
-                    self._dynamic_recalibration.frame_left = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
+                    self._display.create_window((cv2.resize(frame.getCvFrame(), (640,400)).shape[1], cv2.resize(frame.getCvFrame(), (640,400)).shape[0]))
+                    self._dynamic_recalibration.frame_left = cv2.cvtColor(cv2.resize(frame.getCvFrame(), (640,400)), cv2.COLOR_GRAY2BGR)
                 if is_right_socket:
-                    self._display.create_window((img_frame.shape[1], img_frame.shape[0]))
-                    self._dynamic_recalibration.frame_right = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
-
-            if self._calib_time is not None and np.abs(time.time() - self._calib_time) > 5:
-                if self._display_flashing != "":
-                    self._display_flashing = ""
-                else:
-                    self.display_bar = False
-                    self._dynamic_recalibration.reset_aggregation()
-                self._calib_time = None
+                    self._display.create_window((cv2.resize(frame.getCvFrame(), (640,400)).shape[1], cv2.resize(frame.getCvFrame(), (640,400)).shape[0]))
+                    self._dynamic_recalibration.frame_right = cv2.cvtColor(cv2.resize(frame.getCvFrame(), (640,400)), cv2.COLOR_GRAY2BGR)
+                    self._dynamic_recalibration.resolution = self._dynamic_recalibration.frame_right.shape[1::-1]
 
             # Handle frames when feature collection is enabled
             elif self._dynamic_recalibration.collect_features or self._dynamic_recalibration.recalibrating:
@@ -308,10 +309,10 @@ class PacketHandler:
                     # Handle left socket
                     if is_left_socket:
                         frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
-                        self._display.create_window((frame.shape[1], frame.shape[0]))
-                        self._dynamic_recalibration.frame_left = frame
+                        self._display.create_window((cv2.resize(frame, (640,400)).shape[1], cv2.resize(frame, (640,400)).shape[0]))
+                        self._dynamic_recalibration.frame_left = cv2.resize(frame, (640,400))
                         if self._dynamic_recalibration.collect_features:
-                            self._display_and_log_frame(self._dynamic_recalibration.left_socket.name, frame, self._dynamic_recalibration.new_pts_left)
+                            self._display_and_log_frame(self._dynamic_recalibration.left_socket.name, cv2.resize(frame, (640,400)), self._dynamic_recalibration.new_pts_left)
                         elif self._dynamic_recalibration.recalibrating:
                             self._display.draw_center_center_box(self._dynamic_recalibration.frame_left,"Recalibration in progress ...")
                             entity_path = f"{self._dynamic_recalibration.left_socket.name}/transform/mono_cam/Image"
@@ -319,14 +320,23 @@ class PacketHandler:
                     # Handle right socket
                     elif is_right_socket:
                         frame = cv2.cvtColor(frame.getCvFrame(), cv2.COLOR_GRAY2BGR)
-                        self._display.create_window((frame.shape[1], frame.shape[0]))
-                        self._dynamic_recalibration.frame_right = frame
+                        self._display.create_window((cv2.resize(frame, (640,400)).shape[1], cv2.resize(frame, (640,400)).shape[0]))
+                        self._dynamic_recalibration.frame_right = cv2.resize(frame, (640,400))
                         if self._dynamic_recalibration.collect_features:
-                            self._display_and_log_frame(self._dynamic_recalibration.right_socket.name, frame)
+                            self._display_and_log_frame(self._dynamic_recalibration.right_socket.name, cv2.resize(frame, (640,400)))
                         elif self._dynamic_recalibration.recalibrating:
                             self._display.draw_center_center_box(self._dynamic_recalibration.frame_right,"Recalibration in progress ...")
                             entity_path = f"{self._dynamic_recalibration.right_socket.name}/transform/mono_cam/Image"
                             viewer.log_image(entity_path, cv2.cvtColor(self._dynamic_recalibration.frame_right, cv2.COLOR_BGR2RGB))
+
+            if self._calib_time is not None and np.abs(time.time() - self._calib_time) > 5:
+                if self._display_flashing != "":
+                    self._display_flashing = ""
+                elif self.display_bar:
+                    self.display_bar = False
+                    self._dynamic_recalibration.reset_aggregation()
+                self._calib_time = None
+                self.diagnostics_display = False
 
 
             if not self._dynamic_recalibration.result_queue.empty():
@@ -545,10 +555,46 @@ class PacketHandler:
         Start optimization when 'r' key is pressed.
         """
         print("Starting feature collection and optimization...")
-        self._dynamic_recalibration.start_optimization(30)
+        self._dynamic_recalibration.start_optimization(8)
 
+    def draw_center_center_box(self, image, text, box_color=(0, 0, 0, 128), font_scale=0.3, font_color=(255, 255, 255)):
+        img_height, img_width = image.shape[:2]
 
+        # Calculate text size
+        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)[0]
+        text_width, text_height = text_size
 
+        # Define box dimensions
+        box_padding = 10
+        box_width = text_width + box_padding * 2
+        box_height = text_height + box_padding * 2
+        box_x = (img_width - box_width) // 2
+        box_y = (img_height - box_height) // 2 +50
+
+        # Draw semi-transparent background box
+        overlay = image.copy()
+        box_start = (box_x, box_y)
+        box_end = (box_x + box_width, box_y + box_height)
+        alpha = box_color[3] / 255.0
+        cv2.rectangle(overlay, box_start, box_end, box_color[:3], -1)
+        cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+        # Draw text at the center of the box
+        text_x = box_x + (box_width - text_width) // 2
+        text_y = box_y + (box_height + text_height) // 2
+        cv2.putText(image, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_color, 1)
+
+        return image
+
+    def _save_packet(self, name, frame):
+        base_path = self.save_diagnostics
+        self.file_path = os.path.join(base_path, f"{name}.png")
+
+        counter = 1
+        while os.path.exists(self.file_path):
+            self.file_path = os.path.join(base_path, f"{name}_{counter}.png")
+            counter += 1
+        cv2.imwrite(self.file_path, frame)
 
 def cam_kind_from_frame_type(dtype: dai.RawImgFrame.Type) -> str:
     """Returns camera kind string for given dai.RawImgFrame.Type."""
