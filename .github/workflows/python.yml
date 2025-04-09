@@ -129,7 +129,7 @@ jobs:
 
       - name: Cache DNF packages
         if: matrix.platform == 'aarch64'
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             /var/cache/dnf
@@ -142,7 +142,7 @@ jobs:
           dnf install -y gtk3-devel openssl-devel
 
       - name: Set up cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v4
         with:
           env-vars: CARGO CC CFLAGS CXX CMAKE RUST CACHE_KEY
           # Don't update the cache -- it will be updated by the lint job
