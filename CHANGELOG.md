@@ -1,5 +1,12 @@
 # Depthai Viewer changelog
 
+
+## 0.2.9
+- Added RVC4 is not supported pop up.
+
+## 0.2.8
+- Fix viewer getting flagged as trojan on windows.
+
 ## 0.2.7
 - Added stereo depth presets!
 - Fixed syncing
