@@ -1,3 +1,9 @@
+# ⚠️ WARNING
+
+**This repository has been archived.**  
+It is recommended that you use [oak-viewer](https://docs.luxonis.com/software-v3/depthai/tools/oak-viewer/)
+
+
 <h1 align="center">
   <a href="https://www.rerun.io/">
     <img alt="banner" src="https://github.com/luxonis/depthai-viewer/assets/59307111/6a03d8a0-6a70-41d3-b263-15ee279a02aa">
