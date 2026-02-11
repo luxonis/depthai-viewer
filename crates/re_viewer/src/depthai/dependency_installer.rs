@@ -1,8 +1,9 @@
 use instant::Instant;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
-use subprocess::{ExitStatus, Popen, PopenConfig, PopenError, Redirection};
 use tokio::task;
+use subprocess::{Popen, PopenError, PopenConfig, Redirection};
+use subprocess::ExitStatus;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StatusDump {
